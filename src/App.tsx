@@ -1,122 +1,84 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
+import { useEffect, useRef, useState } from 'react'
+import type { FormEvent } from 'react'
+import { recommend } from './api/recommendations'
+import { RecommendationCards } from './components/RecommendationCards'
+import type { Recommendation } from './types/recommendation'
 import './App.css'
 
+type ChatMessage = { id: string; sentAt: Date } & (
+  { role: 'user'; text: string } | { role: 'assistant'; result: Recommendation }
+)
+const formatTime = (date: Date) => date.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [conversationKey] = useState(() => crypto.randomUUID())
+  const [openedAt] = useState(() => new Date())
+  const [prompt, setPrompt] = useState('')
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [activePreview, setActivePreview] = useState<string | null>(null)
+  const requestRef = useRef<AbortController | null>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+  useEffect(() => () => requestRef.current?.abort(), [])
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading, error])
 
-      <div className="ticks"></div>
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    const text = prompt.trim()
+    if (!text || requestRef.current) return
+    const controller = new AbortController()
+    requestRef.current = controller
+    setLoading(true)
+    setError('')
+    setActivePreview(null)
+    setMessages(previous => [...previous, { id: crypto.randomUUID(), role: 'user', text, sentAt: new Date() }])
+    setPrompt('')
+    try {
+      const result = await recommend(text, conversationKey, controller.signal)
+      setMessages(previous => [...previous, { id: crypto.randomUUID(), role: 'assistant', result, sentAt: new Date() }])
+    } catch (caught) {
+      if (!controller.signal.aborted) {
+        setError(caught instanceof Error ? caught.message : '서버에 연결하지 못했습니다.')
+        setPrompt(text)
+      }
+    } finally {
+      requestRef.current = null
+      if (!controller.signal.aborted) { setLoading(false); inputRef.current?.focus() }
+    }
+  }
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+  return <main className="chat-app">
+    <header className="chat-header"><h1>음악 추천 챗봇</h1></header>
+    <div className="chat-content" role="log" aria-label="음악 추천 대화" aria-live="polite">
+      <p className="date-label">{openedAt.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</p>
+      <div className="message-row assistant-row">
+        <div className="welcome-bubble">
+          <p>지금의 순간에 음악을 더해볼까요?</p>
+          <p>느껴지는 분위기나 장소, 날씨를 편하게 들려주세요.</p>
+          <p>이 순간에 어울리는 음악을 골라드릴게요.</p>
+          <p className="sample-notice">현재는 샘플 곡을 추천합니다. 입력 문장은 DB에 저장하지 않고 추천 결과만 저장합니다.</p>
+        </div><time>{formatTime(openedAt)}</time>
+      </div>
+      {messages.map(message => <div key={message.id} className={`message-row ${message.role === 'user' ? 'user-row' : 'assistant-row'}`}>
+        {message.role === 'user' ? <p className="user-bubble">{message.text}</p>
+          : <RecommendationCards recommendation={message.result} activePreview={activePreview} onPreviewChange={setActivePreview} />}
+        <time dateTime={message.sentAt.toISOString()}>{formatTime(message.sentAt)}</time>
+      </div>)}
+      {loading && <p className="status-message" role="status">음악을 고르고 있어요…</p>}
+      {error && <p role="alert" className="error-message">{error} 입력창에서 다시 전송할 수 있습니다.</p>}
+      <div ref={bottomRef} />
+    </div>
+    <form className="input-bar" onSubmit={submit}>
+      <label className="sr-only" htmlFor="prompt">추천받고 싶은 상황</label>
+      <textarea ref={inputRef} id="prompt" placeholder="메시지를 입력하세요…" rows={1} maxLength={1000}
+        value={prompt} onChange={event => setPrompt(event.target.value)} disabled={loading}
+        onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }} />
+      <button className="send-button" type="submit" disabled={loading || !prompt.trim()} aria-label="추천 요청 보내기">↑</button>
+    </form>
+  </main>
 }
 
 export default App
