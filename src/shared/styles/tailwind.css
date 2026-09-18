@@ -1,0 +1,6 @@
+@import 'tailwindcss';
+@import './tokens/primitive.css';
+@import './tokens/semantic.css';
+@import './tokens/typography.css';
+@import './base/fonts.css';
+@import './base/reset.css';
