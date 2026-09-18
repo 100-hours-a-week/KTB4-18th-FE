@@ -63,9 +63,9 @@ npm run preview
 2. 백엔드 환경변수를 설정하고 `dev` 프로필로 서버를 실행합니다. 기본 주소는 `http://localhost:8080`입니다.
 3. 구현한 API에 맞춰 프론트엔드 요청 코드와 API 주소 설정을 추가합니다.
 
-현재 `vite.config.ts`에는 API 프록시가 없고 API 요청 코드나 API 주소 환경변수도 없습니다. API 연동 시에는 백엔드의 CORS·인증 설정 또는 개발 서버 프록시를 요청 방식에 맞게 구성해야 합니다.
+인증 API 연동은 `src/auth/`와 `src/shared/api/`에 구현되어 있습니다. 프런트엔드는 `VITE_API_BASE_URL`을 사용해 백엔드에 요청하고, refresh token은 브라우저 cookie로만 전송합니다. 기본값은 `http://localhost:8080`이며, 다른 API 주소를 사용하려면 `.env.example`을 복사한 `.env.local`에 공개 가능한 API 주소만 설정합니다.
 
-Vite의 `VITE_` 접두사 환경변수는 클라이언트 코드에 노출됩니다. 향후 API 주소 설정에 사용할 수 있지만 DB 비밀번호나 비밀키는 넣지 마세요. 환경변수 파일을 도입할 때는 로컬 파일의 `.gitignore` 제외 규칙과 비밀값이 없는 예시 파일도 함께 준비하세요. 현재는 환경변수 파일을 만들 필요가 없습니다.
+Vite의 `VITE_` 접두사 환경변수는 클라이언트 코드에 노출됩니다. DB 비밀번호, JWT secret, access token, refresh token은 넣지 마세요. `.env.local`은 Git에 올리지 않고 `.env.example`에는 비밀값 없는 예시만 유지합니다.
 
 ## 디렉토리 구성
 
