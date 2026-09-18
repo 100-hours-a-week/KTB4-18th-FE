@@ -1,0 +1,90 @@
+@theme inline {
+  /* Color/Text */
+  --color-text-primary: var(--color-neutral-900);
+  --color-text-secondary: var(--color-neutral-700);
+  --color-text-tertiary: var(--color-neutral-500);
+  --color-text-disabled: var(--color-neutral-400);
+  --color-text-error: var(--color-red-500);
+  --color-text-info: var(--color-blue-500);
+  --color-text-success: var(--color-green-500);
+  --color-text-warning: var(--color-yellow-500);
+
+  /* Color/Text/interactive */
+  --color-text-interactive-primary: var(--color-orange-500);
+  --color-text-interactive-primary-hover: var(--color-orange-600);
+  --color-text-interactive-primary-press: var(--color-orange-700);
+  --color-text-interactive-primary-select: var(--color-orange-500);
+  --color-text-interactive-secondary: var(--color-neutral-700);
+  --color-text-interactive-inverse: var(--color-white);
+
+  /* Color/Icon */
+  --color-icon-primary: var(--color-neutral-900);
+  --color-icon-secondary: var(--color-neutral-700);
+  --color-icon-tertiary: var(--color-neutral-500);
+  --color-icon-disabled: var(--color-neutral-400);
+  --color-icon-error: var(--color-red-500);
+  --color-icon-info: var(--color-blue-500);
+  --color-icon-success: var(--color-green-500);
+  --color-icon-warning: var(--color-yellow-500);
+  --color-icon-interactive-primary: var(--color-orange-500);
+  --color-icon-interactive-primary-hover: var(--color-orange-600);
+  --color-icon-interactive-primary-press: var(--color-orange-700);
+  --color-icon-interactive-primary-select: var(--color-orange-500);
+  --color-icon-interactive-secondary: var(--color-neutral-700);
+  --color-icon-interactive-inverse: var(--color-white);
+
+  /* Color/Bg */
+  --color-bg-primary: var(--color-white);
+  --color-bg-secondary: var(--color-neutral-50);
+  --color-bg-tertiary: var(--color-neutral-100);
+  --color-bg-disabled: var(--color-neutral-200);
+  --color-bg-error: var(--color-red-50);
+  --color-bg-info: var(--color-blue-50);
+  --color-bg-success: var(--color-green-50);
+  --color-bg-warning: var(--color-yellow-50);
+  --color-bg-forty: var(--color-neutral-200);
+  --color-bg-interactive-primary: var(--color-orange-500);
+  --color-bg-interactive-primary-hover: var(--color-orange-600);
+  --color-bg-interactive-primary-press: var(--color-orange-700);
+  --color-bg-interactive-primary-select: var(--color-orange-500);
+  --color-bg-interactive-primary-light: var(--color-orange-50);
+  --color-bg-interactive-secondary: var(--color-neutral-200);
+  --color-bg-interactive-inverse: var(--color-neutral-900);
+
+  /* Color/Border */
+  --color-border-black: var(--color-black);
+  --color-border-white: var(--color-white);
+  --color-border-primary: var(--color-neutral-400);
+  --color-border-secondary: var(--color-neutral-300);
+  --color-border-tertiary: var(--color-neutral-200);
+  --color-border-error: var(--color-red-500);
+  --color-border-info: var(--color-blue-500);
+  --color-border-success: var(--color-green-500);
+  --color-border-warning: var(--color-yellow-500);
+  --color-border-interactive-primary: var(--color-orange-500);
+  --color-border-interactive-primary-hover: var(--color-orange-600);
+  --color-border-interactive-primary-press: var(--color-orange-700);
+  --color-border-interactive-primary-select: var(--color-orange-500);
+  --color-border-interactive-secondary: var(--color-neutral-700);
+  --color-border-interactive-inverse: var(--color-white);
+
+  /* Color/Text|Icon|Border/Opacity */
+  --color-text-opacity-default: rgb(0 0 0 / 16%);
+  --color-text-opacity-assistive: rgb(0 0 0 / 28%);
+  --color-text-opacity-alternative: rgb(0 0 0 / 61%);
+  --color-text-opacity-normal: rgb(0 0 0 / 88%);
+  --color-icon-opacity-default: var(--color-text-opacity-default);
+  --color-icon-opacity-assistive: var(--color-text-opacity-assistive);
+  --color-icon-opacity-alternative: var(--color-text-opacity-alternative);
+  --color-icon-opacity-normal: var(--color-text-opacity-normal);
+  --color-border-opacity-default: var(--color-text-opacity-default);
+  --color-border-opacity-assistive: var(--color-text-opacity-assistive);
+  --color-border-opacity-alternative: var(--color-text-opacity-alternative);
+  --color-border-opacity-normal: var(--color-text-opacity-normal);
+
+  /* Color/Bg/Opacity */
+  --color-bg-opacity-default: rgb(229 229 229 / 16%);
+  --color-bg-opacity-assistive: rgb(229 229 229 / 28%);
+  --color-bg-opacity-alternative: rgb(229 229 229 / 61%);
+  --color-bg-opacity-normal: rgb(229 229 229 / 88%);
+}
