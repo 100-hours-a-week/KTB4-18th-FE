@@ -30,17 +30,19 @@ function App() {
     const text = prompt.trim()
     if (!text || requestRef.current) return
     const controller = new AbortController()
+    const messageId = crypto.randomUUID()
     requestRef.current = controller
     setLoading(true)
     setError('')
     setActivePreview(null)
-    setMessages(previous => [...previous, { id: crypto.randomUUID(), role: 'user', text, sentAt: new Date() }])
+    setMessages(previous => [...previous, { id: messageId, role: 'user', text, sentAt: new Date() }])
     setPrompt('')
     try {
       const result = await recommend(text, conversationKey, controller.signal)
       setMessages(previous => [...previous, { id: crypto.randomUUID(), role: 'assistant', result, sentAt: new Date() }])
     } catch (caught) {
       if (!controller.signal.aborted) {
+        setMessages(previous => previous.filter(message => message.id !== messageId))
         setError(caught instanceof Error ? caught.message : '서버에 연결하지 못했습니다.')
         setPrompt(text)
       }
@@ -59,7 +61,7 @@ function App() {
           <p>지금의 순간에 음악을 더해볼까요?</p>
           <p>느껴지는 분위기나 장소, 날씨를 편하게 들려주세요.</p>
           <p>이 순간에 어울리는 음악을 골라드릴게요.</p>
-          <p className="sample-notice">현재는 샘플 곡을 추천합니다. 입력 문장은 DB에 저장하지 않고 추천 결과만 저장합니다.</p>
+          <p className="sample-notice">현재는 입력 문장으로 iTunes에서 음악을 검색합니다. 입력 문장은 연속 추천을 위해 대화별로 저장합니다.</p>
         </div><time>{formatTime(openedAt)}</time>
       </div>
       {messages.map(message => <div key={message.id} className={`message-row ${message.role === 'user' ? 'user-row' : 'assistant-row'}`}>
