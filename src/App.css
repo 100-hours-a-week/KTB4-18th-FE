@@ -1,6 +1,7 @@
 .chat-app { max-width: 640px; height: 100dvh; margin: 0 auto; display: flex; flex-direction: column; background: white; border-inline: 1px solid #e0e0e5; }
-.chat-header { flex-shrink: 0; padding: 24px 16px; text-align: center; border-bottom: 1px solid #e0e0e5; }
+.chat-header { position: relative; flex-shrink: 0; padding: 24px 16px; text-align: center; border-bottom: 1px solid #e0e0e5; }
 .chat-header h1 { font-size: 22px; margin: 0; }
+.chat-login-link { position: absolute; top: 50%; right: 16px; color: #1347cc; font-size: 14px; text-decoration: none; transform: translateY(-50%); }
 .chat-content { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 16px 28px; }
 .date-label { width: fit-content; margin: 0 auto 24px; background: #f0f0f2; color: #6b6c76; padding: 8px 24px; border-radius: 24px; font-size: 13px; }
 .message-row { display: flex; gap: 7px; align-items: flex-end; margin-bottom: 22px; }
@@ -40,4 +41,33 @@
 .send-button { flex-shrink: 0; width: 50px; height: 50px; border-radius: 50%; border: 0; background: #202124; color: white; font-size: 28px; }
 .error-message { font-size: 13px; color: #b22c35; line-height: 1.6; }
 .status-message { color: #777986; font-size: 14px; }
+
+.login-screen { display: flex; min-height: 100dvh; justify-content: center; background: var(--color-bg-secondary); }
+.login-content { display: flex; width: min(100%, 30rem); flex-direction: column; padding: max(3.5rem, env(safe-area-inset-top)) 1.5rem max(2rem, env(safe-area-inset-bottom)); background: var(--color-bg-primary); }
+.login-heading { margin: 0; color: var(--color-text-primary); }
+.login-description { margin: 0.75rem 0 3rem; color: var(--color-text-secondary); }
+.login-form { display: grid; gap: 1.25rem; }
+.login-field { display: grid; gap: 0.5rem; }
+.login-label { color: var(--color-text-primary); }
+.login-input-wrap { display: flex; align-items: center; border: 1px solid var(--color-border-tertiary); border-radius: 0.75rem; background: var(--color-bg-primary); }
+.login-input-wrap:focus-within { border-color: var(--color-border-interactive-primary); box-shadow: 0 0 0 3px var(--color-bg-interactive-primary-light); }
+.login-input-wrap.has-error { border-color: var(--color-border-error); }
+.login-input { width: 100%; min-width: 0; border: 0; border-radius: inherit; padding: 1rem; color: var(--color-text-primary); background: transparent; outline: none; }
+.login-input::placeholder { color: var(--color-text-tertiary); }
+.password-toggle { flex: none; margin-right: 0.5rem; border: 0; padding: 0.5rem; color: var(--color-text-interactive-secondary); background: transparent; cursor: pointer; }
+.password-toggle:focus-visible, .login-link:focus-visible { outline: 3px solid var(--color-border-interactive-primary); outline-offset: 2px; }
+.login-error { margin: 0; color: var(--color-text-error); }
+.login-notice, .login-success { margin: 0; padding: 0.75rem 1rem; border-radius: 0.75rem; }
+.login-notice { color: var(--color-text-error); background: var(--color-bg-error); }
+.login-success { color: var(--color-text-success); background: var(--color-bg-success); }
+.login-submit { width: 100%; margin-top: 0.5rem; }
+.login-links { display: flex; justify-content: center; gap: 1rem; margin-top: 1.75rem; }
+.login-link { color: var(--color-text-interactive-primary); text-decoration: none; }
+.login-link + .login-link { border-left: 1px solid var(--color-border-tertiary); padding-left: 1rem; }
+
 @media (max-width: 420px) { .chat-content { padding-inline: 10px; } .welcome-bubble, .recommendation-bubble { padding: 14px; } .message-row time { font-size: 10px; } .music-info { gap: 10px; } .music-info img { width: 52px; height: 52px; } }
+
+@media (min-width: 30rem) {
+  .login-screen { align-items: center; }
+  .login-content { min-height: 42rem; border: 1px solid var(--color-border-tertiary); border-radius: 1.5rem; }
+}
