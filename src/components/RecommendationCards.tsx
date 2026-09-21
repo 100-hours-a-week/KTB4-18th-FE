@@ -32,9 +32,10 @@ export function RecommendationCards({ recommendation, activePreview, onPreviewCh
     catch { if (audioRef.current === audio) { setError('미리 듣기를 시작하지 못했습니다. 다시 눌러 주세요.'); onPreviewChange(null) } }
   }
 
-  return <section className="recommendation-bubble" aria-label="추천 음악 5곡">
-    <p className="recommendation-intro">이런 곡은 어떠세요?</p>
-    <p className="sample-notice">개발용 샘플 추천 · 실제 AI 분석 결과가 아닙니다.</p>
+  return <section className="recommendation-bubble" aria-label={`추천 음악 ${recommendation.items.length}곡`}>
+    <p className="recommendation-intro">{recommendation.items.length < 5
+      ? `검색 결과 ${recommendation.items.length}곡을 찾았어요.` : '이런 곡은 어떠세요?'}</p>
+    <p className="sample-notice">AI 분석 연동 전의 iTunes 검색 결과입니다.</p>
     <ol className="music-list">
       {recommendation.items.map(({ rank_no, music }) => {
         const key = `${recommendation.recommendation_id}-${rank_no}`
