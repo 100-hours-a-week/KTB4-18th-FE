@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { recommend } from './api/recommendations'
 import { RecommendationCards } from './components/RecommendationCards'
+import { useVoiceInput } from './hooks/useVoiceInput'
 import type { Recommendation } from './types/recommendation'
+import type { RecommendationInputType } from './api/recommendations'
 import './App.css'
 
 type ChatMessage = { id: string; sentAt: Date } & (
@@ -14,6 +16,7 @@ function App() {
   const [conversationKey] = useState(() => crypto.randomUUID())
   const [openedAt] = useState(() => new Date())
   const [prompt, setPrompt] = useState('')
+  const [inputType, setInputType] = useState<RecommendationInputType>('TEXT')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -21,6 +24,13 @@ function App() {
   const requestRef = useRef<AbortController | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  const handleTranscript = useCallback((transcript: string) => {
+    setPrompt(transcript)
+    setInputType('VOICE')
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }, [])
+  const voice = useVoiceInput({ onTranscript: handleTranscript })
 
   useEffect(() => () => requestRef.current?.abort(), [])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading, error])
@@ -38,8 +48,10 @@ function App() {
     setMessages(previous => [...previous, { id: messageId, role: 'user', text, sentAt: new Date() }])
     setPrompt('')
     try {
-      const result = await recommend(text, conversationKey, controller.signal)
+      const result = await recommend(text, conversationKey, controller.signal, inputType)
       setMessages(previous => [...previous, { id: crypto.randomUUID(), role: 'assistant', result, sentAt: new Date() }])
+      setInputType('TEXT')
+      voice.finishReview()
     } catch (caught) {
       if (!controller.signal.aborted) {
         setMessages(previous => previous.filter(message => message.id !== messageId))
@@ -73,13 +85,34 @@ function App() {
       {error && <p role="alert" className="error-message">{error} 입력창에서 다시 전송할 수 있습니다.</p>}
       <div ref={bottomRef} />
     </div>
-    <form className="input-bar" onSubmit={submit}>
-      <label className="sr-only" htmlFor="prompt">추천받고 싶은 상황</label>
-      <textarea ref={inputRef} id="prompt" placeholder="메시지를 입력하세요…" rows={1} maxLength={1000}
-        value={prompt} onChange={event => setPrompt(event.target.value)} disabled={loading}
-        onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }} />
-      <button className="send-button" type="submit" disabled={loading || !prompt.trim()} aria-label="추천 요청 보내기">↑</button>
-    </form>
+    <div className="input-area">
+      {voice.isRecording && <div className="voice-status" role="status">
+        <span><span className="recording-dot" aria-hidden="true" />녹음 중 {voice.elapsedSeconds}초 / 60초</span>
+        <button type="button" onClick={voice.cancelRecording}>취소</button>
+      </div>}
+      {voice.isTranscribing && <p className="voice-status" role="status">음성을 텍스트로 변환하고 있어요…</p>}
+      {voice.status === 'reviewing' && <p className="voice-review-notice" role="status">
+        변환된 문장을 확인하고 필요한 부분을 수정한 뒤 전송해 주세요.
+      </p>}
+      {voice.error && <p className="voice-error" role="alert">{voice.error}</p>}
+      <form className="input-bar" onSubmit={submit}>
+        <button className={`voice-button ${voice.isRecording ? 'recording' : ''}`} type="button"
+          disabled={loading || voice.isTranscribing}
+          aria-label={voice.isRecording ? '음성 녹음 종료' : '음성 녹음 시작'}
+          aria-pressed={voice.isRecording}
+          onClick={() => { if (voice.isRecording) voice.stopRecording(); else void voice.startRecording() }}>
+          {voice.isRecording ? '■' : '🎙'}
+        </button>
+        <label className="sr-only" htmlFor="prompt">추천받고 싶은 상황</label>
+        <textarea ref={inputRef} id="prompt" placeholder="메시지를 입력하세요…" rows={1} maxLength={1000}
+          value={prompt} onChange={event => setPrompt(event.target.value)}
+          disabled={loading || voice.isRecording || voice.isTranscribing}
+          onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }} />
+        <button className="send-button" type="submit"
+          disabled={loading || voice.isRecording || voice.isTranscribing || !prompt.trim()}
+          aria-label="추천 요청 보내기">↑</button>
+      </form>
+    </div>
   </main>
 }
 
