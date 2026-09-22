@@ -24,6 +24,8 @@ VITE_API_BASE_URL과 정확한 Origin·credentials CORS 및 쿠키 설정을 팀
 
 반환된 transcript는 입력창에 표시되며 자동으로 추천하지 않습니다. 사용자가 문장을 확인하거나 수정한 뒤 전송하면 기존 추천 API에 `input_type=VOICE`와 최종 문장을 전달합니다. 화면 이탈, 취소 또는 요청 종료 시 마이크 트랙과 진행 중 전사 요청을 정리합니다. AI 팀 연동 전의 백엔드는 실제 음성을 분석하지 않고 환경 변수로 설정한 테스트 transcript를 반환합니다.
 
+네트워크 오류와 5xx 응답은 재시도 가능한 실패로 처리합니다. 이때 실패한 녹음은 브라우저 메모리에만 잠시 보관하며 `전사 다시 시도`를 누르면 같은 파일을 다시 전송합니다. 400·413 응답은 형식·길이·크기 오류이므로 다시 녹음하도록 안내합니다. 사용자는 모든 실패 상태에서 새로 녹음하거나 텍스트 입력으로 전환할 수 있으며, 전사 성공·새 녹음 시작·텍스트 전환·화면 종료 시 보관한 녹음을 즉시 제거합니다.
+
 ## 코드 읽는 순서
 
 1. 프론트엔드 `src/App.tsx`: 입력 → 사용자 말풍선 → 서버 요청 → 추천 말풍선.
@@ -50,7 +52,7 @@ POST /api/v1/recommendations
 현재 샘플은 동기 처리하므로 data.status가 이미 COMPLETED입니다.
 GET /api/v1/recommendations/{recommendation_id}로 저장된 결과를 조회합니다.
 items는 rank_no와 music(곡명·아티스트·앨범 이미지·preview_url)을 가진 5개 항목입니다.
-입력은 공백 불가·최대 1000자이며 TEXT·CHATBOT만 지원합니다. 날짜 응답은 UTC ISO-8601입니다.
+입력은 공백 불가·최대 1000자이며 TEXT·VOICE 입력과 CHATBOT 요청을 지원합니다. 날짜 응답은 UTC ISO-8601입니다.
 
 DB에는 music, recommendation_sessions, recommendation_items만 생성합니다.
 prompt 컬럼은 참조 ERD 호환용으로 두되 항상 NULL이고 저장 SQL에도 넣지 않습니다.
@@ -88,7 +90,7 @@ https://bendodson.com/projects/itunes-artwork-finder/ 는 같은 iTunes API를 �
 
 ## 검증
 
-프론트엔드: `npm run lint`, `npm run build`.
+프론트엔드: `npm run test`, `npm run lint`, `npm run build`.
 백엔드: 개발·테스트 모두 MySQL만 사용합니다. 기존 README처럼 별도 `meomuneum_test` DB와
 TEST_DB_PASSWORD 등 환경변수를 준비한 후 `./gradlew test`를 실행합니다.
 추천 API 테스트는 test 프로필에서 요청·응답, 5곡 저장, 입력 미저장, 입력 검증,
