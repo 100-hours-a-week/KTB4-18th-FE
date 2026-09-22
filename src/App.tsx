@@ -11,6 +11,7 @@ import type { Recommendation } from './types/recommendation';
 import './App.css';
 
 const LOGIN_PATH = '/login';
+const CHATBOT_PATH = '/chatbot';
 
 type ChatMessage = { id: string; sentAt: Date } & (
   | { role: 'user'; text: string }
@@ -25,7 +26,30 @@ function App() {
     return <LoginPage />;
   }
 
-  return <ChatbotPage />;
+  if (window.location.pathname === CHATBOT_PATH) {
+    return <ChatbotPage />;
+  }
+
+  return <MapHomePage />;
+}
+
+function MapHomePage() {
+  return (
+    <main className="map-home">
+      <h1 className="sr-only">음악 지도</h1>
+      <header className="map-home-header">
+        <a className="map-login-link text-body2-normal-semibold" href={LOGIN_PATH}>
+          로그인
+        </a>
+      </header>
+      <a className="chatbot-floating-button text-body2-normal-semibold" href={CHATBOT_PATH}>
+        <span className="chatbot-floating-icon" aria-hidden="true">
+          ♫
+        </span>
+        챗봇
+      </a>
+    </main>
+  );
 }
 
 function ChatbotPage() {
@@ -106,9 +130,6 @@ function ChatbotPage() {
     <main className="chat-app">
       <header className="chat-header">
         <h1>음악 추천 챗봇</h1>
-        <a className="chat-login-link" href={LOGIN_PATH}>
-          로그인
-        </a>
       </header>
       <div className="chat-content" role="log" aria-label="음악 추천 대화" aria-live="polite">
         <p className="date-label">
