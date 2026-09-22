@@ -22,8 +22,18 @@
 .preview-button { border: 1px solid #cfd0d8; background: white; border-radius: 12px; padding: 7px 12px; margin-top: 12px; font-size: 13px; color: #626471; }
 .preview-button[aria-pressed=true] { background: #202124; color: white; }
 .itunes-link { display: inline-block; margin-top: 14px; font-size: 11px; color: #727480; }
-.input-bar { display: flex; align-items: center; gap: 10px; padding: 14px 16px max(14px, env(safe-area-inset-bottom)); border-top: 1px solid #e0e0e5; }
+.input-area { flex-shrink: 0; border-top: 1px solid #e0e0e5; }
+.input-bar { display: flex; align-items: center; gap: 10px; padding: 14px 16px max(14px, env(safe-area-inset-bottom)); }
 .input-bar textarea { flex: 1; min-width: 0; resize: none; background: #efeff1; border: 0; border-radius: 28px; padding: 17px 22px; line-height: 1.5; max-height: 120px; }
+.voice-button { flex-shrink: 0; width: 42px; height: 42px; border-radius: 50%; border: 1px solid #cfd0d8; background: white; color: #626471; font-size: 19px; }
+.voice-button.recording { border-color: #b22c35; background: #fff0f1; color: #b22c35; }
+.voice-button:disabled, .send-button:disabled { cursor: not-allowed; opacity: .45; }
+.voice-status, .voice-review-notice, .voice-error { margin: 0; padding: 10px 16px 0; font-size: 13px; line-height: 1.5; }
+.voice-status { display: flex; align-items: center; justify-content: space-between; color: #626471; }
+.voice-status button { border: 0; background: transparent; color: #b22c35; font: inherit; }
+.voice-review-notice { color: #1347cc; }
+.voice-error { color: #b22c35; }
+.recording-dot { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: #b22c35; }
 .send-button { flex-shrink: 0; width: 50px; height: 50px; border-radius: 50%; border: 0; background: #202124; color: white; font-size: 28px; }
 .error-message { font-size: 13px; color: #b22c35; line-height: 1.6; }
 .status-message { color: #777986; font-size: 14px; }
