@@ -1,0 +1,224 @@
+.signup-page {
+  min-height: 100dvh;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  padding: 24px 16px 48px;
+}
+
+.signup-card {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 8px 20px 28px;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 20px;
+  background: var(--color-bg-primary);
+}
+
+.signup-back {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.signup-intro {
+  margin: 8px 0 28px;
+  color: var(--color-text-tertiary);
+}
+
+.signup-form,
+.signup-optional-fields,
+.signup-terms,
+.signup-check-list {
+  display: grid;
+  gap: 16px;
+}
+
+.signup-field {
+  display: grid;
+  gap: 8px;
+}
+
+.signup-field em {
+  color: var(--color-text-tertiary);
+  font-style: normal;
+}
+
+.signup-email-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(132px, 0.8fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.signup-email-at {
+  color: var(--color-text-secondary);
+}
+
+.signup-email-domain-input {
+  width: 100%;
+}
+
+.signup-password-input {
+  position: relative;
+}
+
+.signup-password-input input {
+  padding-right: 48px;
+}
+
+.signup-password-visibility {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.signup-password-visibility:hover {
+  background: var(--color-bg-secondary);
+}
+
+.signup-optional-fields {
+  grid-template-columns: 1fr 1fr;
+}
+
+.signup-gender {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+
+.signup-gender [role='radiogroup'] {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 12px;
+}
+
+.signup-personalization {
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--color-bg-interactive-primary-light);
+  color: var(--color-text-secondary);
+}
+
+.signup-terms {
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border-tertiary);
+}
+
+.signup-terms h2 {
+  margin: 0;
+}
+
+.signup-check-all {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border-tertiary);
+}
+
+.signup-check-list {
+  gap: 14px;
+}
+
+.signup-term-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.signup-term-row > label {
+  min-height: 24px;
+}
+
+.signup-term-link,
+.signup-privacy {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: var(--color-border-secondary);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.signup-term-link:hover,
+.signup-privacy:hover {
+  color: var(--color-text-brand);
+}
+
+.signup-term-description {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-text-tertiary);
+}
+
+.signup-privacy {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+.signup-term-sheet-body {
+  display: grid;
+  gap: 20px;
+  max-height: min(56dvh, 520px);
+  overflow-y: auto;
+}
+
+.signup-term-sheet-section {
+  display: grid;
+  gap: 6px;
+}
+
+.signup-term-sheet-section h3,
+.signup-term-sheet-section p {
+  margin: 0;
+}
+
+.signup-term-sheet-section p {
+  color: var(--color-text-secondary);
+}
+
+.signup-error,
+.signup-success {
+  margin: 0;
+}
+
+.signup-error {
+  color: var(--color-text-error);
+}
+.signup-success {
+  color: var(--color-text-success);
+}
+
+@media (max-width: 360px) {
+  .signup-optional-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .signup-email-control {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .signup-email-domain-input {
+    grid-column: 1 / -1;
+  }
+}
