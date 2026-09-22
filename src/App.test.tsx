@@ -42,6 +42,7 @@ vi.mock('./hooks/useVoiceInput', () => ({
 describe('음성 transcript 공통 추천 흐름', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    window.history.replaceState(null, '', '/chatbot')
     voiceState = {
       status: 'idle',
       elapsedSeconds: 0,
