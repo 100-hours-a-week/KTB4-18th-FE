@@ -31,6 +31,13 @@ function App() {
     requestAnimationFrame(() => inputRef.current?.focus())
   }, [])
   const voice = useVoiceInput({ onTranscript: handleTranscript })
+  const resetVoiceForTextInput = voice.useTextInput
+
+  const useTextInput = useCallback(() => {
+    resetVoiceForTextInput()
+    setInputType('TEXT')
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }, [resetVoiceForTextInput])
 
   useEffect(() => () => requestRef.current?.abort(), [])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading, error])
@@ -94,7 +101,14 @@ function App() {
       {voice.status === 'reviewing' && <p className="voice-review-notice" role="status">
         변환된 문장을 확인하고 필요한 부분을 수정한 뒤 전송해 주세요.
       </p>}
-      {voice.error && <p className="voice-error" role="alert">{voice.error}</p>}
+      {voice.error && <div className="voice-error" role="alert">
+        <p>{voice.error}</p>
+        <div className="voice-error-actions">
+          {voice.canRetry && <button type="button" onClick={voice.retryTranscription}>전사 다시 시도</button>}
+          <button type="button" onClick={() => void voice.startRecording()}>다시 녹음</button>
+          <button type="button" onClick={useTextInput}>텍스트로 입력</button>
+        </div>
+      </div>}
       <form className="input-bar" onSubmit={submit}>
         <button className={`voice-button ${voice.isRecording ? 'recording' : ''}`} type="button"
           disabled={loading || voice.isTranscribing}

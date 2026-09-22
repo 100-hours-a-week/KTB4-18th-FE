@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { transcribeAudio } from '../api/speechTranscriptions'
+import { SpeechTranscriptionError, transcribeAudio } from '../api/speechTranscriptions'
 
 const MAX_AUDIO_SIZE = 10 * 1024 * 1024
 const MAX_RECORDING_SECONDS = 60
@@ -21,6 +21,11 @@ interface UseVoiceInputOptions {
   onTranscript: (transcript: string) => void
 }
 
+interface FailedRecording {
+  blob: Blob
+  mimeType: string
+}
+
 function supportedMimeType() {
   if (typeof MediaRecorder === 'undefined') return null
   return SUPPORTED_MIME_TYPES.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? null
@@ -34,6 +39,7 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
   const [status, setStatus] = useState<VoiceStatus>('idle')
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [error, setError] = useState('')
+  const [canRetry, setCanRetry] = useState(false)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -41,6 +47,7 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
   const intervalRef = useRef<number | null>(null)
   const timeoutRef = useRef<number | null>(null)
   const transcriptionRequestRef = useRef<AbortController | null>(null)
+  const failedRecordingRef = useRef<FailedRecording | null>(null)
   const onTranscriptRef = useRef(onTranscript)
   const mountedRef = useRef(true)
 
@@ -68,6 +75,8 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
   }, [clearTimers, stopStream])
 
   const sendForTranscription = useCallback(async (blob: Blob, mimeType: string) => {
+    setError('')
+    setCanRetry(false)
     if (blob.size === 0) {
       setError('녹음된 음성이 없습니다. 다시 녹음해 주세요.')
       setStatus('idle')
@@ -88,11 +97,18 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
       })
       const transcript = await transcribeAudio(file, controller.signal)
       if (!mountedRef.current || controller.signal.aborted) return
+      failedRecordingRef.current = null
       onTranscriptRef.current(transcript)
       setStatus('reviewing')
     } catch (caught) {
       if (!controller.signal.aborted && mountedRef.current) {
         setError(caught instanceof Error ? caught.message : '음성을 변환하지 못했습니다.')
+        if (caught instanceof SpeechTranscriptionError && caught.isRetryable) {
+          failedRecordingRef.current = { blob, mimeType }
+          setCanRetry(true)
+        } else {
+          failedRecordingRef.current = null
+        }
         setStatus('idle')
       }
     } finally {
@@ -132,6 +148,8 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
     }
 
     setError('')
+    setCanRetry(false)
+    failedRecordingRef.current = null
     setStatus('requestingPermission')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -186,6 +204,23 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
   const finishReview = useCallback(() => {
     setStatus('idle')
     setError('')
+    setCanRetry(false)
+    failedRecordingRef.current = null
+  }, [])
+
+  const retryTranscription = useCallback(() => {
+    const failedRecording = failedRecordingRef.current
+    if (!failedRecording || status === 'transcribing') return
+    void sendForTranscription(failedRecording.blob, failedRecording.mimeType)
+  }, [sendForTranscription, status])
+
+  const useTextInput = useCallback(() => {
+    transcriptionRequestRef.current?.abort()
+    transcriptionRequestRef.current = null
+    failedRecordingRef.current = null
+    setCanRetry(false)
+    setError('')
+    setStatus('idle')
   }, [])
 
   useEffect(() => {
@@ -193,6 +228,7 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
     return () => {
       mountedRef.current = false
       shouldTranscribeRef.current = false
+      failedRecordingRef.current = null
       transcriptionRequestRef.current?.abort()
       const recorder = recorderRef.current
       if (recorder && recorder.state !== 'inactive') recorder.stop()
@@ -205,11 +241,14 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
     status,
     elapsedSeconds,
     error,
+    canRetry,
     isRecording: status === 'recording',
     isTranscribing: status === 'transcribing' || status === 'requestingPermission',
     startRecording,
     stopRecording,
     cancelRecording,
     finishReview,
+    retryTranscription,
+    useTextInput,
   }
 }
