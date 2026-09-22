@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+      - name: Set short SHA
+        if: github.event_name == 'push'
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifact
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-${{ steps.vars.outputs.sha_short }}
+          path: dist
+          retention-days: 20
+
+      - name: Notify Discord on main failure
+        if: failure() && github.event_name == 'push'
+        run: |
+          curl -sf -X POST "$DISCORD_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"content\": \":x: **Frontend main CI 실패** — commit \`${GITHUB_SHA::7}\` (<https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}>)\"}"
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
