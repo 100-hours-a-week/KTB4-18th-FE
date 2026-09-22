@@ -21,6 +21,10 @@ import './SignupPage.css'
 type Gender = '' | 'MALE' | 'FEMALE'
 type InputField = 'nickname' | 'email' | 'password' | 'birthYear'
 
+type SignupPageProps = {
+  onSignupSuccess?: () => void
+}
+
 const maxLengthByField = {
   nickname: 12,
   email: 40,
@@ -249,7 +253,7 @@ function getInputError(field: InputField, value: string) {
   return undefined
 }
 
-export function SignupPage() {
+export function SignupPage({ onSignupSuccess }: SignupPageProps) {
   const [email, setEmail] = useState('')
   const [emailDomain, setEmailDomain] = useState('')
   const [password, setPassword] = useState('')
@@ -417,6 +421,10 @@ export function SignupPage() {
         ...(gender === '' ? {} : { gender }),
         terms_ids: agreedTermIds,
       })
+      if (onSignupSuccess) {
+        onSignupSuccess()
+        return
+      }
       setSuccess(`회원가입이 완료되었어요. 회원 번호: ${result.data.user_id}`)
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'internal server error'
