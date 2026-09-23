@@ -38,8 +38,18 @@ export function ZoneMapCanvas({ gridDots = [], items = [], isFallback }: ZoneMap
         {gridDots.map((dot) => {
           const mapDot = mapDotByCode.get(dot.code);
           return (
-            <g key={dot.code} data-zone-code={dot.code} data-map-dot-id={mapDot?.map_dot_id} className="zone-map__zone">
-              <circle className="zone-map__dot" cx={dot.gridColumn + 0.5} cy={dot.gridRow + 0.5} r="0.32" />
+            <g
+              key={dot.code}
+              data-zone-code={dot.code}
+              data-map-dot-id={mapDot?.map_dot_id}
+              className="zone-map__zone"
+            >
+              <circle
+                className="zone-map__dot"
+                cx={dot.gridColumn + 0.5}
+                cy={dot.gridRow + 0.5}
+                r="0.32"
+              />
             </g>
           );
         })}

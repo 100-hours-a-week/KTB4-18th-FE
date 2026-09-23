@@ -15,8 +15,7 @@ const LOGIN_PATH = '/login';
 const CHATBOT_PATH = '/chatbot';
 
 type ChatMessage = { id: string; sentAt: Date } & (
-  | { role: 'user'; text: string }
-  | { role: 'assistant'; result: Recommendation }
+  { role: 'user'; text: string } | { role: 'assistant'; result: Recommendation }
 );
 
 const formatTime = (date: Date) =>
@@ -175,7 +174,8 @@ function ChatbotPage() {
         {voice.isRecording && (
           <div className="voice-status" role="status">
             <span>
-              <span className="recording-dot" aria-hidden="true" />녹음 중 {voice.elapsedSeconds}초 / 60초
+              <span className="recording-dot" aria-hidden="true" />
+              녹음 중 {voice.elapsedSeconds}초 / 60초
             </span>
             <button type="button" onClick={voice.cancelRecording}>
               취소
@@ -240,11 +240,7 @@ function ChatbotPage() {
             onChange={(event) => setPrompt(event.target.value)}
             disabled={loading || voice.isRecording || voice.isTranscribing}
             onKeyDown={(event) => {
-              if (
-                event.key === 'Enter' &&
-                !event.shiftKey &&
-                !event.nativeEvent.isComposing
-              ) {
+              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
                 event.currentTarget.form?.requestSubmit();
               }
