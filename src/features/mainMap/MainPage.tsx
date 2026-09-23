@@ -14,7 +14,7 @@ const routes: Record<MainDestination | 'recordCreate', Route> = {
   map: { destination: 'map', path: '/' },
   records: { destination: 'records', path: '/records' },
   recordCreate: { destination: 'recordCreate', path: '/records/new' },
-  chatRooms: { destination: 'chatRooms', path: '/chat-rooms' },
+  chatRooms: { destination: 'chatRooms', path: '/chatbot' },
   my: { destination: 'my', path: '/my' },
 };
 
@@ -196,6 +196,12 @@ export function MainPage() {
     if (window.location.pathname !== nextRoute.path) {
       window.history.pushState(null, '', nextRoute.path);
     }
+
+    if (destination === 'chatRooms') {
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      return;
+    }
+
     setRoute(nextRoute);
   }
 
