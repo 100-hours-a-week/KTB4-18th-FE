@@ -1,9 +1,12 @@
+import { ActionButton } from '@seed-design/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 
 import { recommend } from './api/recommendations';
 import { RecommendationCards } from './components/RecommendationCards';
 import { LoginPage } from './features/auth-login/components/LoginPage';
+import { logout, LogoutRequestError } from './features/auth-login/api/logoutApi';
+import { SignupPage } from './features/user-signup/components/SignupPage';
 import { useVoiceInput } from './hooks/useVoiceInput';
 import type { RecommendationInputType } from './api/recommendations';
 import type { Recommendation } from './types/recommendation';
@@ -11,6 +14,7 @@ import type { Recommendation } from './types/recommendation';
 import './App.css';
 
 const LOGIN_PATH = '/login';
+const SIGNUP_PATH = '/signup';
 const CHATBOT_PATH = '/chatbot';
 
 type ChatMessage = { id: string; sentAt: Date } & (
@@ -22,26 +26,109 @@ const formatTime = (date: Date) =>
   date.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
 
 function App() {
-  if (window.location.pathname === LOGIN_PATH) {
-    return <LoginPage />;
+  const [pathname, setPathname] = useState(() => window.location.pathname);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState('');
+
+  useEffect(() => {
+    const updatePathname = () => setPathname(window.location.pathname);
+
+    window.addEventListener('popstate', updatePathname);
+    return () => window.removeEventListener('popstate', updatePathname);
+  }, []);
+
+  const navigate = (path: string) => {
+    window.history.pushState(null, '', path);
+    setPathname(path);
+  };
+
+  const handleLoginSuccess = () => {
+    setIsAuthenticated(true);
+    setLogoutError('');
+    navigate('/');
+  };
+
+  const handleLogout = async () => {
+    if (isLoggingOut) {
+      return;
+    }
+
+    setIsLoggingOut(true);
+    setLogoutError('');
+    try {
+      await logout();
+      setIsAuthenticated(false);
+      navigate(LOGIN_PATH);
+    } catch (error) {
+      setLogoutError(
+        error instanceof LogoutRequestError && error.status === null
+          ? '네트워크 상태를 확인한 뒤 다시 시도해 주세요.'
+          : '로그아웃에 실패했어요. 잠시 후 다시 시도해 주세요.',
+      );
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
+  if (pathname === LOGIN_PATH) {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   }
 
-  if (window.location.pathname === CHATBOT_PATH) {
+  if (pathname === SIGNUP_PATH) {
+    return <SignupPage onSignupSuccess={() => navigate(LOGIN_PATH)} />;
+  }
+
+  if (pathname === CHATBOT_PATH) {
     return <ChatbotPage />;
   }
 
-  return <MapHomePage />;
+  return (
+    <MapHomePage
+      isAuthenticated={isAuthenticated}
+      isLoggingOut={isLoggingOut}
+      logoutError={logoutError}
+      onLogin={() => navigate(LOGIN_PATH)}
+      onLogout={handleLogout}
+    />
+  );
 }
 
-function MapHomePage() {
+type MapHomePageProps = {
+  isAuthenticated: boolean;
+  isLoggingOut: boolean;
+  logoutError: string;
+  onLogin: () => void;
+  onLogout: () => void;
+};
+
+function MapHomePage({
+  isAuthenticated,
+  isLoggingOut,
+  logoutError,
+  onLogin,
+  onLogout,
+}: MapHomePageProps) {
   return (
     <main className="map-home">
       <h1 className="sr-only">음악 지도</h1>
       <header className="map-home-header">
-        <a className="map-login-link text-body2-normal-semibold" href={LOGIN_PATH}>
-          로그인
-        </a>
+        <ActionButton
+          className="map-auth-button"
+          type="button"
+          variant="brandSolid"
+          size="medium"
+          loading={isLoggingOut}
+          onClick={isAuthenticated ? onLogout : onLogin}
+        >
+          {isAuthenticated ? '로그아웃' : '로그인'}
+        </ActionButton>
       </header>
+      {logoutError && (
+        <p className="map-auth-error text-body2-normal-regular" role="alert">
+          {logoutError}
+        </p>
+      )}
       <a className="chatbot-floating-button text-body2-normal-semibold" href={CHATBOT_PATH}>
         <span className="chatbot-floating-icon" aria-hidden="true">
           ♫

@@ -1,8 +1,11 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { recommend } from './api/recommendations'
+import { login } from './features/auth-login/api/loginApi'
+import { logout } from './features/auth-login/api/logoutApi'
+import { signup } from './features/user-signup/api/signupApi'
 import type { VoiceStatus } from './hooks/useVoiceInput'
 
 const voiceActions = {
@@ -38,6 +41,19 @@ vi.mock('./hooks/useVoiceInput', () => ({
     return { ...voiceState, ...voiceActions }
   },
 }))
+vi.mock('./features/auth-login/api/loginApi', () => ({
+  login: vi.fn(),
+  LoginRequestError: class LoginRequestError extends Error {},
+}))
+vi.mock('./features/auth-login/api/logoutApi', () => ({
+  logout: vi.fn(),
+  LogoutRequestError: class LogoutRequestError extends Error {},
+}))
+vi.mock('./features/user-signup/api/signupApi', () => ({ signup: vi.fn() }))
+
+beforeEach(() => {
+  cleanup()
+})
 
 describe('음성 transcript 공통 추천 흐름', () => {
   beforeEach(() => {
@@ -67,6 +83,15 @@ describe('음성 transcript 공통 추천 흐름', () => {
       }],
       completed_at: '2026-09-21T12:00:00Z',
     })
+    vi.mocked(login).mockResolvedValue({
+      message: 'login success',
+      data: { access_token: 'test-access-token', expires_in: 3600 },
+    })
+    vi.mocked(signup).mockResolvedValue({
+      message: 'register success',
+      data: { user_id: 1 },
+    })
+    vi.mocked(logout).mockResolvedValue(undefined)
   })
 
   it('transcript를 수정한 뒤 VOICE 추천 요청을 보낸다', async () => {
@@ -106,5 +131,82 @@ describe('음성 transcript 공통 추천 흐름', () => {
     expect(voiceActions.retryTranscription).toHaveBeenCalledOnce()
     expect(voiceActions.startRecording).toHaveBeenCalledOnce()
     expect(voiceActions.useTextInput).toHaveBeenCalledOnce()
+  })
+})
+
+describe('로그인과 회원가입 화면 연결', () => {
+  beforeEach(() => {
+    vi.mocked(login).mockResolvedValue({
+      message: 'login success',
+      data: { access_token: 'test-access-token', expires_in: 3600 },
+    })
+    vi.mocked(signup).mockResolvedValue({
+      message: 'register success',
+      data: { user_id: 1 },
+    })
+    vi.mocked(logout).mockResolvedValue(undefined)
+  })
+
+  it('로그인 화면의 회원가입 링크가 회원가입 경로를 가리킨다', () => {
+    window.history.replaceState(null, '', '/login')
+    render(<App />)
+
+    expect(screen.getByRole('link', { name: '회원가입' })).toHaveAttribute('href', '/signup')
+  })
+
+  it('회원가입 경로에서 회원가입 화면을 렌더링한다', () => {
+    window.history.replaceState(null, '', '/signup')
+    render(<App />)
+
+    expect(screen.getByRole('heading', { name: '회원가입' })).toBeInTheDocument()
+  })
+
+  it('회원가입 성공 후 로그인 화면으로 이동한다', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '/signup')
+    render(<App />)
+
+    await user.type(screen.getByLabelText('닉네임'), '가입테스트')
+    await user.type(screen.getByLabelText('이메일 아이디'), 'signup.test')
+    await user.type(screen.getByLabelText('이메일 도메인'), 'example.com')
+    await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!')
+    await user.click(screen.getByRole('checkbox', { name: '[필수] 서비스 이용약관 동의' }))
+    await user.click(screen.getByRole('button', { name: '회원가입' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '다시 만나서 반가워요' })).toBeInTheDocument()
+    })
+  })
+
+  it('로그인 성공 후 메인 페이지로 이동한다', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '/login')
+    render(<App />)
+
+    await user.type(screen.getByLabelText('이메일'), 'login.test@example.com')
+    await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '음악 지도' })).toBeInTheDocument()
+    })
+
+    expect(screen.getByRole('button', { name: '로그아웃' })).toBeInTheDocument()
+  })
+
+  it('로그아웃 성공 후 로그인 화면으로 이동한다', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '/login')
+    render(<App />)
+
+    await user.type(screen.getByLabelText('이메일'), 'login.test@example.com')
+    await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+    await user.click(await screen.findByRole('button', { name: '로그아웃' }))
+
+    await waitFor(() => {
+      expect(logout).toHaveBeenCalledOnce()
+      expect(screen.getByRole('heading', { name: '다시 만나서 반가워요' })).toBeInTheDocument()
+    })
   })
 })
