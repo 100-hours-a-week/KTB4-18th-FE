@@ -12,7 +12,8 @@ button {
   min-height: 100svh;
   max-width: 42.5rem;
   margin: 0 auto;
-  padding: max(1.25rem, env(safe-area-inset-top)) 1rem calc(10.25rem + env(safe-area-inset-bottom));
+  padding: max(1.25rem, env(safe-area-inset-top)) 1rem
+    calc(10.25rem + env(safe-area-inset-bottom));
   flex-direction: column;
   background: var(--color-bg-primary);
 }
@@ -38,20 +39,14 @@ button {
   letter-spacing: 0.12em;
 }
 
-.main-header__action {
-  display: grid;
-  width: 2.5rem;
-  height: 2.5rem;
-  place-items: center;
-  border: 1px solid var(--color-border-tertiary);
-  border-radius: 50%;
-  color: var(--color-icon-primary);
-  background: var(--color-bg-primary);
+.main-header__auth {
+  min-width: 4.75rem;
 }
 
-.main-header__action span {
-  color: var(--color-icon-interactive-primary);
-  font-size: 0.9rem;
+.main-header__auth-error {
+  margin: -0.75rem 0 0.75rem;
+  color: var(--color-text-error);
+  text-align: right;
 }
 
 .main-content {
@@ -258,54 +253,33 @@ button {
   }
 }
 
-.map-home {
-  position: relative;
-  min-height: 100dvh;
-  background: var(--color-bg-primary);
-}
-.map-home-header {
-  display: flex;
-  justify-content: flex-end;
-  padding: max(1.25rem, env(safe-area-inset-top)) 1.25rem 1.25rem;
-}
-.map-login-link {
-  color: var(--color-text-interactive-primary);
-  text-decoration: none;
-}
-.map-login-link:focus-visible,
 .chatbot-floating-button:focus-visible {
   outline: 3px solid var(--color-border-interactive-primary);
   outline-offset: 3px;
 }
 .chatbot-floating-button {
   position: fixed;
-  right: 1.5rem;
-  bottom: max(1.5rem, env(safe-area-inset-bottom));
-  display: inline-flex;
+  right: max(1rem, calc((100vw - 42.5rem) / 2 + 1rem));
+  bottom: max(5.5rem, calc(env(safe-area-inset-bottom) + 5.5rem));
+  z-index: 3;
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  place-items: center;
   align-items: center;
-  gap: 0.5rem;
-  min-height: 3.5rem;
-  border-radius: 999px;
-  padding: 0.875rem 1.125rem;
+  border-radius: 50%;
   color: var(--color-text-interactive-inverse);
-  background: var(--color-bg-interactive-primary);
+  background: var(--color-bg-forty);
   box-shadow: 0 0.5rem 1.25rem rgb(23 23 23 / 24%);
+  font-size: var(--text-body3-normal);
+  font-weight: 700;
   text-decoration: none;
 }
 .chatbot-floating-button:hover {
-  background: var(--color-bg-interactive-primary-hover);
+  filter: brightness(0.92);
 }
 .chatbot-floating-button:active {
-  background: var(--color-bg-interactive-primary-press);
-}
-.chatbot-floating-icon {
-  display: grid;
-  width: 1.5rem;
-  height: 1.5rem;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--color-bg-primary);
-  color: var(--color-icon-interactive-primary);
+  filter: brightness(0.84);
 }
 
 .chat-app {
@@ -440,7 +414,7 @@ button {
   font-size: 13px;
   color: #626471;
 }
-.preview-button[aria-pressed='true'] {
+.preview-button[aria-pressed="true"] {
   background: #202124;
   color: white;
 }
@@ -572,7 +546,8 @@ button {
   display: flex;
   width: min(100%, 30rem);
   flex-direction: column;
-  padding: max(3.5rem, env(safe-area-inset-top)) 1.5rem max(2rem, env(safe-area-inset-bottom));
+  padding: max(3.5rem, env(safe-area-inset-top)) 1.5rem
+    max(2rem, env(safe-area-inset-bottom));
   background: var(--color-bg-primary);
 }
 .login-heading {

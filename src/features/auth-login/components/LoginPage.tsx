@@ -9,6 +9,10 @@ type FieldErrors = {
   password?: string;
 };
 
+type LoginPageProps = {
+  onLoginSuccess?: () => void;
+};
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function validate(email: string, password: string): FieldErrors {
@@ -43,7 +47,7 @@ function getRequestErrorMessage(error: LoginRequestError): string {
   return '잠시 후 다시 시도해 주세요.';
 }
 
-export function LoginPage() {
+export function LoginPage({ onLoginSuccess }: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -72,6 +76,10 @@ export function LoginPage() {
     setIsSubmitting(true);
     try {
       await login({ email: email.trim().toLowerCase(), password });
+      if (onLoginSuccess) {
+        onLoginSuccess();
+        return;
+      }
       setIsLoginSuccessful(true);
     } catch (error) {
       setRequestError(
@@ -177,7 +185,7 @@ export function LoginPage() {
         </form>
 
         <nav className="login-links text-body2-normal-medium" aria-label="계정 도움말">
-          <a className="login-link" href="#signup">
+          <a className="login-link" href="/signup">
             회원가입
           </a>
           <a className="login-link" href="#password-reset">
