@@ -6,8 +6,13 @@ import { recommend } from './api/recommendations';
 import { RecommendationCards } from './components/RecommendationCards';
 import { LoginPage } from './features/auth-login/components/LoginPage';
 import { logout, LogoutRequestError } from './features/auth-login/api/logoutApi';
+import {
+  ChatEntryPage,
+  type ActiveChatRoom,
+} from './features/chat-entry/components/ChatEntryPage';
 import { SignupPage } from './features/user-signup/components/SignupPage';
 import { useVoiceInput } from './hooks/useVoiceInput';
+import type { LoginSuccessResponse } from './features/auth-login/api/loginApi';
 import type { RecommendationInputType } from './api/recommendations';
 import type { Recommendation } from './types/recommendation';
 
@@ -16,6 +21,7 @@ import './App.css';
 const LOGIN_PATH = '/login';
 const SIGNUP_PATH = '/signup';
 const CHATBOT_PATH = '/chatbot';
+const CHAT_PATH = '/chat';
 
 type ChatMessage = { id: string; sentAt: Date } & (
   | { role: 'user'; text: string }
@@ -28,6 +34,8 @@ const formatTime = (date: Date) =>
 function App() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [activeChatRoom, setActiveChatRoom] = useState<ActiveChatRoom | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState('');
 
@@ -43,7 +51,8 @@ function App() {
     setPathname(path);
   };
 
-  const handleLoginSuccess = () => {
+  const handleLoginSuccess = (response: LoginSuccessResponse) => {
+    setAccessToken(response.data.access_token);
     setIsAuthenticated(true);
     setLogoutError('');
     navigate('/');
@@ -58,6 +67,8 @@ function App() {
     setLogoutError('');
     try {
       await logout();
+      setAccessToken(null);
+      setActiveChatRoom(null);
       setIsAuthenticated(false);
       navigate(LOGIN_PATH);
     } catch (error) {
@@ -83,6 +94,17 @@ function App() {
     return <ChatbotPage />;
   }
 
+  if (pathname === CHAT_PATH) {
+    return (
+      <ChatEntryPage
+        accessToken={accessToken}
+        activeChatRoom={activeChatRoom}
+        onEntered={setActiveChatRoom}
+        onLogin={() => navigate(LOGIN_PATH)}
+      />
+    );
+  }
+
   return (
     <MapHomePage
       isAuthenticated={isAuthenticated}
@@ -90,6 +112,7 @@ function App() {
       logoutError={logoutError}
       onLogin={() => navigate(LOGIN_PATH)}
       onLogout={handleLogout}
+      onChat={() => navigate(isAuthenticated ? CHAT_PATH : LOGIN_PATH)}
     />
   );
 }
@@ -100,6 +123,7 @@ type MapHomePageProps = {
   logoutError: string;
   onLogin: () => void;
   onLogout: () => void;
+  onChat: () => void;
 };
 
 function MapHomePage({
@@ -108,6 +132,7 @@ function MapHomePage({
   logoutError,
   onLogin,
   onLogout,
+  onChat,
 }: MapHomePageProps) {
   return (
     <main className="map-home">
@@ -135,6 +160,14 @@ function MapHomePage({
         </span>
         챗봇
       </a>
+      <nav className="map-navigation" aria-label="주요 메뉴">
+        <button className="map-navigation-item" type="button" aria-current="page">
+          지도
+        </button>
+        <button className="map-navigation-item" type="button" onClick={onChat}>
+          채팅
+        </button>
+      </nav>
     </main>
   );
 }

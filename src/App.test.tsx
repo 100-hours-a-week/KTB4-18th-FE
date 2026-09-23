@@ -50,6 +50,9 @@ vi.mock('./features/auth-login/api/logoutApi', () => ({
   LogoutRequestError: class LogoutRequestError extends Error {},
 }))
 vi.mock('./features/user-signup/api/signupApi', () => ({ signup: vi.fn() }))
+vi.mock('./features/chat-entry/components/ChatEntryPage', () => ({
+  ChatEntryPage: () => <h1>우리 지역 채팅방</h1>,
+}))
 
 beforeEach(() => {
   cleanup()
@@ -208,5 +211,19 @@ describe('로그인과 회원가입 화면 연결', () => {
       expect(logout).toHaveBeenCalledOnce()
       expect(screen.getByRole('heading', { name: '다시 만나서 반가워요' })).toBeInTheDocument()
     })
+  })
+
+  it('로그인 후 채팅 탭을 누르면 자동 입장 화면으로 이동한다', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '/login')
+    render(<App />)
+
+    await user.type(screen.getByLabelText('이메일'), 'login.test@example.com')
+    await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+    await user.click(await screen.findByRole('button', { name: '채팅' }))
+
+    expect(await screen.findByRole('heading', { name: '우리 지역 채팅방' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/chat')
   })
 })
