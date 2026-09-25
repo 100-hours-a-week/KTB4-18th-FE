@@ -9,8 +9,13 @@ import {
   logout,
   LogoutRequestError,
 } from "./features/auth-login/api/logoutApi";
+import {
+  ChatEntryPage,
+  type ActiveChatRoom,
+} from "./features/chat-entry/components/ChatEntryPage";
 import { SignupPage } from "./features/user-signup/components/SignupPage";
 import { useVoiceInput } from "./hooks/useVoiceInput";
+import type { LoginSuccessResponse } from "./features/auth-login/api/loginApi";
 import type { RecommendationInputType } from "./api/recommendations";
 import type { Recommendation } from "./types/recommendation";
 
@@ -19,6 +24,7 @@ import "./App.css";
 const LOGIN_PATH = "/login";
 const SIGNUP_PATH = "/signup";
 const CHATBOT_PATH = "/chatbot";
+const CHAT_PATH = "/chat";
 
 type ChatMessage = { id: string; sentAt: Date } & (
   { role: "user"; text: string } | { role: "assistant"; result: Recommendation }
@@ -30,6 +36,8 @@ const formatTime = (date: Date) =>
 function App() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [activeChatRoom, setActiveChatRoom] = useState<ActiveChatRoom | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
 
@@ -45,7 +53,8 @@ function App() {
     setPathname(path);
   };
 
-  const handleLoginSuccess = () => {
+  const handleLoginSuccess = (response: LoginSuccessResponse) => {
+    setAccessToken(response.data.access_token);
     setIsAuthenticated(true);
     setLogoutError("");
     navigate("/");
@@ -60,6 +69,8 @@ function App() {
     setLogoutError("");
     try {
       await logout();
+      setAccessToken(null);
+      setActiveChatRoom(null);
       setIsAuthenticated(false);
       navigate(LOGIN_PATH);
     } catch (error) {
@@ -84,6 +95,17 @@ function App() {
     return <ChatbotPage />;
   }
 
+  if (pathname === CHAT_PATH) {
+    return (
+      <ChatEntryPage
+        accessToken={accessToken}
+        activeChatRoom={activeChatRoom}
+        onEntered={setActiveChatRoom}
+        onLogin={() => navigate(LOGIN_PATH)}
+      />
+    );
+  }
+
   return (
     <MainPage
       isAuthenticated={isAuthenticated}
@@ -91,6 +113,7 @@ function App() {
       logoutError={logoutError}
       onLogin={() => navigate(LOGIN_PATH)}
       onLogout={handleLogout}
+      onChat={() => navigate(isAuthenticated ? CHAT_PATH : LOGIN_PATH)}
     />
   );
 }
