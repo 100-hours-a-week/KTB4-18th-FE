@@ -155,7 +155,11 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
               </button>
             </div>
             {fieldErrors.password && (
-              <p id="password-error" className="login-error text-label1-normal-regular" role="alert">
+              <p
+                id="password-error"
+                className="login-error text-label1-normal-regular"
+                role="alert"
+              >
                 {fieldErrors.password}
               </p>
             )}

@@ -1,11 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  ChatRoomRequestError,
-  getRegionChatRoom,
-  joinChatRoom,
-} from '../../../api/chatRooms';
+import { ChatRoomRequestError, getRegionChatRoom, joinChatRoom } from '../../../api/chatRooms';
 import type { LocationResolution } from '../../../api/locationResolutions';
 import type { ActiveChatRoom } from '../components/ChatEntryPage';
 import { resolveCurrentChatLocation } from '../services/resolveCurrentChatLocation';
@@ -55,7 +51,11 @@ function resolution(regionId: number, token: string): LocationResolution {
   return {
     mapDot: null,
     region: {
-      sido: { regionId: regionId === 25 ? 9 : 1, code: regionId === 25 ? '41' : '11', name: '시도' },
+      sido: {
+        regionId: regionId === 25 ? 9 : 1,
+        code: regionId === 25 ? '41' : '11',
+        name: '시도',
+      },
       sigungu: { regionId, code: regionId === 25 ? '41135' : '11680', name: '시군구' },
     },
     locationResolutionToken: token,
@@ -174,9 +174,7 @@ describe('useChatRoomLocationRevalidation', () => {
   });
 
   it('화면 이탈 시 15초 재확인과 이동 요청을 취소한다', async () => {
-    vi.mocked(resolveCurrentChatLocation).mockResolvedValueOnce(
-      resolution(30, 'candidate-token'),
-    );
+    vi.mocked(resolveCurrentChatLocation).mockResolvedValueOnce(resolution(30, 'candidate-token'));
     const { unmount } = renderHook(() =>
       useChatRoomLocationRevalidation({
         accessToken: 'access-token',

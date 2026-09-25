@@ -9,8 +9,7 @@ button {
 .chat-entry-screen {
   display: grid;
   min-height: 100dvh;
-  padding: max(1.5rem, env(safe-area-inset-top)) 1.25rem
-    max(1.5rem, env(safe-area-inset-bottom));
+  padding: max(1.5rem, env(safe-area-inset-top)) 1.25rem max(1.5rem, env(safe-area-inset-bottom));
   place-items: center;
   background: var(--color-bg-secondary);
 }
@@ -67,8 +66,7 @@ button {
   min-height: 100svh;
   max-width: 42.5rem;
   margin: 0 auto;
-  padding: max(1.25rem, env(safe-area-inset-top)) 1rem
-    calc(10.25rem + env(safe-area-inset-bottom));
+  padding: max(1.25rem, env(safe-area-inset-top)) 1rem calc(10.25rem + env(safe-area-inset-bottom));
   flex-direction: column;
   background: var(--color-bg-primary);
 }
@@ -469,7 +467,7 @@ button {
   font-size: 13px;
   color: #626471;
 }
-.preview-button[aria-pressed="true"] {
+.preview-button[aria-pressed='true'] {
   background: #202124;
   color: white;
 }
@@ -601,8 +599,7 @@ button {
   display: flex;
   width: min(100%, 30rem);
   flex-direction: column;
-  padding: max(3.5rem, env(safe-area-inset-top)) 1.5rem
-    max(2rem, env(safe-area-inset-bottom));
+  padding: max(3.5rem, env(safe-area-inset-top)) 1.5rem max(2rem, env(safe-area-inset-bottom));
   background: var(--color-bg-primary);
 }
 .login-heading {

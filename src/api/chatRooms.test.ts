@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  ChatRoomRequestError,
-  getRegionChatRoom,
-  joinChatRoom,
-} from './chatRooms';
+import { ChatRoomRequestError, getRegionChatRoom, joinChatRoom } from './chatRooms';
 
 describe('chat room API', () => {
   afterEach(() => {
@@ -134,11 +130,9 @@ describe('chat room API', () => {
   it('네트워크 실패를 재시도 안내로 변환한다', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network')));
 
-    const error = await getRegionChatRoom(
-      25,
-      'access-token',
-      new AbortController().signal,
-    ).catch((caught: unknown) => caught);
+    const error = await getRegionChatRoom(25, 'access-token', new AbortController().signal).catch(
+      (caught: unknown) => caught,
+    );
 
     expect(error).toBeInstanceOf(ChatRoomRequestError);
     expect(error).toMatchObject({ status: null });

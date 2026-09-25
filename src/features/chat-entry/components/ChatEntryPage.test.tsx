@@ -3,11 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  ChatRoomRequestError,
-  getRegionChatRoom,
-  joinChatRoom,
-} from '../../../api/chatRooms';
+import { ChatRoomRequestError, getRegionChatRoom, joinChatRoom } from '../../../api/chatRooms';
 import { useChatLocation } from '../../../hooks/useChatLocation';
 import { ChatEntryPage, type ActiveChatRoom } from './ChatEntryPage';
 
@@ -81,7 +77,9 @@ describe('ChatEntryPage', () => {
     expect(vi.mocked(getRegionChatRoom).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(joinChatRoom).mock.invocationCallOrder[0],
     );
-    expect(await screen.findByRole('heading', { name: '성남시 분당구 채팅방' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: '성남시 분당구 채팅방' }),
+    ).toBeInTheDocument();
     expect(screen.getByText('현재 지역 채팅방에 입장했어요.')).toBeInTheDocument();
     expect(joinChatRoom).toHaveBeenCalledWith(
       700,
@@ -94,10 +92,7 @@ describe('ChatEntryPage', () => {
 
   it('토큰 만료 오류 후 전체 위치 흐름을 다시 시작한다', async () => {
     vi.mocked(joinChatRoom).mockRejectedValue(
-      new ChatRoomRequestError(
-        '위치 정보가 만료되었습니다. 현재 위치를 다시 확인해 주세요.',
-        400,
-      ),
+      new ChatRoomRequestError('위치 정보가 만료되었습니다. 현재 위치를 다시 확인해 주세요.', 400),
     );
     const user = userEvent.setup();
     render(<Harness />);
