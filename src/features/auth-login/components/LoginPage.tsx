@@ -1,5 +1,5 @@
 import { ActionButton } from '@seed-design/react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 
 import { login, LoginRequestError } from '../api/loginApi';
@@ -11,6 +11,8 @@ type FieldErrors = {
 
 type LoginPageProps = {
   onLoginSuccess?: () => void;
+  onLoginStart?: () => void;
+  onLoginFailure?: () => void;
 };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -47,20 +49,21 @@ function getRequestErrorMessage(error: LoginRequestError): string {
   return '잠시 후 다시 시도해 주세요.';
 }
 
-export function LoginPage({ onLoginSuccess }: LoginPageProps) {
+export function LoginPage({ onLoginSuccess, onLoginStart, onLoginFailure }: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [requestError, setRequestError] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
   const [isLoginSuccessful, setIsLoginSuccessful] = useState(false);
 
   const isFormValid = Object.keys(validate(email, password)).length === 0;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isSubmitting) {
+    if (isSubmittingRef.current) {
       return;
     }
 
@@ -74,6 +77,8 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
     }
 
     setIsSubmitting(true);
+    isSubmittingRef.current = true;
+    onLoginStart?.();
     try {
       await login({ email: email.trim().toLowerCase(), password });
       if (onLoginSuccess) {
@@ -82,12 +87,14 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
       }
       setIsLoginSuccessful(true);
     } catch (error) {
+      onLoginFailure?.();
       setRequestError(
         error instanceof LoginRequestError
           ? getRequestErrorMessage(error)
           : '잠시 후 다시 시도해 주세요.',
       );
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   }

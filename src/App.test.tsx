@@ -1,10 +1,11 @@
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { recommend } from './api/recommendations'
 import { login } from './features/auth-login/api/loginApi'
 import { logout } from './features/auth-login/api/logoutApi'
+import { resetAuthSessionForTests } from './features/auth-login/api/authSession'
 import { signup } from './features/user-signup/api/signupApi'
 import type { VoiceStatus } from './hooks/useVoiceInput'
 
@@ -54,6 +55,7 @@ vi.mock('./features/user-signup/api/signupApi', () => ({ signup: vi.fn() }))
 beforeEach(() => {
   cleanup()
 })
+afterEach(() => { vi.unstubAllGlobals() })
 
 describe('음성 transcript 공통 추천 흐름', () => {
   beforeEach(() => {
@@ -171,11 +173,81 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.type(screen.getByLabelText('이메일 도메인'), 'example.com')
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!')
     await user.click(screen.getByRole('checkbox', { name: '[필수] 서비스 이용약관 동의' }))
+    await user.click(screen.getByRole('checkbox', { name: '[필수] AI 맞춤 음악 추천을 위한 정보 이용에 동의합니다' }))
     await user.click(screen.getByRole('button', { name: '회원가입' }))
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: '다시 만나서 반가워요' })).toBeInTheDocument()
     })
+    expect(vi.mocked(signup)).toHaveBeenCalledWith(
+      expect.objectContaining({ terms_ids: [1, 2] }),
+    )
+  })
+
+  it('첫 번째 필수 약관만 동의하면 회원가입할 수 없다', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '/signup')
+    render(<App />)
+
+    await user.type(screen.getByLabelText('닉네임'), '가입테스트')
+    await user.type(screen.getByLabelText('이메일 아이디'), 'signup.test')
+    await user.type(screen.getByLabelText('이메일 도메인'), 'example.com')
+    await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!')
+    await user.click(screen.getByRole('checkbox', { name: '[필수] 서비스 이용약관 동의' }))
+
+    expect(screen.getByRole('button', { name: '회원가입' })).toBeDisabled()
+  })
+
+  it('개인정보 약관을 선택하면 ID 5를 포함하고 다른 선택 약관은 제외한다', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '/signup')
+    render(<App />)
+
+    await user.type(screen.getByLabelText('닉네임'), '가입테스트')
+    await user.type(screen.getByLabelText('이메일 아이디'), 'signup.test')
+    await user.type(screen.getByLabelText('이메일 도메인'), 'example.com')
+    await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!')
+    await user.click(screen.getByRole('checkbox', { name: '[필수] 서비스 이용약관 동의' }))
+    await user.click(screen.getByRole('checkbox', { name: '[필수] AI 맞춤 음악 추천을 위한 정보 이용에 동의합니다' }))
+    await user.click(screen.getByRole('checkbox', { name: '[선택] 개인정보 처리방침에 동의합니다' }))
+    await user.click(screen.getByRole('button', { name: '회원가입' }))
+
+    await waitFor(() => expect(vi.mocked(signup)).toHaveBeenCalled())
+    expect(vi.mocked(signup)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ terms_ids: [1, 2, 5] }),
+    )
+  })
+
+  it('전체 동의는 약관 1~6을 모두 제출한다', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '/signup')
+    render(<App />)
+
+    await user.type(screen.getByLabelText('닉네임'), '가입테스트')
+    await user.type(screen.getByLabelText('이메일 아이디'), 'signup.test')
+    await user.type(screen.getByLabelText('이메일 도메인'), 'example.com')
+    await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!')
+    await user.click(screen.getByRole('checkbox', { name: '전체 동의' }))
+    await user.click(screen.getByRole('button', { name: '회원가입' }))
+
+    await waitFor(() => expect(vi.mocked(signup)).toHaveBeenCalled())
+    expect(vi.mocked(signup).mock.lastCall?.[0].terms_ids.toSorted()).toEqual([1, 2, 3, 4, 5, 6])
+  })
+
+  it('전체 동의를 해제하면 가입 버튼이 다시 비활성화된다', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '/signup')
+    render(<App />)
+
+    await user.type(screen.getByLabelText('닉네임'), '가입테스트')
+    await user.type(screen.getByLabelText('이메일 아이디'), 'signup.test')
+    await user.type(screen.getByLabelText('이메일 도메인'), 'example.com')
+    await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!')
+    await user.click(screen.getByRole('checkbox', { name: '전체 동의' }))
+    expect(screen.getByRole('button', { name: '회원가입' })).toBeEnabled()
+
+    await user.click(screen.getByRole('checkbox', { name: '전체 동의' }))
+    expect(screen.getByRole('button', { name: '회원가입' })).toBeDisabled()
   })
 
   it('로그인 성공 후 메인 페이지로 이동한다', async () => {
@@ -208,5 +280,58 @@ describe('로그인과 회원가입 화면 연결', () => {
       expect(logout).toHaveBeenCalledOnce()
       expect(screen.getByRole('heading', { name: '다시 만나서 반가워요' })).toBeInTheDocument()
     })
+  })
+
+  it('브라우저 뒤로가기 popstate로 메인에 복귀해도 로그인 표시를 유지한다', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '/login')
+    render(<App />)
+    await user.type(screen.getByLabelText('이메일'), 'login.test@example.com')
+    await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+    expect(await screen.findByRole('button', { name: '로그아웃' })).toBeInTheDocument()
+
+    act(() => {
+      window.history.replaceState(null, '', '/music-records')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    act(() => {
+      window.history.replaceState(null, '', '/')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    expect(screen.getByRole('button', { name: '로그아웃' })).toBeInTheDocument()
+    expect(logout).not.toHaveBeenCalled()
+  })
+
+  it('데이터 401 뒤 refresh도 401이면 메인 인증 상태를 guest로 바꾼다', async () => {
+    resetAuthSessionForTests()
+    sessionStorage.clear()
+    let refreshCount = 0
+    vi.stubGlobal('fetch', vi.fn((input: string | URL) => {
+      const url = String(input)
+      if (url.endsWith('/token/csrf')) return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }))
+      if (url.endsWith('/token/refresh')) {
+        refreshCount += 1
+        return Promise.resolve(refreshCount === 1
+          ? Response.json({ data: { access_token: 'test-token' } })
+          : Response.json({ message: 'unauthorized', data: null }, { status: 401 }))
+      }
+      if (url.includes('/users/me/music-records')) {
+        return Promise.resolve(Response.json({ message: 'unauthorized', data: null }, { status: 401 }))
+      }
+      return Promise.resolve(Response.json({ message: 'not found', data: null }, { status: 404 }))
+    }))
+    window.history.replaceState(null, '', '/')
+    const user = userEvent.setup()
+    render(<App />)
+    expect(await screen.findByRole('button', { name: '로그아웃' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '기록' }))
+    await screen.findByRole('alert')
+    act(() => {
+      window.history.replaceState(null, '', '/')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    expect(await screen.findByRole('button', { name: '로그인' })).toBeInTheDocument()
+    expect(sessionStorage.getItem('access_token')).toBeNull()
   })
 })

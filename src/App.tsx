@@ -5,20 +5,29 @@ import { recommend } from "./api/recommendations";
 import { RecommendationCards } from "./components/RecommendationCards";
 import { LoginPage } from "./features/auth-login/components/LoginPage";
 import { MainPage } from "./features/mainMap/MainPage";
+import { MusicRecordCreatePage, MusicRecordListPage } from "./features/music-record/components/MusicRecordPages";
+import { MusicRecordDetailPage } from "./features/music-record/components/MusicRecordDetailPage";
 import {
   logout,
   LogoutRequestError,
 } from "./features/auth-login/api/logoutApi";
+import {
+  AUTH_EXPIRED_EVENT, AuthRequestError, clearAccessToken, getAccessToken, refreshAccessToken,
+  type AuthStatus,
+} from "./features/auth-login/api/authSession";
 import { SignupPage } from "./features/user-signup/components/SignupPage";
 import { useVoiceInput } from "./hooks/useVoiceInput";
 import type { RecommendationInputType } from "./api/recommendations";
 import type { Recommendation } from "./types/recommendation";
+import { navigate, ROUTE_CHANGE_EVENT } from './shared/navigation';
 
 import "./App.css";
 
 const LOGIN_PATH = "/login";
 const SIGNUP_PATH = "/signup";
 const CHATBOT_PATH = "/chatbot";
+const MUSIC_RECORDS_PATH = "/music-records";
+const MUSIC_RECORD_CREATE_PATH = "/music-records/new";
 
 type ChatMessage = { id: string; sentAt: Date } & (
   { role: "user"; text: string } | { role: "assistant"; result: Recommendation }
@@ -29,52 +38,84 @@ const formatTime = (date: Date) =>
 
 function App() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('restoring');
+  const authIntent = useRef(0);
+  const isLoggingOutRef = useRef(false);
   const [logoutError, setLogoutError] = useState("");
 
   useEffect(() => {
     const updatePathname = () => setPathname(window.location.pathname);
 
     window.addEventListener("popstate", updatePathname);
-    return () => window.removeEventListener("popstate", updatePathname);
+    window.addEventListener(ROUTE_CHANGE_EVENT, updatePathname);
+    return () => {
+      window.removeEventListener("popstate", updatePathname);
+      window.removeEventListener(ROUTE_CHANGE_EVENT, updatePathname);
+    };
   }, []);
 
-  const navigate = (path: string) => {
-    window.history.pushState(null, "", path);
-    setPathname(path);
-  };
+  const restore = useCallback(async () => {
+    const currentIntent = authIntent.current;
+    setAuthStatus('restoring');
+    try {
+      await refreshAccessToken();
+      if (currentIntent === authIntent.current) setAuthStatus('authenticated');
+    } catch (caught) {
+      if (currentIntent !== authIntent.current) return;
+      if (caught instanceof AuthRequestError && caught.status === 401) {
+        setAuthStatus('guest');
+      } else {
+        setAuthStatus('retryable-error');
+      }
+    }
+  }, []);
+
+  useEffect(() => { queueMicrotask(() => void restore()); }, [restore]);
+
+  useEffect(() => {
+    const onExpired = () => setAuthStatus((current) =>
+      current === 'logging-in' || current === 'logging-out' ? current : 'guest');
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
+  }, []);
 
   const handleLoginSuccess = () => {
-    setIsAuthenticated(true);
+    authIntent.current += 1;
+    setAuthStatus('authenticated');
     setLogoutError("");
     navigate("/");
   };
 
   const handleLogout = async () => {
-    if (isLoggingOut) {
+    if (isLoggingOutRef.current) {
       return;
     }
 
-    setIsLoggingOut(true);
+    isLoggingOutRef.current = true;
+    authIntent.current += 1;
+    setAuthStatus('logging-out');
     setLogoutError("");
     try {
       await logout();
-      setIsAuthenticated(false);
+      clearAccessToken();
+      setAuthStatus('guest');
       navigate(LOGIN_PATH);
     } catch (error) {
+      setAuthStatus(getAccessToken() ? 'authenticated' : 'retryable-error');
       setLogoutError(
         error instanceof LogoutRequestError && error.status === null
           ? "네트워크 상태를 확인한 뒤 다시 시도해 주세요."
           : "로그아웃에 실패했어요. 잠시 후 다시 시도해 주세요.",
       );
     } finally {
-      setIsLoggingOut(false);
+      isLoggingOutRef.current = false;
     }
   };
 
   if (pathname === LOGIN_PATH) {
-    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+    return <LoginPage onLoginSuccess={handleLoginSuccess}
+      onLoginStart={() => { authIntent.current += 1; setAuthStatus('logging-in'); }}
+      onLoginFailure={() => setAuthStatus(getAccessToken() ? 'authenticated' : 'guest')} />;
   }
 
   if (pathname === SIGNUP_PATH) {
@@ -83,11 +124,18 @@ function App() {
   if (pathname === CHATBOT_PATH) {
     return <ChatbotPage />;
   }
+  if (pathname === MUSIC_RECORD_CREATE_PATH) return <MusicRecordCreatePage />;
+  if (pathname === MUSIC_RECORDS_PATH) return <MusicRecordListPage />;
+  const detailMatch = /^\/music-records\/([1-9]\d*)$/.exec(pathname);
+  if (detailMatch) return <MusicRecordDetailPage recordId={Number(detailMatch[1])} />;
 
   return (
     <MainPage
-      isAuthenticated={isAuthenticated}
-      isLoggingOut={isLoggingOut}
+      isAuthenticated={authStatus === 'authenticated' || (authStatus === 'retryable-error' && Boolean(getAccessToken()))}
+      isLoggingOut={authStatus === 'logging-out'}
+      isRestoring={authStatus === 'restoring'}
+      isRetryableError={authStatus === 'retryable-error'}
+      onRetryAuth={() => void restore()}
       logoutError={logoutError}
       onLogin={() => navigate(LOGIN_PATH)}
       onLogout={handleLogout}
