@@ -7,6 +7,7 @@ import { login } from './features/auth-login/api/loginApi'
 import { logout } from './features/auth-login/api/logoutApi'
 import { resetAuthSessionForTests } from './features/auth-login/api/authSession'
 import { signup } from './features/user-signup/api/signupApi'
+import { getCurrentTerms, TermType } from './features/user-signup/api/termsApi'
 import type { VoiceStatus } from './hooks/useVoiceInput'
 
 const voiceActions = {
@@ -51,6 +52,11 @@ vi.mock('./features/auth-login/api/logoutApi', () => ({
   LogoutRequestError: class LogoutRequestError extends Error {},
 }))
 vi.mock('./features/user-signup/api/signupApi', () => ({ signup: vi.fn() }))
+vi.mock('./features/user-signup/api/termsApi', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./features/user-signup/api/termsApi')>(),
+  getCurrentTerms: vi.fn(),
+  getTermDetail: vi.fn(),
+}))
 vi.mock('./features/chat-entry/components/ChatEntryPage', () => ({
   ChatEntryPage: () => <h1>우리 지역 채팅방</h1>,
 }))
@@ -141,6 +147,19 @@ describe('음성 transcript 공통 추천 흐름', () => {
 
 describe('로그인과 회원가입 화면 연결', () => {
   beforeEach(() => {
+    const types = [TermType.SERVICE, TermType.AIPERSONAL, TermType.PROFILE,
+      TermType.LOCATION, TermType.PRIVACY, TermType.LOCATIONTERMS]
+    const titles = ['서비스 이용약관', 'AI 맞춤 음악 추천 정보 이용 동의',
+      '출생연도·성별의 맞춤 추천 이용 동의', '개인위치정보 수집·이용 동의',
+      '개인정보 처리방침', '위치기반서비스 이용약관']
+    vi.mocked(getCurrentTerms).mockResolvedValue(types.map((type, index) => ({
+      terms_id: index === 1 ? 7 : index + 1,
+      type,
+      version: index === 1 ? 'v0.3' : 'v0.2',
+      title: titles[index],
+      is_required: index < 2,
+      effective_at: '2026-09-25T10:00:00Z',
+    })))
     vi.mocked(login).mockResolvedValue({
       message: 'login success',
       data: { access_token: 'test-access-token', expires_in: 3600 },
@@ -175,15 +194,15 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.type(screen.getByLabelText('이메일 아이디'), 'signup.test')
     await user.type(screen.getByLabelText('이메일 도메인'), 'example.com')
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!')
-    await user.click(screen.getByRole('checkbox', { name: '[필수] 서비스 이용약관 동의' }))
-    await user.click(screen.getByRole('checkbox', { name: '[필수] AI 맞춤 음악 추천을 위한 정보 이용에 동의합니다' }))
+    await user.click(await screen.findByRole('checkbox', { name: '[필수] 서비스 이용약관' }))
+    await user.click(screen.getByRole('checkbox', { name: '[필수] AI 맞춤 음악 추천 정보 이용 동의' }))
     await user.click(screen.getByRole('button', { name: '회원가입' }))
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: '다시 만나서 반가워요' })).toBeInTheDocument()
     })
     expect(vi.mocked(signup)).toHaveBeenCalledWith(
-      expect.objectContaining({ terms_ids: [1, 2] }),
+      expect.objectContaining({ terms_ids: [1, 7] }),
     )
   })
 
@@ -196,7 +215,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.type(screen.getByLabelText('이메일 아이디'), 'signup.test')
     await user.type(screen.getByLabelText('이메일 도메인'), 'example.com')
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!')
-    await user.click(screen.getByRole('checkbox', { name: '[필수] 서비스 이용약관 동의' }))
+    await user.click(await screen.findByRole('checkbox', { name: '[필수] 서비스 이용약관' }))
 
     expect(screen.getByRole('button', { name: '회원가입' })).toBeDisabled()
   })
@@ -210,18 +229,18 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.type(screen.getByLabelText('이메일 아이디'), 'signup.test')
     await user.type(screen.getByLabelText('이메일 도메인'), 'example.com')
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!')
-    await user.click(screen.getByRole('checkbox', { name: '[필수] 서비스 이용약관 동의' }))
-    await user.click(screen.getByRole('checkbox', { name: '[필수] AI 맞춤 음악 추천을 위한 정보 이용에 동의합니다' }))
-    await user.click(screen.getByRole('checkbox', { name: '[선택] 개인정보 처리방침에 동의합니다' }))
+    await user.click(await screen.findByRole('checkbox', { name: '[필수] 서비스 이용약관' }))
+    await user.click(screen.getByRole('checkbox', { name: '[필수] AI 맞춤 음악 추천 정보 이용 동의' }))
+    await user.click(screen.getByRole('checkbox', { name: '[선택] 개인정보 처리방침' }))
     await user.click(screen.getByRole('button', { name: '회원가입' }))
 
     await waitFor(() => expect(vi.mocked(signup)).toHaveBeenCalled())
     expect(vi.mocked(signup)).toHaveBeenLastCalledWith(
-      expect.objectContaining({ terms_ids: [1, 2, 5] }),
+      expect.objectContaining({ terms_ids: [1, 7, 5] }),
     )
   })
 
-  it('전체 동의는 약관 1~6을 모두 제출한다', async () => {
+  it('전체 동의는 여섯 유형의 현재 약관 ID를 모두 제출한다', async () => {
     const user = userEvent.setup()
     window.history.replaceState(null, '', '/signup')
     render(<App />)
@@ -230,11 +249,12 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.type(screen.getByLabelText('이메일 아이디'), 'signup.test')
     await user.type(screen.getByLabelText('이메일 도메인'), 'example.com')
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!')
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: '전체 동의' })).toBeEnabled())
     await user.click(screen.getByRole('checkbox', { name: '전체 동의' }))
     await user.click(screen.getByRole('button', { name: '회원가입' }))
 
     await waitFor(() => expect(vi.mocked(signup)).toHaveBeenCalled())
-    expect(vi.mocked(signup).mock.lastCall?.[0].terms_ids.toSorted()).toEqual([1, 2, 3, 4, 5, 6])
+    expect(vi.mocked(signup).mock.lastCall?.[0].terms_ids.toSorted()).toEqual([1, 3, 4, 5, 6, 7])
   })
 
   it('전체 동의를 해제하면 가입 버튼이 다시 비활성화된다', async () => {
@@ -246,6 +266,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.type(screen.getByLabelText('이메일 아이디'), 'signup.test')
     await user.type(screen.getByLabelText('이메일 도메인'), 'example.com')
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!')
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: '전체 동의' })).toBeEnabled())
     await user.click(screen.getByRole('checkbox', { name: '전체 동의' }))
     expect(screen.getByRole('button', { name: '회원가입' })).toBeEnabled()
 
