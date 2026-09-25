@@ -1,9 +1,7 @@
 @theme {
-  /* Primitive/Black, Primitive/White */
   --color-black: #000000;
   --color-white: #ffffff;
 
-  /* Primitive/neutral */
   --color-neutral-50: #fafafa;
   --color-neutral-100: #f5f5f5;
   --color-neutral-200: #e5e5e5;
@@ -16,7 +14,6 @@
   --color-neutral-900: #171717;
   --color-neutral-950: #0a0a0a;
 
-  /* Primitive/Orange */
   --color-orange-50: #fff8f3;
   --color-orange-100: #ffd4b7;
   --color-orange-200: #ffc095;
@@ -29,7 +26,6 @@
   --color-orange-900: #6b310a;
   --color-orange-950: #301605;
 
-  /* Primitive/Blue */
   --color-blue-50: #e8eeff;
   --color-blue-100: #dce6ff;
   --color-blue-200: #b7ccff;
@@ -42,7 +38,6 @@
   --color-blue-900: #081f59;
   --color-blue-950: #051233;
 
-  /* Primitive/Green */
   --color-green-50: #e9fae6;
   --color-green-100: #def7d9;
   --color-green-200: #baeeb0;
@@ -55,7 +50,6 @@
   --color-green-900: #0c4600;
   --color-green-950: #072800;
 
-  /* Primitive/Red */
   --color-red-50: #ffe8e8;
   --color-red-100: #ffdcdc;
   --color-red-200: #ffb7b7;
@@ -68,7 +62,6 @@
   --color-red-900: #590808;
   --color-red-950: #330505;
 
-  /* Primitive/Yellow */
   --color-yellow-50: #fffce8;
   --color-yellow-100: #fffadc;
   --color-yellow-200: #fff5b7;
