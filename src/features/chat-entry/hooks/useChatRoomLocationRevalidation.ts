@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import {
-  ChatRoomRequestError,
-  getRegionChatRoom,
-  joinChatRoom,
-} from '../../../api/chatRooms';
+import { ChatRoomRequestError, getRegionChatRoom, joinChatRoom } from '../../../api/chatRooms';
 import type { ActiveChatRoom } from '../components/ChatEntryPage';
 import { resolveCurrentChatLocation } from '../services/resolveCurrentChatLocation';
 
@@ -136,9 +132,7 @@ export function useChatRoomLocationRevalidation({
         if (caught instanceof ChatRoomRequestError && caught.status === 409) {
           onMembershipEndedRef.current();
           setStatus('roomFull');
-          setMessage(
-            '새 지역 채팅방의 정원이 가득 찼습니다. 기존 채팅방에서도 퇴장되었어요.',
-          );
+          setMessage('새 지역 채팅방의 정원이 가득 찼습니다. 기존 채팅방에서도 퇴장되었어요.');
           return;
         }
         setStatus('error');
@@ -168,7 +162,6 @@ export function useChatRoomLocationRevalidation({
   return {
     status,
     message,
-    isChecking:
-      status === 'checking' || status === 'confirming' || status === 'moving',
+    isChecking: status === 'checking' || status === 'confirming' || status === 'moving',
   };
 }

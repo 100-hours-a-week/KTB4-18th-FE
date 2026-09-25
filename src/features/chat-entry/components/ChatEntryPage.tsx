@@ -25,7 +25,10 @@ interface ChatEntryPageProps {
 
 type EntryPhase = 'locating' | 'findingRoom' | 'joining' | 'joined' | 'error';
 
-function locationStatusMessage(status: ReturnType<typeof useChatLocation>['status'], attempt: number) {
+function locationStatusMessage(
+  status: ReturnType<typeof useChatLocation>['status'],
+  attempt: number,
+) {
   switch (status) {
     case 'requestingPermission':
       return '현재 위치를 확인하고 있어요.';
@@ -72,7 +75,11 @@ export function ChatEntryPage({
 
   useEffect(() => {
     const resolution = location.resolution;
-    if (!accessToken || !resolution || handledTokenRef.current === resolution.locationResolutionToken) {
+    if (
+      !accessToken ||
+      !resolution ||
+      handledTokenRef.current === resolution.locationResolutionToken
+    ) {
       return;
     }
 
@@ -108,9 +115,7 @@ export function ChatEntryPage({
           return;
         }
         setPhase('error');
-        setEntryError(
-          caught instanceof Error ? caught.message : '채팅방에 입장하지 못했습니다.',
-        );
+        setEntryError(caught instanceof Error ? caught.message : '채팅방에 입장하지 못했습니다.');
       } finally {
         if (entryRequestRef.current === controller) {
           entryRequestRef.current = null;

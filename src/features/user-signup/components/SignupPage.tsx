@@ -1,6 +1,6 @@
-import IconArrowLeftLine from '@karrotmarket/react-monochrome-icon/IconArrowLeftLine'
-import IconEyeLine from '@karrotmarket/react-monochrome-icon/IconEyeLine'
-import IconEyeSlashLine from '@karrotmarket/react-monochrome-icon/IconEyeSlashLine'
+import IconArrowLeftLine from '@karrotmarket/react-monochrome-icon/IconArrowLeftLine';
+import IconEyeLine from '@karrotmarket/react-monochrome-icon/IconEyeLine';
+import IconEyeSlashLine from '@karrotmarket/react-monochrome-icon/IconEyeSlashLine';
 import {
   ActionButton,
   BottomSheet,
@@ -10,36 +10,36 @@ import {
   RadioGroup,
   RadioGroupField,
   TextField,
-} from '@seed-design/react'
-import { useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
-import { signup } from '../api/signupApi'
-import { privacyNotice, privacyPolicyDetail, signupTerms } from '../model/signupTerms'
-import type { SignupTerm } from '../model/signupTerms'
-import './SignupPage.css'
+} from '@seed-design/react';
+import { useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
+import { signup } from '../api/signupApi';
+import { privacyNotice, privacyPolicyDetail, signupTerms } from '../model/signupTerms';
+import type { SignupTerm } from '../model/signupTerms';
+import './SignupPage.css';
 
-type Gender = '' | 'MALE' | 'FEMALE'
-type InputField = 'nickname' | 'email' | 'password' | 'birthYear'
+type Gender = '' | 'MALE' | 'FEMALE';
+type InputField = 'nickname' | 'email' | 'password' | 'birthYear';
 
 type SignupPageProps = {
-  onSignupSuccess?: () => void
-}
+  onSignupSuccess?: () => void;
+};
 
 const maxLengthByField = {
   nickname: 12,
   email: 40,
   password: 64,
-} as const
+} as const;
 
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const nicknameCharacterPattern = /^[가-힣A-Za-z0-9]*$/
-const passwordPattern = /^[A-Za-z0-9!@#$%^&*_+=-]+$/
-const EMAIL_PART_CHARACTER_PATTERN = /[^A-Za-z0-9._+-]/g
-const EMAIL_DOMAIN_OPTIONS = ['gmail.com', 'naver.com', 'daum.net', 'kakao.com', 'hanmail.net']
-const PASSWORD_GUIDANCE = '8~64자 / 사용 가능 특수문자: ! @ # $ % ^ & * _ - + ='
-const PASSWORD_CHARACTER_ERROR = `사용할 수 없는 특수 문자가 포함되어 있어요. ${PASSWORD_GUIDANCE}`
-const MIN_BIRTH_YEAR = 1900
-const CURRENT_YEAR = new Date().getFullYear()
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const nicknameCharacterPattern = /^[가-힣A-Za-z0-9]*$/;
+const passwordPattern = /^[A-Za-z0-9!@#$%^&*_+=-]+$/;
+const EMAIL_PART_CHARACTER_PATTERN = /[^A-Za-z0-9._+-]/g;
+const EMAIL_DOMAIN_OPTIONS = ['gmail.com', 'naver.com', 'daum.net', 'kakao.com', 'hanmail.net'];
+const PASSWORD_GUIDANCE = '8~64자 / 사용 가능 특수문자: ! @ # $ % ^ & * _ - + =';
+const PASSWORD_CHARACTER_ERROR = `사용할 수 없는 특수 문자가 포함되어 있어요. ${PASSWORD_GUIDANCE}`;
+const MIN_BIRTH_YEAR = 1900;
+const CURRENT_YEAR = new Date().getFullYear();
 const hangulInitialKeys = [
   'r',
   'R',
@@ -60,7 +60,7 @@ const hangulInitialKeys = [
   'x',
   'v',
   'g',
-]
+];
 const hangulMedialKeys = [
   'k',
   'o',
@@ -83,7 +83,7 @@ const hangulMedialKeys = [
   'm',
   'ml',
   'l',
-]
+];
 const hangulFinalKeys = [
   '',
   'r',
@@ -113,7 +113,7 @@ const hangulFinalKeys = [
   'x',
   'v',
   'g',
-]
+];
 const hangulJamoKeys: Record<string, string> = {
   ㄱ: 'r',
   ㄲ: 'R',
@@ -166,13 +166,13 @@ const hangulJamoKeys: Record<string, string> = {
   ㅡ: 'm',
   ㅢ: 'ml',
   ㅣ: 'l',
-}
+};
 
 const errorMessages: Record<string, string> = {
   'invalid request': '입력 내용을 다시 확인해 주세요.',
   'email already exists': '이미 가입된 이메일이에요.',
   'internal server error': '회원가입을 완료하지 못했어요. 잠시 후 다시 시도해 주세요.',
-}
+};
 
 const checkIcon = (
   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -184,156 +184,158 @@ const checkIcon = (
       strokeLinejoin="round"
     />
   </svg>
-)
+);
 
-type TermDetail = SignupTerm['detail']
+type TermDetail = SignupTerm['detail'];
 
 function convertHangulToKeyboardInput(value: string) {
   return Array.from(value)
     .map((character) => {
-      const code = character.codePointAt(0) ?? 0
-      if (code < 0xac00 || code > 0xd7a3) return hangulJamoKeys[character] ?? character
+      const code = character.codePointAt(0) ?? 0;
+      if (code < 0xac00 || code > 0xd7a3) return hangulJamoKeys[character] ?? character;
 
-      const syllableIndex = code - 0xac00
-      const initialIndex = Math.floor(syllableIndex / 588)
-      const medialIndex = Math.floor((syllableIndex % 588) / 28)
-      const finalIndex = syllableIndex % 28
+      const syllableIndex = code - 0xac00;
+      const initialIndex = Math.floor(syllableIndex / 588);
+      const medialIndex = Math.floor((syllableIndex % 588) / 28);
+      const finalIndex = syllableIndex % 28;
       return (
         hangulInitialKeys[initialIndex] +
         hangulMedialKeys[medialIndex] +
         hangulFinalKeys[finalIndex]
-      )
+      );
     })
-    .join('')
+    .join('');
 }
 
 function composeEmail(localPart: string, domain: string) {
-  return `${localPart}${domain ? `@${domain}` : ''}`
+  return `${localPart}${domain ? `@${domain}` : ''}`;
 }
 
 function normalizeEmailPart(value: string) {
-  return convertHangulToKeyboardInput(value).replace(EMAIL_PART_CHARACTER_PATTERN, '').toLowerCase()
+  return convertHangulToKeyboardInput(value)
+    .replace(EMAIL_PART_CHARACTER_PATTERN, '')
+    .toLowerCase();
 }
 
 function getInputError(field: InputField, value: string) {
   if (field === 'nickname') {
-    if (value.trim() === '') return '닉네임을 입력해 주세요.'
+    if (value.trim() === '') return '닉네임을 입력해 주세요.';
     if (value.length < 2 || value.length > maxLengthByField.nickname) {
-      return '닉네임은 2자 이상 12자 이하로 입력해 주세요.'
+      return '닉네임은 2자 이상 12자 이하로 입력해 주세요.';
     }
-    if (!nicknameCharacterPattern.test(value)) return '한글, 영문, 숫자만 사용할 수 있어요.'
-    return undefined
+    if (!nicknameCharacterPattern.test(value)) return '한글, 영문, 숫자만 사용할 수 있어요.';
+    return undefined;
   }
 
   if (field === 'email') {
-    const trimmedEmail = value.trim()
-    if (trimmedEmail === '') return '이메일을 입력해 주세요.'
-    return emailPattern.test(trimmedEmail) ? undefined : '올바른 이메일 형식으로 입력해 주세요.'
+    const trimmedEmail = value.trim();
+    if (trimmedEmail === '') return '이메일을 입력해 주세요.';
+    return emailPattern.test(trimmedEmail) ? undefined : '올바른 이메일 형식으로 입력해 주세요.';
   }
 
   if (field === 'password') {
-    if (value === '') return '비밀번호를 입력해 주세요.'
-    if (value.length < 8) return '비밀번호는 8자 이상 입력해 주세요.'
-    if (value.length > maxLengthByField.password) return '비밀번호는 64자 이하로 입력해 주세요.'
-    if (!passwordPattern.test(value)) return PASSWORD_CHARACTER_ERROR
-    const hasNumber = /[0-9]/.test(value)
-    const hasSpecialCharacter = /[!@#$%^&*_+=-]/.test(value)
+    if (value === '') return '비밀번호를 입력해 주세요.';
+    if (value.length < 8) return '비밀번호는 8자 이상 입력해 주세요.';
+    if (value.length > maxLengthByField.password) return '비밀번호는 64자 이하로 입력해 주세요.';
+    if (!passwordPattern.test(value)) return PASSWORD_CHARACTER_ERROR;
+    const hasNumber = /[0-9]/.test(value);
+    const hasSpecialCharacter = /[!@#$%^&*_+=-]/.test(value);
     if (!hasNumber && !hasSpecialCharacter)
-      return '비밀번호에 숫자와 특수문자를 각각 1개 이상 입력해 주세요.'
-    if (!hasNumber) return '비밀번호에 숫자를 1개 이상 입력해 주세요.'
-    if (!hasSpecialCharacter) return '비밀번호에 특수문자를 1개 이상 입력해 주세요.'
-    return undefined
+      return '비밀번호에 숫자와 특수문자를 각각 1개 이상 입력해 주세요.';
+    if (!hasNumber) return '비밀번호에 숫자를 1개 이상 입력해 주세요.';
+    if (!hasSpecialCharacter) return '비밀번호에 특수문자를 1개 이상 입력해 주세요.';
+    return undefined;
   }
 
-  if (value === '') return undefined
-  const year = Number(value)
+  if (value === '') return undefined;
+  const year = Number(value);
   if (!Number.isInteger(year) || year < MIN_BIRTH_YEAR || year > CURRENT_YEAR) {
-    return `출생연도는 ${MIN_BIRTH_YEAR}년부터 ${CURRENT_YEAR}년 사이로 입력해 주세요.`
+    return `출생연도는 ${MIN_BIRTH_YEAR}년부터 ${CURRENT_YEAR}년 사이로 입력해 주세요.`;
   }
-  return undefined
+  return undefined;
 }
 
 export function SignupPage({ onSignupSuccess }: SignupPageProps) {
-  const [email, setEmail] = useState('')
-  const [emailDomain, setEmailDomain] = useState('')
-  const [password, setPassword] = useState('')
-  const [isPasswordFocused, setIsPasswordFocused] = useState(false)
-  const [isPasswordVisible, setIsPasswordVisible] = useState(false)
-  const [nickname, setNickname] = useState('')
-  const [birthYear, setBirthYear] = useState('')
-  const [gender, setGender] = useState<Gender>('')
-  const [agreedTermIds, setAgreedTermIds] = useState<number[]>([])
-  const [fieldErrors, setFieldErrors] = useState<Partial<Record<InputField, string>>>({})
-  const [touchedFields, setTouchedFields] = useState<Partial<Record<InputField, boolean>>>({})
-  const [selectedTerm, setSelectedTerm] = useState<TermDetail | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
+  const [email, setEmail] = useState('');
+  const [emailDomain, setEmailDomain] = useState('');
+  const [password, setPassword] = useState('');
+  const [isPasswordFocused, setIsPasswordFocused] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [nickname, setNickname] = useState('');
+  const [birthYear, setBirthYear] = useState('');
+  const [gender, setGender] = useState<Gender>('');
+  const [agreedTermIds, setAgreedTermIds] = useState<number[]>([]);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<InputField, string>>>({});
+  const [touchedFields, setTouchedFields] = useState<Partial<Record<InputField, boolean>>>({});
+  const [selectedTerm, setSelectedTerm] = useState<TermDetail | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   const requiredTermIds = useMemo(
     () => signupTerms.filter((term) => term.required).map((term) => term.id),
     [],
-  )
-  const emailLocalPart = email.split('@')[0]
+  );
+  const emailLocalPart = email.split('@')[0];
   const formValid =
     !getInputError('email', email) &&
     !getInputError('password', password) &&
     !getInputError('nickname', nickname) &&
     !getInputError('birthYear', birthYear) &&
-    requiredTermIds.every((id) => agreedTermIds.includes(id))
-  const allTermsSelected = signupTerms.every((term) => agreedTermIds.includes(term.id))
+    requiredTermIds.every((id) => agreedTermIds.includes(id));
+  const allTermsSelected = signupTerms.every((term) => agreedTermIds.includes(term.id));
 
   function toggleTerm(id: number, checked: boolean) {
     setAgreedTermIds((current) =>
       checked ? [...new Set([...current, id])] : current.filter((termId) => termId !== id),
-    )
+    );
   }
 
   function toggleAllTerms(checked: boolean) {
-    setAgreedTermIds(checked ? signupTerms.map((term) => term.id) : [])
+    setAgreedTermIds(checked ? signupTerms.map((term) => term.id) : []);
   }
 
   function setFieldError(field: InputField, message?: string) {
     setFieldErrors((current) => {
-      if (current[field] === message) return current
-      return { ...current, [field]: message }
-    })
+      if (current[field] === message) return current;
+      return { ...current, [field]: message };
+    });
   }
 
   function getMaxLengthError(field: keyof typeof maxLengthByField) {
-    if (field === 'password') return '비밀번호는 64자 이하로 입력해 주세요.'
-    return `최대 입력 길이인 ${maxLengthByField[field]}자를 넘겼습니다.`
+    if (field === 'password') return '비밀번호는 64자 이하로 입력해 주세요.';
+    return `최대 입력 길이인 ${maxLengthByField[field]}자를 넘겼습니다.`;
   }
 
   function updateEmail(localPart: string, domain: string, exceedsMaxLength = false) {
-    const nextEmail = composeEmail(localPart, domain)
-    setEmail(nextEmail)
+    const nextEmail = composeEmail(localPart, domain);
+    setEmail(nextEmail);
     setFieldError(
       'email',
       exceedsMaxLength ? getMaxLengthError('email') : getInputError('email', nextEmail),
-    )
+    );
   }
 
   function updateEmailLocalPart(value: string) {
-    const normalizedLocalPart = normalizeEmailPart(value)
+    const normalizedLocalPart = normalizeEmailPart(value);
     const maxLocalPartLength = Math.max(
       0,
       maxLengthByField.email - (emailDomain ? emailDomain.length + 1 : 0),
-    )
-    const exceedsMaxLength = normalizedLocalPart.length > maxLocalPartLength
-    updateEmail(normalizedLocalPart.slice(0, maxLocalPartLength), emailDomain, exceedsMaxLength)
+    );
+    const exceedsMaxLength = normalizedLocalPart.length > maxLocalPartLength;
+    updateEmail(normalizedLocalPart.slice(0, maxLocalPartLength), emailDomain, exceedsMaxLength);
   }
 
   function updateEmailDomain(value: string) {
-    const normalizedDomain = normalizeEmailPart(value)
+    const normalizedDomain = normalizeEmailPart(value);
     const maxDomainLength = Math.max(
       0,
       maxLengthByField.email - emailLocalPart.length - (emailLocalPart ? 1 : 0),
-    )
-    const exceedsMaxLength = normalizedDomain.length > maxDomainLength
-    const nextDomain = normalizedDomain.slice(0, maxDomainLength)
-    setEmailDomain(nextDomain)
-    updateEmail(emailLocalPart, nextDomain, exceedsMaxLength)
+    );
+    const exceedsMaxLength = normalizedDomain.length > maxDomainLength;
+    const nextDomain = normalizedDomain.slice(0, maxDomainLength);
+    setEmailDomain(nextDomain);
+    updateEmail(emailLocalPart, nextDomain, exceedsMaxLength);
   }
 
   function updateTextField(
@@ -342,22 +344,22 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
     setValue: (nextValue: string) => void,
     isComposing = false,
   ) {
-    const maxLength = maxLengthByField[field]
-    const isNickname = field === 'nickname'
-    const shouldConvertHangulToKeyboardInput = field === 'password'
+    const maxLength = maxLengthByField[field];
+    const isNickname = field === 'nickname';
+    const shouldConvertHangulToKeyboardInput = field === 'password';
     const valueWithEnglishKeyboardInput = shouldConvertHangulToKeyboardInput
       ? convertHangulToKeyboardInput(value)
-      : value
+      : value;
     const hasUnavailableNicknameCharacter =
-      isNickname && !isComposing && !nicknameCharacterPattern.test(valueWithEnglishKeyboardInput)
+      isNickname && !isComposing && !nicknameCharacterPattern.test(valueWithEnglishKeyboardInput);
     const valueWithAllowedCharacters =
       isNickname && !isComposing
         ? valueWithEnglishKeyboardInput.replace(/[^가-힣A-Za-z0-9]/g, '')
-        : valueWithEnglishKeyboardInput
-    const exceedsMaxLength = valueWithAllowedCharacters.length > maxLength
-    const nextValue = valueWithAllowedCharacters.slice(0, maxLength).toLowerCase()
+        : valueWithEnglishKeyboardInput;
+    const exceedsMaxLength = valueWithAllowedCharacters.length > maxLength;
+    const nextValue = valueWithAllowedCharacters.slice(0, maxLength).toLowerCase();
 
-    setValue(nextValue)
+    setValue(nextValue);
     setFieldError(
       field,
       exceedsMaxLength
@@ -367,7 +369,7 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
           : field === 'password' || touchedFields[field]
             ? getInputError(field, nextValue)
             : undefined,
-    )
+    );
   }
 
   function preventOverLengthInput(
@@ -375,43 +377,43 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
     field: keyof typeof maxLengthByField,
     currentValue: string,
   ) {
-    const nativeEvent = event.nativeEvent as InputEvent
-    if (nativeEvent.isComposing) return
-    const insertedValue = nativeEvent.data
-    if (!insertedValue || nativeEvent.inputType?.startsWith('delete')) return
+    const nativeEvent = event.nativeEvent as InputEvent;
+    if (nativeEvent.isComposing) return;
+    const insertedValue = nativeEvent.data;
+    if (!insertedValue || nativeEvent.inputType?.startsWith('delete')) return;
 
-    const { selectionEnd, selectionStart } = event.currentTarget
-    const selectedLength = (selectionEnd ?? 0) - (selectionStart ?? 0)
-    const maxLength = maxLengthByField[field]
-    if (currentValue.length - selectedLength + insertedValue.length <= maxLength) return
+    const { selectionEnd, selectionStart } = event.currentTarget;
+    const selectedLength = (selectionEnd ?? 0) - (selectionStart ?? 0);
+    const maxLength = maxLengthByField[field];
+    if (currentValue.length - selectedLength + insertedValue.length <= maxLength) return;
 
-    event.preventDefault()
-    setFieldError(field, getMaxLengthError(field))
+    event.preventDefault();
+    setFieldError(field, getMaxLengthError(field));
   }
 
   function preventUnavailableNicknameCharacter(event: FormEvent<HTMLInputElement>) {
-    const nativeEvent = event.nativeEvent as InputEvent
-    if (nativeEvent.isComposing) return
+    const nativeEvent = event.nativeEvent as InputEvent;
+    if (nativeEvent.isComposing) return;
 
-    const insertedValue = nativeEvent.data
-    if (!insertedValue || nicknameCharacterPattern.test(insertedValue)) return
+    const insertedValue = nativeEvent.data;
+    if (!insertedValue || nicknameCharacterPattern.test(insertedValue)) return;
 
-    event.preventDefault()
-    setFieldError('nickname', '한글, 영문, 숫자만 사용할 수 있어요.')
+    event.preventDefault();
+    setFieldError('nickname', '한글, 영문, 숫자만 사용할 수 있어요.');
   }
 
   function validateOnBlur(field: InputField, value: string) {
-    setTouchedFields((current) => ({ ...current, [field]: true }))
-    setFieldError(field, getInputError(field, value))
+    setTouchedFields((current) => ({ ...current, [field]: true }));
+    setFieldError(field, getInputError(field, value));
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!formValid || submitting) return
+    event.preventDefault();
+    if (!formValid || submitting) return;
 
-    setSubmitting(true)
-    setError('')
-    setSuccess('')
+    setSubmitting(true);
+    setError('');
+    setSuccess('');
     try {
       const result = await signup({
         email: email.trim().toLowerCase(),
@@ -420,17 +422,17 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
         ...(birthYear === '' ? {} : { birth_year: Number(birthYear) }),
         ...(gender === '' ? {} : { gender }),
         terms_ids: agreedTermIds,
-      })
+      });
       if (onSignupSuccess) {
-        onSignupSuccess()
-        return
+        onSignupSuccess();
+        return;
       }
-      setSuccess(`회원가입이 완료되었어요. 회원 번호: ${result.data.user_id}`)
+      setSuccess(`회원가입이 완료되었어요. 회원 번호: ${result.data.user_id}`);
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'internal server error'
-      setError(errorMessages[message] ?? errorMessages['internal server error'])
+      const message = caught instanceof Error ? caught.message : 'internal server error';
+      setError(errorMessages[message] ?? errorMessages['internal server error']);
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
   }
 
@@ -460,8 +462,8 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
                 aria-label="닉네임"
                 value={nickname}
                 onBeforeInput={(event) => {
-                  preventUnavailableNicknameCharacter(event)
-                  preventOverLengthInput(event, 'nickname', nickname)
+                  preventUnavailableNicknameCharacter(event);
+                  preventOverLengthInput(event, 'nickname', nickname);
                 }}
                 onChange={(event) =>
                   updateTextField(
@@ -551,8 +553,8 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
                 }
                 onFocus={() => setIsPasswordFocused(true)}
                 onBlur={() => {
-                  setIsPasswordFocused(false)
-                  validateOnBlur('password', password)
+                  setIsPasswordFocused(false);
+                  validateOnBlur('password', password);
                 }}
                 minLength={8}
                 placeholder="8자 이상 입력해주세요"
@@ -593,10 +595,10 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
                   type="number"
                   value={birthYear}
                   onChange={(event) => {
-                    const nextValue = event.target.value
-                    setBirthYear(nextValue)
+                    const nextValue = event.target.value;
+                    setBirthYear(nextValue);
                     if (touchedFields.birthYear)
-                      setFieldError('birthYear', getInputError('birthYear', nextValue))
+                      setFieldError('birthYear', getInputError('birthYear', nextValue));
                   }}
                   onBlur={() => validateOnBlur('birthYear', birthYear)}
                   min={MIN_BIRTH_YEAR}
@@ -741,5 +743,5 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
         </BottomSheet.Positioner>
       </BottomSheet.Root>
     </main>
-  )
+  );
 }
