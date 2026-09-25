@@ -229,7 +229,6 @@ export function MainPage({
 
     const nextRoute = routes[destination];
     navigateTo(nextRoute.path);
-    navigateTo(nextRoute.path);
   }
 
   return (
