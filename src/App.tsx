@@ -1,45 +1,46 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
 
-import { recommend } from "./api/recommendations";
-import { RecommendationCards } from "./components/RecommendationCards";
-import { LoginPage } from "./features/auth-login/components/LoginPage";
-import { MainPage } from "./features/mainMap/MainPage";
-import { MusicRecordCreatePage, MusicRecordListPage } from "./features/music-record/components/MusicRecordPages";
-import { MusicRecordDetailPage } from "./features/music-record/components/MusicRecordDetailPage";
+import { recommend } from './api/recommendations';
+import { RecommendationCards } from './components/RecommendationCards';
+import { LoginPage } from './features/auth-login/components/LoginPage';
+import { MainPage } from './features/mainMap/MainPage';
 import {
-  logout,
-  LogoutRequestError,
-} from "./features/auth-login/api/logoutApi";
+  MusicRecordCreatePage,
+  MusicRecordListPage,
+} from './features/music-record/components/MusicRecordPages';
+import { MusicRecordDetailPage } from './features/music-record/components/MusicRecordDetailPage';
+import { logout, LogoutRequestError } from './features/auth-login/api/logoutApi';
 import {
-  AUTH_EXPIRED_EVENT, AuthRequestError, clearAccessToken, getAccessToken, refreshAccessToken,
+  AUTH_EXPIRED_EVENT,
+  AuthRequestError,
+  clearAccessToken,
+  getAccessToken,
+  refreshAccessToken,
   type AuthStatus,
-} from "./features/auth-login/api/authSession";
-import {
-  ChatEntryPage,
-  type ActiveChatRoom,
-} from "./features/chat-entry/components/ChatEntryPage";
-import { SignupPage } from "./features/user-signup/components/SignupPage";
-import { useVoiceInput } from "./hooks/useVoiceInput";
-import type { RecommendationInputType } from "./api/recommendations";
-import type { Recommendation } from "./types/recommendation";
+} from './features/auth-login/api/authSession';
+import { ChatEntryPage, type ActiveChatRoom } from './features/chat-entry/components/ChatEntryPage';
+import { SignupPage } from './features/user-signup/components/SignupPage';
+import { useVoiceInput } from './hooks/useVoiceInput';
+import type { RecommendationInputType } from './api/recommendations';
+import type { Recommendation } from './types/recommendation';
 import { navigate, ROUTE_CHANGE_EVENT } from './shared/navigation';
 
-import "./App.css";
+import './App.css';
 
-const LOGIN_PATH = "/login";
-const SIGNUP_PATH = "/signup";
-const CHATBOT_PATH = "/chatbot";
-const MUSIC_RECORDS_PATH = "/music-records";
-const MUSIC_RECORD_CREATE_PATH = "/music-records/new";
-const CHAT_PATH = "/chat";
+const LOGIN_PATH = '/login';
+const SIGNUP_PATH = '/signup';
+const CHATBOT_PATH = '/chatbot';
+const MUSIC_RECORDS_PATH = '/music-records';
+const MUSIC_RECORD_CREATE_PATH = '/music-records/new';
+const CHAT_PATH = '/chat';
 
 type ChatMessage = { id: string; sentAt: Date } & (
-  { role: "user"; text: string } | { role: "assistant"; result: Recommendation }
+  { role: 'user'; text: string } | { role: 'assistant'; result: Recommendation }
 );
 
 const formatTime = (date: Date) =>
-  date.toLocaleTimeString("ko-KR", { hour: "numeric", minute: "2-digit" });
+  date.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
 
 function App() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
@@ -47,15 +48,15 @@ function App() {
   const authIntent = useRef(0);
   const isLoggingOutRef = useRef(false);
   const [activeChatRoom, setActiveChatRoom] = useState<ActiveChatRoom | null>(null);
-  const [logoutError, setLogoutError] = useState("");
+  const [logoutError, setLogoutError] = useState('');
 
   useEffect(() => {
     const updatePathname = () => setPathname(window.location.pathname);
 
-    window.addEventListener("popstate", updatePathname);
+    window.addEventListener('popstate', updatePathname);
     window.addEventListener(ROUTE_CHANGE_EVENT, updatePathname);
     return () => {
-      window.removeEventListener("popstate", updatePathname);
+      window.removeEventListener('popstate', updatePathname);
       window.removeEventListener(ROUTE_CHANGE_EVENT, updatePathname);
     };
   }, []);
@@ -76,12 +77,15 @@ function App() {
     }
   }, []);
 
-  useEffect(() => { queueMicrotask(() => void restore()); }, [restore]);
+  useEffect(() => {
+    queueMicrotask(() => void restore());
+  }, [restore]);
 
   useEffect(() => {
     const onExpired = () => {
       setAuthStatus((current) =>
-        current === 'logging-in' || current === 'logging-out' ? current : 'guest');
+        current === 'logging-in' || current === 'logging-out' ? current : 'guest',
+      );
       setActiveChatRoom(null);
     };
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
@@ -91,8 +95,8 @@ function App() {
   const handleLoginSuccess = () => {
     authIntent.current += 1;
     setAuthStatus('authenticated');
-    setLogoutError("");
-    navigate("/");
+    setLogoutError('');
+    navigate('/');
   };
 
   const handleLogout = async () => {
@@ -103,7 +107,7 @@ function App() {
     isLoggingOutRef.current = true;
     authIntent.current += 1;
     setAuthStatus('logging-out');
-    setLogoutError("");
+    setLogoutError('');
     try {
       await logout();
       clearAccessToken();
@@ -114,8 +118,8 @@ function App() {
       setAuthStatus(getAccessToken() ? 'authenticated' : 'retryable-error');
       setLogoutError(
         error instanceof LogoutRequestError && error.status === null
-          ? "네트워크 상태를 확인한 뒤 다시 시도해 주세요."
-          : "로그아웃에 실패했어요. 잠시 후 다시 시도해 주세요.",
+          ? '네트워크 상태를 확인한 뒤 다시 시도해 주세요.'
+          : '로그아웃에 실패했어요. 잠시 후 다시 시도해 주세요.',
       );
     } finally {
       isLoggingOutRef.current = false;
@@ -123,9 +127,16 @@ function App() {
   };
 
   if (pathname === LOGIN_PATH) {
-    return <LoginPage onLoginSuccess={handleLoginSuccess}
-      onLoginStart={() => { authIntent.current += 1; setAuthStatus('logging-in'); }}
-      onLoginFailure={() => setAuthStatus(getAccessToken() ? 'authenticated' : 'guest')} />;
+    return (
+      <LoginPage
+        onLoginSuccess={handleLoginSuccess}
+        onLoginStart={() => {
+          authIntent.current += 1;
+          setAuthStatus('logging-in');
+        }}
+        onLoginFailure={() => setAuthStatus(getAccessToken() ? 'authenticated' : 'guest')}
+      />
+    );
   }
 
   if (pathname === SIGNUP_PATH) {
@@ -154,7 +165,10 @@ function App() {
 
   return (
     <MainPage
-      isAuthenticated={authStatus === 'authenticated' || (authStatus === 'retryable-error' && Boolean(getAccessToken()))}
+      isAuthenticated={
+        authStatus === 'authenticated' ||
+        (authStatus === 'retryable-error' && Boolean(getAccessToken()))
+      }
       isLoggingOut={authStatus === 'logging-out'}
       isRestoring={authStatus === 'restoring'}
       isRetryableError={authStatus === 'retryable-error'}
@@ -170,11 +184,11 @@ function App() {
 function ChatbotPage() {
   const [conversationKey] = useState(() => crypto.randomUUID());
   const [openedAt] = useState(() => new Date());
-  const [prompt, setPrompt] = useState("");
-  const [inputType, setInputType] = useState<RecommendationInputType>("TEXT");
+  const [prompt, setPrompt] = useState('');
+  const [inputType, setInputType] = useState<RecommendationInputType>('TEXT');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState('');
   const [activePreview, setActivePreview] = useState<string | null>(null);
   const requestRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -182,7 +196,7 @@ function ChatbotPage() {
 
   const handleTranscript = useCallback((transcript: string) => {
     setPrompt(transcript);
-    setInputType("VOICE");
+    setInputType('VOICE');
     requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
   const voice = useVoiceInput({ onTranscript: handleTranscript });
@@ -190,13 +204,13 @@ function ChatbotPage() {
 
   const useTextInput = useCallback(() => {
     resetVoiceForTextInput();
-    setInputType("TEXT");
+    setInputType('TEXT');
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [resetVoiceForTextInput]);
 
   useEffect(() => () => requestRef.current?.abort(), []);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading, error]);
 
   async function submit(event: FormEvent) {
@@ -210,42 +224,31 @@ function ChatbotPage() {
     const messageId = crypto.randomUUID();
     requestRef.current = controller;
     setLoading(true);
-    setError("");
+    setError('');
     setActivePreview(null);
     setMessages((previous) => [
       ...previous,
-      { id: messageId, role: "user", text, sentAt: new Date() },
+      { id: messageId, role: 'user', text, sentAt: new Date() },
     ]);
-    setPrompt("");
+    setPrompt('');
 
     try {
-      const result = await recommend(
-        text,
-        conversationKey,
-        controller.signal,
-        inputType,
-      );
+      const result = await recommend(text, conversationKey, controller.signal, inputType);
       setMessages((previous) => [
         ...previous,
         {
           id: crypto.randomUUID(),
-          role: "assistant",
+          role: 'assistant',
           result,
           sentAt: new Date(),
         },
       ]);
-      setInputType("TEXT");
+      setInputType('TEXT');
       voice.finishReview();
     } catch (caught) {
       if (!controller.signal.aborted) {
-        setMessages((previous) =>
-          previous.filter((message) => message.id !== messageId),
-        );
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : "서버에 연결하지 못했습니다.",
-        );
+        setMessages((previous) => previous.filter((message) => message.id !== messageId));
+        setError(caught instanceof Error ? caught.message : '서버에 연결하지 못했습니다.');
         setPrompt(text);
       }
     } finally {
@@ -262,18 +265,13 @@ function ChatbotPage() {
       <header className="chat-header">
         <h1>음악 추천 챗봇</h1>
       </header>
-      <div
-        className="chat-content"
-        role="log"
-        aria-label="음악 추천 대화"
-        aria-live="polite"
-      >
+      <div className="chat-content" role="log" aria-label="음악 추천 대화" aria-live="polite">
         <p className="date-label">
-          {openedAt.toLocaleDateString("ko-KR", {
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-            weekday: "long",
+          {openedAt.toLocaleDateString('ko-KR', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            weekday: 'long',
           })}
         </p>
         <div className="message-row assistant-row">
@@ -282,8 +280,8 @@ function ChatbotPage() {
             <p>느껴지는 분위기나 장소, 날씨를 편하게 들려주세요.</p>
             <p>이 순간에 어울리는 음악을 골라드릴게요.</p>
             <p className="sample-notice">
-              현재는 입력 문장으로 iTunes에서 음악을 검색합니다. 입력 문장은
-              연속 추천을 위해 대화별로 저장합니다.
+              현재는 입력 문장으로 iTunes에서 음악을 검색합니다. 입력 문장은 연속 추천을 위해
+              대화별로 저장합니다.
             </p>
           </div>
           <time>{formatTime(openedAt)}</time>
@@ -291,9 +289,9 @@ function ChatbotPage() {
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`message-row ${message.role === "user" ? "user-row" : "assistant-row"}`}
+            className={`message-row ${message.role === 'user' ? 'user-row' : 'assistant-row'}`}
           >
-            {message.role === "user" ? (
+            {message.role === 'user' ? (
               <p className="user-bubble">{message.text}</p>
             ) : (
               <RecommendationCards
@@ -302,9 +300,7 @@ function ChatbotPage() {
                 onPreviewChange={setActivePreview}
               />
             )}
-            <time dateTime={message.sentAt.toISOString()}>
-              {formatTime(message.sentAt)}
-            </time>
+            <time dateTime={message.sentAt.toISOString()}>{formatTime(message.sentAt)}</time>
           </div>
         ))}
         {loading && (
@@ -336,7 +332,7 @@ function ChatbotPage() {
             음성을 텍스트로 변환하고 있어요…
           </p>
         )}
-        {voice.status === "reviewing" && (
+        {voice.status === 'reviewing' && (
           <p className="voice-review-notice" role="status">
             변환된 문장을 확인하고 필요한 부분을 수정한 뒤 전송해 주세요.
           </p>
@@ -361,10 +357,10 @@ function ChatbotPage() {
         )}
         <form className="input-bar" onSubmit={submit}>
           <button
-            className={`voice-button ${voice.isRecording ? "recording" : ""}`}
+            className={`voice-button ${voice.isRecording ? 'recording' : ''}`}
             type="button"
             disabled={loading || voice.isTranscribing}
-            aria-label={voice.isRecording ? "음성 녹음 종료" : "음성 녹음 시작"}
+            aria-label={voice.isRecording ? '음성 녹음 종료' : '음성 녹음 시작'}
             aria-pressed={voice.isRecording}
             onClick={() => {
               if (voice.isRecording) {
@@ -374,7 +370,7 @@ function ChatbotPage() {
               }
             }}
           >
-            {voice.isRecording ? "■" : "🎙"}
+            {voice.isRecording ? '■' : '🎙'}
           </button>
           <label className="sr-only" htmlFor="prompt">
             추천받고 싶은 상황
@@ -389,11 +385,7 @@ function ChatbotPage() {
             onChange={(event) => setPrompt(event.target.value)}
             disabled={loading || voice.isRecording || voice.isTranscribing}
             onKeyDown={(event) => {
-              if (
-                event.key === "Enter" &&
-                !event.shiftKey &&
-                !event.nativeEvent.isComposing
-              ) {
+              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
                 event.currentTarget.form?.requestSubmit();
               }
@@ -402,12 +394,7 @@ function ChatbotPage() {
           <button
             className="send-button"
             type="submit"
-            disabled={
-              loading ||
-              voice.isRecording ||
-              voice.isTranscribing ||
-              !prompt.trim()
-            }
+            disabled={loading || voice.isRecording || voice.isTranscribing || !prompt.trim()}
             aria-label="추천 요청 보내기"
           >
             ↑

@@ -16,11 +16,14 @@ async function submitLogout(): Promise<void> {
 
   try {
     const csrf = await getCsrfToken();
-    response = await fetch(`${(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api/v1/auth/logout`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'X-CSRF-TOKEN': csrf },
-    });
+    response = await fetch(
+      `${(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api/v1/auth/logout`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'X-CSRF-TOKEN': csrf },
+      },
+    );
   } catch {
     throw new LogoutRequestError(null);
   }

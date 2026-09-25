@@ -1,28 +1,26 @@
-import { ActionButton } from "@seed-design/react";
+import { ActionButton } from '@seed-design/react';
 import { navigate as navigateTo } from '../../shared/navigation';
-import type { JSX } from "react";
-import { ZoneMapCanvas } from "./ZoneMapCanvas";
-import { useMapZones } from "./useMapZones";
+import type { JSX } from 'react';
+import { ZoneMapCanvas } from './ZoneMapCanvas';
+import { useMapZones } from './useMapZones';
 
-type MainDestination = "map" | "records" | "chatRooms" | "my";
+type MainDestination = 'map' | 'records' | 'chatRooms' | 'my';
 
 type Route = {
-  destination: MainDestination | "recordCreate";
+  destination: MainDestination | 'recordCreate';
   path: string;
 };
 
-const routes: Record<MainDestination | "recordCreate", Route> = {
-  map: { destination: "map", path: "/" },
-  records: { destination: "records", path: "/music-records" },
-  recordCreate: { destination: "recordCreate", path: "/music-records/new" },
-  chatRooms: { destination: "chatRooms", path: "/chat" },
-  my: { destination: "my", path: "/my" },
+const routes: Record<MainDestination | 'recordCreate', Route> = {
+  map: { destination: 'map', path: '/' },
+  records: { destination: 'records', path: '/music-records' },
+  recordCreate: { destination: 'recordCreate', path: '/music-records/new' },
+  chatRooms: { destination: 'chatRooms', path: '/chat' },
+  my: { destination: 'my', path: '/my' },
 };
 
 function getRoute(pathname: string): Route {
-  return (
-    Object.values(routes).find((route) => route.path === pathname) ?? routes.map
-  );
+  return Object.values(routes).find((route) => route.path === pathname) ?? routes.map;
 }
 
 function GridIcon() {
@@ -76,16 +74,13 @@ function MapSection() {
   const state = useMapZones();
 
   return (
-    <section
-      className="main-content main-content--map"
-      aria-labelledby="map-title"
-    >
+    <section className="main-content main-content--map" aria-labelledby="map-title">
       <div className="map-copy">
         <p className="eyebrow">오늘의 뮤즈 지도</p>
         <h1 id="map-title">우리의 음악이 쌓이는 곳</h1>
         <p>도트 하나마다 함께 만든 순간을 담아요.</p>
       </div>
-      {state.status === "loading" ? (
+      {state.status === 'loading' ? (
         <div className="map-loading" role="status">
           <span className="map-loading__dot" />
           지도를 준비하고 있어요.
@@ -94,33 +89,26 @@ function MapSection() {
         <ZoneMapCanvas
           gridDots={state.gridDots}
           items={state.items}
-          isFallback={state.status === "fallback"}
+          isFallback={state.status === 'fallback'}
         />
       )}
     </section>
   );
 }
 
-type PlaceholderDestination = Exclude<MainDestination, "map"> | "recordCreate";
+type PlaceholderDestination = Exclude<MainDestination, 'map'> | 'recordCreate';
 
-function PlaceholderSection({
-  destination,
-}: {
-  destination: PlaceholderDestination;
-}) {
+function PlaceholderSection({ destination }: { destination: PlaceholderDestination }) {
   const copy = {
-    records: ["기록", "음악으로 남긴 오늘의 순간을 모아볼까요?"],
-    recordCreate: ["새 기록", "지금 떠오른 이야기를 음악과 함께 남겨보세요."],
-    chatRooms: ["채팅방", "취향이 닿는 사람들과 이야기를 나눠요."],
-    my: ["마이", "나의 음악 여정을 한눈에 확인해요."],
+    records: ['기록', '음악으로 남긴 오늘의 순간을 모아볼까요?'],
+    recordCreate: ['새 기록', '지금 떠오른 이야기를 음악과 함께 남겨보세요.'],
+    chatRooms: ['채팅방', '취향이 닿는 사람들과 이야기를 나눠요.'],
+    my: ['마이', '나의 음악 여정을 한눈에 확인해요.'],
   } as const;
   const [title, description] = copy[destination];
 
   return (
-    <section
-      className="main-content placeholder-section"
-      aria-labelledby={`${destination}-title`}
-    >
+    <section className="main-content placeholder-section" aria-labelledby={`${destination}-title`}>
       <p className="eyebrow">MEOMUNEUM</p>
       <h1 id={`${destination}-title`}>{title}</h1>
       <p>{description}</p>
@@ -134,8 +122,8 @@ function PlaceholderSection({
 }
 
 type GnbProps = {
-  currentDestination: MainDestination | "recordCreate";
-  onNavigate: (destination: MainDestination | "recordCreate") => void;
+  currentDestination: MainDestination | 'recordCreate';
+  onNavigate: (destination: MainDestination | 'recordCreate') => void;
 };
 
 type GnbItem = {
@@ -146,10 +134,10 @@ type GnbItem = {
 
 function Gnb({ currentDestination, onNavigate }: GnbProps) {
   const items: GnbItem[] = [
-    { destination: "map", label: "지도", icon: GridIcon },
-    { destination: "records", label: "기록", icon: RecordIcon },
-    { destination: "chatRooms", label: "채팅방", icon: ChatIcon },
-    { destination: "my", label: "마이", icon: MyIcon },
+    { destination: 'map', label: '지도', icon: GridIcon },
+    { destination: 'records', label: '기록', icon: RecordIcon },
+    { destination: 'chatRooms', label: '채팅방', icon: ChatIcon },
+    { destination: 'my', label: '마이', icon: MyIcon },
   ];
 
   return (
@@ -157,13 +145,11 @@ function Gnb({ currentDestination, onNavigate }: GnbProps) {
       <div className="gnb__surface">
         {items.slice(0, 2).map(({ destination, label, icon: Icon }) => (
           <button
-            className={`gnb__item ${currentDestination === destination ? "gnb__item--active" : ""}`}
+            className={`gnb__item ${currentDestination === destination ? 'gnb__item--active' : ''}`}
             key={destination}
             type="button"
             onClick={() => onNavigate(destination)}
-            aria-current={
-              currentDestination === destination ? "page" : undefined
-            }
+            aria-current={currentDestination === destination ? 'page' : undefined}
           >
             <Icon />
             <span>{label}</span>
@@ -172,20 +158,18 @@ function Gnb({ currentDestination, onNavigate }: GnbProps) {
         <button
           className="gnb__create"
           type="button"
-          onClick={() => onNavigate("recordCreate")}
+          onClick={() => onNavigate('recordCreate')}
           aria-label="새 기록 만들기"
         >
           <PlusIcon />
         </button>
         {items.slice(2).map(({ destination, label, icon: Icon }) => (
           <button
-            className={`gnb__item ${currentDestination === destination ? "gnb__item--active" : ""}`}
+            className={`gnb__item ${currentDestination === destination ? 'gnb__item--active' : ''}`}
             key={destination}
             type="button"
             onClick={() => onNavigate(destination)}
-            aria-current={
-              currentDestination === destination ? "page" : undefined
-            }
+            aria-current={currentDestination === destination ? 'page' : undefined}
           >
             <Icon />
             <span>{label}</span>
@@ -221,8 +205,8 @@ export function MainPage({
 }: MainPageProps) {
   const route = getRoute(window.location.pathname);
 
-  function navigate(destination: MainDestination | "recordCreate") {
-    if (destination === "chatRooms") {
+  function navigate(destination: MainDestination | 'recordCreate') {
+    if (destination === 'chatRooms') {
       onChat();
       return;
     }
@@ -232,9 +216,7 @@ export function MainPage({
   }
 
   return (
-    <main
-      className={`main-page ${route.destination === "map" ? "main-page--map" : ""}`}
-    >
+    <main className={`main-page ${route.destination === 'map' ? 'main-page--map' : ''}`}>
       <h1 className="sr-only">음악 지도</h1>
       <header className="main-header">
         <p className="main-header__brand">MEOMUNEUM</p>
@@ -247,30 +229,28 @@ export function MainPage({
           disabled={isLoggingOut || isRestoring}
           onClick={isAuthenticated ? onLogout : onLogin}
         >
-          {isRestoring ? '로그인 확인 중' : isAuthenticated ? "로그아웃" : "로그인"}
+          {isRestoring ? '로그인 확인 중' : isAuthenticated ? '로그아웃' : '로그인'}
         </ActionButton>
       </header>
-      {isRetryableError && <p role="alert" className="main-header__auth-error">
-        로그인 상태를 확인하지 못했습니다. <button type="button" onClick={onRetryAuth}>다시 확인</button>
-      </p>}
+      {isRetryableError && (
+        <p role="alert" className="main-header__auth-error">
+          로그인 상태를 확인하지 못했습니다.{' '}
+          <button type="button" onClick={onRetryAuth}>
+            다시 확인
+          </button>
+        </p>
+      )}
       {logoutError && (
-        <p
-          className="main-header__auth-error text-body3-normal-regular"
-          role="alert"
-        >
+        <p className="main-header__auth-error text-body3-normal-regular" role="alert">
           {logoutError}
         </p>
       )}
-      {route.destination === "map" ? (
+      {route.destination === 'map' ? (
         <MapSection />
       ) : (
         <PlaceholderSection destination={route.destination} />
       )}
-      <a
-        className="chatbot-floating-button"
-        href="/chatbot"
-        aria-label="음악 추천 챗봇 열기"
-      >
+      <a className="chatbot-floating-button" href="/chatbot" aria-label="음악 추천 챗봇 열기">
         Chat
       </a>
       <Gnb currentDestination={route.destination} onNavigate={navigate} />

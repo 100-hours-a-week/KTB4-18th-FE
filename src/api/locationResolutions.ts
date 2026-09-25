@@ -64,10 +64,7 @@ export class LocationResolutionError extends Error {
 function userMessage(status: number, serverMessage?: string) {
   switch (status) {
     case 400:
-      return (
-        '현재 위치를 확인할 수 없습니다. ' +
-        '위치 정확도를 높인 뒤 다시 시도해 주세요.'
-      );
+      return '현재 위치를 확인할 수 없습니다. ' + '위치 정확도를 높인 뒤 다시 시도해 주세요.';
     case 401:
       return '로그인이 만료되었습니다. 다시 로그인해 주세요.';
     case 404:
@@ -111,8 +108,7 @@ export async function resolveLocation(
       throw caught;
     }
     throw new LocationResolutionError(
-      '서버에 연결하지 못했습니다. ' +
-        '연결 상태를 확인하고 다시 시도해 주세요.',
+      '서버에 연결하지 못했습니다. ' + '연결 상태를 확인하고 다시 시도해 주세요.',
       null,
       true,
     );

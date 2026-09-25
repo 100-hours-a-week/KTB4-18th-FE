@@ -162,7 +162,11 @@ export function LoginPage({ onLoginSuccess, onLoginStart, onLoginFailure }: Logi
               </button>
             </div>
             {fieldErrors.password && (
-              <p id="password-error" className="login-error text-label1-normal-regular" role="alert">
+              <p
+                id="password-error"
+                className="login-error text-label1-normal-regular"
+                role="alert"
+              >
                 {fieldErrors.password}
               </p>
             )}

@@ -1,6 +1,7 @@
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
-export type AuthStatus = 'restoring' | 'authenticated' | 'guest' | 'retryable-error' | 'logging-in' | 'logging-out';
+export type AuthStatus =
+  'restoring' | 'authenticated' | 'guest' | 'retryable-error' | 'logging-in' | 'logging-out';
 export const AUTH_EXPIRED_EVENT = 'meomuneum:auth-expired';
 
 export class AuthRequestError extends Error {
@@ -43,7 +44,9 @@ async function refreshOnce(retryCsrf: boolean): Promise<string> {
   let response: Response;
   try {
     response = await fetch(`${baseUrl}/api/v1/auth/token/refresh`, {
-      method: 'POST', credentials: 'include', headers: { 'X-CSRF-TOKEN': csrf },
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-CSRF-TOKEN': csrf },
     });
   } catch {
     throw new AuthRequestError(null);
@@ -60,18 +63,28 @@ export function refreshAccessToken(): Promise<string> {
   if (pendingTransitions > 0) return Promise.reject(new AuthRequestError(null));
   if (pendingRefresh) return pendingRefresh;
   const currentGeneration = generation;
-  const request = refreshOnce(true).then((token) => {
-    if (generation === currentGeneration) sessionStorage.setItem('access_token', token);
-    return token;
-  }).catch((caught: unknown) => {
-    if (generation === currentGeneration && caught instanceof AuthRequestError && caught.status === 401) {
-      clearAccessToken();
-      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
-    }
-    throw caught;
-  });
+  const request = refreshOnce(true)
+    .then((token) => {
+      if (generation === currentGeneration) sessionStorage.setItem('access_token', token);
+      return token;
+    })
+    .catch((caught: unknown) => {
+      if (
+        generation === currentGeneration &&
+        caught instanceof AuthRequestError &&
+        caught.status === 401
+      ) {
+        clearAccessToken();
+        window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+      }
+      throw caught;
+    });
   pendingRefresh = request;
-  void request.finally(() => { if (pendingRefresh === request) pendingRefresh = null; }).catch(() => undefined);
+  void request
+    .finally(() => {
+      if (pendingRefresh === request) pendingRefresh = null;
+    })
+    .catch(() => undefined);
   return request;
 }
 
@@ -81,7 +94,9 @@ export function runAuthTransition<T>(action: () => Promise<T>): Promise<T> {
   pendingTransitions += 1;
   const previous = transitionQueue;
   let release!: () => void;
-  transitionQueue = new Promise<void>((resolve) => { release = resolve; });
+  transitionQueue = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   return (async () => {
     await previous;
     try {

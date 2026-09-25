@@ -4,14 +4,14 @@ Meomuneum 프로젝트의 웹 클라이언트입니다. React, TypeScript, Vite�
 
 ## 기술 및 실행 환경
 
-| 항목 | 버전 / 구성 |
-| --- | --- |
-| Node.js | `24.18.0` |
-| npm | `11.16.0` |
-| React / React DOM | `^19.2.8` |
-| TypeScript | `~6.0.2` |
-| Vite | `^8.3.0` |
-| ESLint | `^10.10.0` |
+| 항목              | 버전 / 구성 |
+| ----------------- | ----------- |
+| Node.js           | `24.18.0`   |
+| npm               | `11.16.0`   |
+| React / React DOM | `^19.2.8`   |
+| TypeScript        | `~6.0.2`    |
+| Vite              | `^8.3.0`    |
+| ESLint            | `^10.10.0`  |
 
 Vite 자체의 Node.js 지원 범위는 `^20.19.0` 또는 `>=22.12.0`입니다. Node.js와 npm은 위 버전을 기준으로 개발합니다. React 등 의존성의 버전 범위는 `package.json`, 실제 설치 버전은 `package-lock.json`을 기준으로 하며, `npm ci`로 설치합니다.
 

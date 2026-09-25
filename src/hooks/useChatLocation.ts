@@ -19,12 +19,7 @@ const GEOLOCATION_OPTIONS: PositionOptions = {
 };
 
 export type ChatLocationStatus =
-  | 'idle'
-  | 'requestingPermission'
-  | 'retrying'
-  | 'resolving'
-  | 'resolved'
-  | 'error';
+  'idle' | 'requestingPermission' | 'retrying' | 'resolving' | 'resolved' | 'error';
 
 interface UseChatLocationOptions {
   accessToken: string | null;
@@ -48,10 +43,7 @@ function positionErrorMessage(error: unknown) {
     case 1:
       return '채팅방 자동 입장을 위해 위치 권한을 허용해 주세요.';
     case 2:
-      return (
-        '현재 위치를 확인할 수 없습니다. ' +
-        '위치 서비스를 켠 뒤 다시 시도해 주세요.'
-      );
+      return '현재 위치를 확인할 수 없습니다. ' + '위치 서비스를 켠 뒤 다시 시도해 주세요.';
     case 3:
       return '위치 확인 시간이 초과되었습니다. 다시 시도해 주세요.';
     default:
@@ -116,8 +108,7 @@ export function useChatLocation({ accessToken }: UseChatLocationOptions) {
     }
 
     let coordinates: LocationCoordinates | null = null;
-    let lastPositionError =
-      '현재 위치를 확인하지 못했습니다. 다시 시도해 주세요.';
+    let lastPositionError = '현재 위치를 확인하지 못했습니다. 다시 시도해 주세요.';
 
     for (let currentAttempt = 1; currentAttempt <= MAX_ATTEMPTS; currentAttempt += 1) {
       if (!mountedRef.current || runId !== runIdRef.current) {
@@ -140,8 +131,7 @@ export function useChatLocation({ accessToken }: UseChatLocationOptions) {
           break;
         }
         lastPositionError =
-          '위치 정확도가 충분하지 않습니다. ' +
-          '탁 트인 장소에서 다시 시도해 주세요.';
+          '위치 정확도가 충분하지 않습니다. ' + '탁 트인 장소에서 다시 시도해 주세요.';
       } catch (caught) {
         if (!mountedRef.current || runId !== runIdRef.current) {
           return;
@@ -185,12 +175,8 @@ export function useChatLocation({ accessToken }: UseChatLocationOptions) {
         return;
       }
       setStatus('error');
-      setError(
-        caught instanceof Error ? caught.message : '현재 위치를 판정하지 못했습니다.',
-      );
-      setCanRetry(
-        !(caught instanceof LocationResolutionError) || caught.status !== 401,
-      );
+      setError(caught instanceof Error ? caught.message : '현재 위치를 판정하지 못했습니다.');
+      setCanRetry(!(caught instanceof LocationResolutionError) || caught.status !== 401);
     } finally {
       if (resolutionRequestRef.current === controller) {
         resolutionRequestRef.current = null;
@@ -214,8 +200,7 @@ export function useChatLocation({ accessToken }: UseChatLocationOptions) {
     error,
     canRetry,
     resolution,
-    isLoading:
-      status === 'requestingPermission' || status === 'retrying' || status === 'resolving',
+    isLoading: status === 'requestingPermission' || status === 'retrying' || status === 'resolving',
     requestLocation,
     retryLocation: requestLocation,
   };

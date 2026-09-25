@@ -73,27 +73,24 @@ describe('resolveLocation', () => {
     expect((error as Error).message).toContain('다시 로그인');
   });
 
-  it(
-    '필수 판정 정보가 없는 성공 응답을 재시도 가능한 오류로 처리한다',
-    async () => {
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue(
-          new Response(JSON.stringify({ message: 'location resolved', data: {} }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        ),
-      );
+  it('필수 판정 정보가 없는 성공 응답을 재시도 가능한 오류로 처리한다', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ message: 'location resolved', data: {} }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
 
-      const error = await resolveLocation(
-        { latitude: 37.3595704, longitude: 127.105399, accuracyMeters: 18.5 },
-        'access-token',
-        new AbortController().signal,
-      ).catch((caught: unknown) => caught);
+    const error = await resolveLocation(
+      { latitude: 37.3595704, longitude: 127.105399, accuracyMeters: 18.5 },
+      'access-token',
+      new AbortController().signal,
+    ).catch((caught: unknown) => caught);
 
-      expect(error).toBeInstanceOf(LocationResolutionError);
-      expect(error).toMatchObject({ status: 502, isRetryable: true });
-    },
-  );
+    expect(error).toBeInstanceOf(LocationResolutionError);
+    expect(error).toMatchObject({ status: 502, isRetryable: true });
+  });
 });

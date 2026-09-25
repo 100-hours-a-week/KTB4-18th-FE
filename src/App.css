@@ -1,18 +1,95 @@
 #root {
   min-height: 100svh;
 }
-.map-home { position: relative; min-height: 100dvh; background: var(--color-bg-primary); }
-.map-home-header { display: flex; justify-content: flex-end; padding: max(1.25rem, env(safe-area-inset-top)) 1.25rem 1.25rem; }
-.map-login-link { color: var(--color-text-interactive-primary); text-decoration: none; }
-.map-login-link:focus-visible, .map-bottom-navigation a:focus-visible { outline: 3px solid var(--color-border-interactive-primary); outline-offset: 3px; }
-.map-bottom-navigation { position: fixed; right: 1.5rem; bottom: max(1.5rem, env(safe-area-inset-bottom)); left: 1.5rem; display: grid; grid-template-columns: repeat(5, 1fr); align-items: center; min-height: 7.75rem; border: 1px solid var(--color-border-secondary); border-radius: 999px; background: var(--color-bg-primary); box-shadow: 0 0.5rem 1.25rem rgb(23 23 23 / 14%); }
-.map-navigation-item { display: grid; justify-items: center; gap: .25rem; color: var(--color-text-secondary); text-decoration: none; }
-.map-navigation-item span { font-size: 2rem; line-height: 1; }
-.map-create-button { display: grid; width: 5.25rem; height: 5.25rem; margin: -2.25rem auto 0; place-items: center; border-radius: 50%; background: var(--color-bg-interactive-inverse); box-shadow: 0 .5rem 1.25rem rgb(23 23 23 / 24%); color: var(--color-text-interactive-inverse); font-size: 3.25rem; font-weight: 200; line-height: 1; text-decoration: none; }
-.chatbot-floating-button { position: fixed; right: 1.5rem; bottom: max(1.5rem, env(safe-area-inset-bottom)); display: inline-flex; align-items: center; gap: 0.5rem; min-height: 3.5rem; border-radius: 999px; padding: 0.875rem 1.125rem; color: var(--color-text-interactive-inverse); background: var(--color-bg-interactive-primary); box-shadow: 0 0.5rem 1.25rem rgb(23 23 23 / 24%); text-decoration: none; }
-.chatbot-floating-button:hover { background: var(--color-bg-interactive-primary-hover); }
-.chatbot-floating-button:active { background: var(--color-bg-interactive-primary-press); }
-.chatbot-floating-icon { display: grid; width: 1.5rem; height: 1.5rem; place-items: center; border-radius: 50%; background: var(--color-bg-primary); color: var(--color-icon-interactive-primary); }
+.map-home {
+  position: relative;
+  min-height: 100dvh;
+  background: var(--color-bg-primary);
+}
+.map-home-header {
+  display: flex;
+  justify-content: flex-end;
+  padding: max(1.25rem, env(safe-area-inset-top)) 1.25rem 1.25rem;
+}
+.map-login-link {
+  color: var(--color-text-interactive-primary);
+  text-decoration: none;
+}
+.map-login-link:focus-visible,
+.map-bottom-navigation a:focus-visible {
+  outline: 3px solid var(--color-border-interactive-primary);
+  outline-offset: 3px;
+}
+.map-bottom-navigation {
+  position: fixed;
+  right: 1.5rem;
+  bottom: max(1.5rem, env(safe-area-inset-bottom));
+  left: 1.5rem;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: center;
+  min-height: 7.75rem;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 999px;
+  background: var(--color-bg-primary);
+  box-shadow: 0 0.5rem 1.25rem rgb(23 23 23 / 14%);
+}
+.map-navigation-item {
+  display: grid;
+  justify-items: center;
+  gap: 0.25rem;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+.map-navigation-item span {
+  font-size: 2rem;
+  line-height: 1;
+}
+.map-create-button {
+  display: grid;
+  width: 5.25rem;
+  height: 5.25rem;
+  margin: -2.25rem auto 0;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-bg-interactive-inverse);
+  box-shadow: 0 0.5rem 1.25rem rgb(23 23 23 / 24%);
+  color: var(--color-text-interactive-inverse);
+  font-size: 3.25rem;
+  font-weight: 200;
+  line-height: 1;
+  text-decoration: none;
+}
+.chatbot-floating-button {
+  position: fixed;
+  right: 1.5rem;
+  bottom: max(1.5rem, env(safe-area-inset-bottom));
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 3.5rem;
+  border-radius: 999px;
+  padding: 0.875rem 1.125rem;
+  color: var(--color-text-interactive-inverse);
+  background: var(--color-bg-interactive-primary);
+  box-shadow: 0 0.5rem 1.25rem rgb(23 23 23 / 24%);
+  text-decoration: none;
+}
+.chatbot-floating-button:hover {
+  background: var(--color-bg-interactive-primary-hover);
+}
+.chatbot-floating-button:active {
+  background: var(--color-bg-interactive-primary-press);
+}
+.chatbot-floating-icon {
+  display: grid;
+  width: 1.5rem;
+  height: 1.5rem;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-bg-primary);
+  color: var(--color-icon-interactive-primary);
+}
 
 button {
   font: inherit;
@@ -21,8 +98,7 @@ button {
 .chat-entry-screen {
   display: grid;
   min-height: 100dvh;
-  padding: max(1.5rem, env(safe-area-inset-top)) 1.25rem
-    max(1.5rem, env(safe-area-inset-bottom));
+  padding: max(1.5rem, env(safe-area-inset-top)) 1.25rem max(1.5rem, env(safe-area-inset-bottom));
   place-items: center;
   background: var(--color-bg-secondary);
 }
@@ -79,8 +155,7 @@ button {
   min-height: 100svh;
   max-width: 42.5rem;
   margin: 0 auto;
-  padding: max(1.25rem, env(safe-area-inset-top)) 1rem
-    calc(10.25rem + env(safe-area-inset-bottom));
+  padding: max(1.25rem, env(safe-area-inset-top)) 1rem calc(10.25rem + env(safe-area-inset-bottom));
   flex-direction: column;
   background: var(--color-bg-primary);
 }
@@ -481,7 +556,7 @@ button {
   font-size: 13px;
   color: #626471;
 }
-.preview-button[aria-pressed="true"] {
+.preview-button[aria-pressed='true'] {
   background: #202124;
   color: white;
 }
@@ -613,8 +688,7 @@ button {
   display: flex;
   width: min(100%, 30rem);
   flex-direction: column;
-  padding: max(3.5rem, env(safe-area-inset-top)) 1.5rem
-    max(2rem, env(safe-area-inset-bottom));
+  padding: max(3.5rem, env(safe-area-inset-top)) 1.5rem max(2rem, env(safe-area-inset-bottom));
   background: var(--color-bg-primary);
 }
 .login-heading {
@@ -733,25 +807,246 @@ button {
     height: 52px;
   }
 }
-.music-page { min-height: 100dvh; max-width: 40rem; margin: 0 auto; padding: 0 1rem 2rem; color: var(--color-text-primary); background: var(--color-bg-primary); }
-.record-card { color: inherit; text-decoration: none; }
-.record-card:focus-visible, .music-text-button:focus-visible { outline: 2px solid var(--color-border-interactive-primary); outline-offset: 2px; }
-.music-detail-page .music-form { gap: 1rem; }
-.music-detail-label-row { display: flex; align-items: center; justify-content: space-between; color: var(--color-text-tertiary); font-weight: 600; }
-.music-text-button { padding: .25rem 0; border: 0; background: transparent; color: var(--color-text-interactive-primary); cursor: pointer; }
-.music-detail-page input[readonly] { color: var(--color-text-tertiary); background: var(--color-bg-secondary); }
-.music-detail-search { display: grid; gap: .75rem; }
-.music-detail-search input { width: 100%; box-sizing: border-box; border: 1px solid var(--color-border-tertiary); border-radius: .75rem; padding: .8rem; background: var(--color-bg-primary); color: var(--color-text-primary); }
-.music-cover-placeholder { display: block; width: 3.75rem; height: 3.75rem; flex: none; border-radius: .5rem; background: var(--color-bg-secondary); }
-.music-primary-button:disabled { opacity: .45; cursor: not-allowed; }
-.music-success { color: var(--color-text-interactive-primary); }
-.music-search-page { padding-bottom: calc(7rem + env(safe-area-inset-bottom)); }
-.music-search-footer { position: fixed; z-index: 3; right: 0; bottom: 0; left: 0; display: flex; justify-content: center; padding: 1rem max(1rem, env(safe-area-inset-right)) calc(1rem + env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); background: var(--color-bg-primary); border-top: 1px solid var(--color-border-tertiary); }
-.music-search-footer .music-primary-button { width: 100%; max-width: 38rem; min-height: 3.25rem; }
-.music-back { border: 0; background: transparent; color: var(--color-text-primary); font-size: 1.75rem; cursor: pointer; }
-.music-page-header { display:flex; align-items:center; justify-content:space-between; min-height:4rem; border-bottom:1px solid var(--color-border-tertiary); }.music-page-header h1{margin:0}.music-page-header a{text-decoration:none;color:var(--color-text-primary)}.music-add{color:var(--color-text-interactive-primary)!important}.music-search{display:flex;gap:.5rem;margin:1rem 0}.music-search input,.music-form input,.music-form textarea{width:100%;box-sizing:border-box;border:1px solid var(--color-border-tertiary);border-radius:.75rem;padding:.8rem;background:var(--color-bg-primary);color:var(--color-text-primary)}.music-search button,.music-primary-button{border:0;border-radius:.75rem;padding:.8rem 1rem;background:var(--color-bg-interactive-primary);color:var(--color-text-interactive-inverse)}.music-search-count{margin:0 0 1rem;color:var(--color-text-tertiary)}.search-results,.record-list,.music-form{display:grid;gap:.75rem}.music-result,.record-card,.music-selected-content{display:flex;gap:.75rem;width:100%;text-align:left;padding:.75rem;border:1px solid var(--color-border-tertiary);border-radius:.9rem;background:var(--color-bg-primary)}.music-result.selected{border-color:var(--color-border-interactive-primary);background:var(--color-bg-interactive-primary-light)}.music-result img,.record-card img,.music-selected-content img{width:3.75rem;height:3.75rem;object-fit:cover;border-radius:.5rem}.music-result span,.music-selected-content div{display:grid;gap:.25rem}.music-selected-content p{margin:0;color:var(--color-text-tertiary)}.music-selected-content span{color:var(--color-text-secondary)}.music-result small,.record-card p,.record-card time{color:var(--color-text-tertiary)}.record-card h2,.record-card p{margin:0}.record-card div{display:grid;gap:.2rem}.music-form{margin-top:1.5rem}.music-form label{display:grid;gap:.5rem}.music-form textarea{min-height:6rem;resize:vertical}.music-secondary-button{border:1px solid var(--color-border-interactive-primary);border-radius:.75rem;padding:.8rem;background:var(--color-bg-primary);color:var(--color-text-interactive-primary)}.music-error{color:var(--color-text-error)}.music-empty{text-align:center;color:var(--color-text-tertiary);padding:4rem 0}
+.music-page {
+  min-height: 100dvh;
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 0 1rem 2rem;
+  color: var(--color-text-primary);
+  background: var(--color-bg-primary);
+}
+.record-card {
+  color: inherit;
+  text-decoration: none;
+}
+.record-card:focus-visible,
+.music-text-button:focus-visible {
+  outline: 2px solid var(--color-border-interactive-primary);
+  outline-offset: 2px;
+}
+.music-detail-page .music-form {
+  gap: 1rem;
+}
+.music-detail-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--color-text-tertiary);
+  font-weight: 600;
+}
+.music-text-button {
+  padding: 0.25rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-interactive-primary);
+  cursor: pointer;
+}
+.music-detail-page input[readonly] {
+  color: var(--color-text-tertiary);
+  background: var(--color-bg-secondary);
+}
+.music-detail-search {
+  display: grid;
+  gap: 0.75rem;
+}
+.music-detail-search input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 0.75rem;
+  padding: 0.8rem;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+.music-cover-placeholder {
+  display: block;
+  width: 3.75rem;
+  height: 3.75rem;
+  flex: none;
+  border-radius: 0.5rem;
+  background: var(--color-bg-secondary);
+}
+.music-primary-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.music-success {
+  color: var(--color-text-interactive-primary);
+}
+.music-search-page {
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom));
+}
+.music-search-footer {
+  position: fixed;
+  z-index: 3;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  justify-content: center;
+  padding: 1rem max(1rem, env(safe-area-inset-right)) calc(1rem + env(safe-area-inset-bottom))
+    max(1rem, env(safe-area-inset-left));
+  background: var(--color-bg-primary);
+  border-top: 1px solid var(--color-border-tertiary);
+}
+.music-search-footer .music-primary-button {
+  width: 100%;
+  max-width: 38rem;
+  min-height: 3.25rem;
+}
+.music-back {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 1.75rem;
+  cursor: pointer;
+}
+.music-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 4rem;
+  border-bottom: 1px solid var(--color-border-tertiary);
+}
+.music-page-header h1 {
+  margin: 0;
+}
+.music-page-header a {
+  text-decoration: none;
+  color: var(--color-text-primary);
+}
+.music-add {
+  color: var(--color-text-interactive-primary) !important;
+}
+.music-search {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+.music-search input,
+.music-form input,
+.music-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 0.75rem;
+  padding: 0.8rem;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+.music-search button,
+.music-primary-button {
+  border: 0;
+  border-radius: 0.75rem;
+  padding: 0.8rem 1rem;
+  background: var(--color-bg-interactive-primary);
+  color: var(--color-text-interactive-inverse);
+}
+.music-search-count {
+  margin: 0 0 1rem;
+  color: var(--color-text-tertiary);
+}
+.search-results,
+.record-list,
+.music-form {
+  display: grid;
+  gap: 0.75rem;
+}
+.music-result,
+.record-card,
+.music-selected-content {
+  display: flex;
+  gap: 0.75rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 0.9rem;
+  background: var(--color-bg-primary);
+}
+.music-result.selected {
+  border-color: var(--color-border-interactive-primary);
+  background: var(--color-bg-interactive-primary-light);
+}
+.music-result img,
+.record-card img,
+.music-selected-content img {
+  width: 3.75rem;
+  height: 3.75rem;
+  object-fit: cover;
+  border-radius: 0.5rem;
+}
+.music-result span,
+.music-selected-content div {
+  display: grid;
+  gap: 0.25rem;
+}
+.music-selected-content p {
+  margin: 0;
+  color: var(--color-text-tertiary);
+}
+.music-selected-content span {
+  color: var(--color-text-secondary);
+}
+.music-result small,
+.record-card p,
+.record-card time {
+  color: var(--color-text-tertiary);
+}
+.record-card h2,
+.record-card p {
+  margin: 0;
+}
+.record-card div {
+  display: grid;
+  gap: 0.2rem;
+}
+.music-form {
+  margin-top: 1.5rem;
+}
+.music-form label {
+  display: grid;
+  gap: 0.5rem;
+}
+.music-form textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+.music-secondary-button {
+  border: 1px solid var(--color-border-interactive-primary);
+  border-radius: 0.75rem;
+  padding: 0.8rem;
+  background: var(--color-bg-primary);
+  color: var(--color-text-interactive-primary);
+}
+.music-error {
+  color: var(--color-text-error);
+}
+.music-empty {
+  text-align: center;
+  color: var(--color-text-tertiary);
+  padding: 4rem 0;
+}
 
-@media (max-width: 420px) { .chat-content { padding-inline: 10px; } .welcome-bubble, .recommendation-bubble { padding: 14px; } .message-row time { font-size: 10px; } .music-info { gap: 10px; } .music-info img { width: 52px; height: 52px; } }
+@media (max-width: 420px) {
+  .chat-content {
+    padding-inline: 10px;
+  }
+  .welcome-bubble,
+  .recommendation-bubble {
+    padding: 14px;
+  }
+  .message-row time {
+    font-size: 10px;
+  }
+  .music-info {
+    gap: 10px;
+  }
+  .music-info img {
+    width: 52px;
+    height: 52px;
+  }
+}
 
 @media (min-width: 30rem) {
   .login-screen {

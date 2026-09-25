@@ -37,12 +37,15 @@ async function submitLogin(request: LoginRequest): Promise<LoginSuccessResponse>
 
   try {
     const csrf = await getCsrfToken();
-    response = await fetch(`${(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api/v1/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
-      credentials: 'include',
-      body: JSON.stringify(request),
-    });
+    response = await fetch(
+      `${(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api/v1/auth/login`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+        credentials: 'include',
+        body: JSON.stringify(request),
+      },
+    );
   } catch {
     throw new LoginRequestError(null);
   }

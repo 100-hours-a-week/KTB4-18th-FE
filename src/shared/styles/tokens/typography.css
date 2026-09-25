@@ -57,80 +57,200 @@
   --text-caption--letter-spacing: 0.0194375rem;
 }
 
-@utility text-title1-regular { @apply text-title1 font-normal; }
-@utility text-title1-medium { @apply text-title1 font-medium; }
-@utility text-title1-semibold { @apply text-title1 font-semibold; }
-@utility text-title1-bold { @apply text-title1 font-bold; }
+@utility text-title1-regular {
+  @apply text-title1 font-normal;
+}
+@utility text-title1-medium {
+  @apply text-title1 font-medium;
+}
+@utility text-title1-semibold {
+  @apply text-title1 font-semibold;
+}
+@utility text-title1-bold {
+  @apply text-title1 font-bold;
+}
 
-@utility text-title2-regular { @apply text-title2 font-normal; }
-@utility text-title2-medium { @apply text-title2 font-medium; }
-@utility text-title2-semibold { @apply text-title2 font-semibold; }
-@utility text-title2-bold { @apply text-title2 font-bold; }
+@utility text-title2-regular {
+  @apply text-title2 font-normal;
+}
+@utility text-title2-medium {
+  @apply text-title2 font-medium;
+}
+@utility text-title2-semibold {
+  @apply text-title2 font-semibold;
+}
+@utility text-title2-bold {
+  @apply text-title2 font-bold;
+}
 
-@utility text-title3-regular { @apply text-title3 font-normal; }
-@utility text-title3-medium { @apply text-title3 font-medium; }
-@utility text-title3-semibold { @apply text-title3 font-semibold; }
-@utility text-title3-bold { @apply text-title3 font-bold; }
+@utility text-title3-regular {
+  @apply text-title3 font-normal;
+}
+@utility text-title3-medium {
+  @apply text-title3 font-medium;
+}
+@utility text-title3-semibold {
+  @apply text-title3 font-semibold;
+}
+@utility text-title3-bold {
+  @apply text-title3 font-bold;
+}
 
-@utility text-heading1-regular { @apply text-heading1 font-normal; }
-@utility text-heading1-medium { @apply text-heading1 font-medium; }
-@utility text-heading1-semibold { @apply text-heading1 font-semibold; }
-@utility text-heading1-bold { @apply text-heading1 font-bold; }
+@utility text-heading1-regular {
+  @apply text-heading1 font-normal;
+}
+@utility text-heading1-medium {
+  @apply text-heading1 font-medium;
+}
+@utility text-heading1-semibold {
+  @apply text-heading1 font-semibold;
+}
+@utility text-heading1-bold {
+  @apply text-heading1 font-bold;
+}
 
-@utility text-body1-normal-regular { @apply text-body1-normal font-normal; }
-@utility text-body1-normal-medium { @apply text-body1-normal font-medium; }
-@utility text-body1-normal-semibold { @apply text-body1-normal font-semibold; }
-@utility text-body1-normal-bold { @apply text-body1-normal font-bold; }
+@utility text-body1-normal-regular {
+  @apply text-body1-normal font-normal;
+}
+@utility text-body1-normal-medium {
+  @apply text-body1-normal font-medium;
+}
+@utility text-body1-normal-semibold {
+  @apply text-body1-normal font-semibold;
+}
+@utility text-body1-normal-bold {
+  @apply text-body1-normal font-bold;
+}
 
-@utility text-body1-reading-regular { @apply text-body1-reading font-normal; }
-@utility text-body1-reading-medium { @apply text-body1-reading font-medium; }
-@utility text-body1-reading-semibold { @apply text-body1-reading font-semibold; }
-@utility text-body1-reading-bold { @apply text-body1-reading font-bold; }
+@utility text-body1-reading-regular {
+  @apply text-body1-reading font-normal;
+}
+@utility text-body1-reading-medium {
+  @apply text-body1-reading font-medium;
+}
+@utility text-body1-reading-semibold {
+  @apply text-body1-reading font-semibold;
+}
+@utility text-body1-reading-bold {
+  @apply text-body1-reading font-bold;
+}
 
-@utility text-body2-normal-regular { @apply text-body2-normal font-normal; }
-@utility text-body2-normal-medium { @apply text-body2-normal font-medium; }
-@utility text-body2-normal-semibold { @apply text-body2-normal font-semibold; }
-@utility text-body2-normal-bold { @apply text-body2-normal font-bold; }
+@utility text-body2-normal-regular {
+  @apply text-body2-normal font-normal;
+}
+@utility text-body2-normal-medium {
+  @apply text-body2-normal font-medium;
+}
+@utility text-body2-normal-semibold {
+  @apply text-body2-normal font-semibold;
+}
+@utility text-body2-normal-bold {
+  @apply text-body2-normal font-bold;
+}
 
-@utility text-body2-reading-regular { @apply text-body2-reading font-normal; }
-@utility text-body2-reading-medium { @apply text-body2-reading font-medium; }
-@utility text-body2-reading-semibold { @apply text-body2-reading font-semibold; }
-@utility text-body2-reading-bold { @apply text-body2-reading font-bold; }
+@utility text-body2-reading-regular {
+  @apply text-body2-reading font-normal;
+}
+@utility text-body2-reading-medium {
+  @apply text-body2-reading font-medium;
+}
+@utility text-body2-reading-semibold {
+  @apply text-body2-reading font-semibold;
+}
+@utility text-body2-reading-bold {
+  @apply text-body2-reading font-bold;
+}
 
-@utility text-body3-normal-regular { @apply text-body3-normal font-normal; }
-@utility text-body3-normal-medium { @apply text-body3-normal font-medium; }
-@utility text-body3-normal-semibold { @apply text-body3-normal font-semibold; }
-@utility text-body3-normal-bold { @apply text-body3-normal font-bold; }
+@utility text-body3-normal-regular {
+  @apply text-body3-normal font-normal;
+}
+@utility text-body3-normal-medium {
+  @apply text-body3-normal font-medium;
+}
+@utility text-body3-normal-semibold {
+  @apply text-body3-normal font-semibold;
+}
+@utility text-body3-normal-bold {
+  @apply text-body3-normal font-bold;
+}
 
-@utility text-body3-reading-regular { @apply text-body3-reading font-normal; }
-@utility text-body3-reading-medium { @apply text-body3-reading font-medium; }
-@utility text-body3-reading-semibold { @apply text-body3-reading font-semibold; }
-@utility text-body3-reading-bold { @apply text-body3-reading font-bold; }
+@utility text-body3-reading-regular {
+  @apply text-body3-reading font-normal;
+}
+@utility text-body3-reading-medium {
+  @apply text-body3-reading font-medium;
+}
+@utility text-body3-reading-semibold {
+  @apply text-body3-reading font-semibold;
+}
+@utility text-body3-reading-bold {
+  @apply text-body3-reading font-bold;
+}
 
-@utility text-label1-normal-regular { @apply text-label1-normal font-normal; }
-@utility text-label1-normal-medium { @apply text-label1-normal font-medium; }
-@utility text-label1-normal-semibold { @apply text-label1-normal font-semibold; }
-@utility text-label1-normal-bold { @apply text-label1-normal font-bold; }
+@utility text-label1-normal-regular {
+  @apply text-label1-normal font-normal;
+}
+@utility text-label1-normal-medium {
+  @apply text-label1-normal font-medium;
+}
+@utility text-label1-normal-semibold {
+  @apply text-label1-normal font-semibold;
+}
+@utility text-label1-normal-bold {
+  @apply text-label1-normal font-bold;
+}
 
-@utility text-label1-reading-regular { @apply text-label1-reading font-normal; }
-@utility text-label1-reading-medium { @apply text-label1-reading font-medium; }
-@utility text-label1-reading-semibold { @apply text-label1-reading font-semibold; }
-@utility text-label1-reading-bold { @apply text-label1-reading font-bold; }
+@utility text-label1-reading-regular {
+  @apply text-label1-reading font-normal;
+}
+@utility text-label1-reading-medium {
+  @apply text-label1-reading font-medium;
+}
+@utility text-label1-reading-semibold {
+  @apply text-label1-reading font-semibold;
+}
+@utility text-label1-reading-bold {
+  @apply text-label1-reading font-bold;
+}
 
-@utility text-label2-normal-regular { @apply text-label2-normal font-normal; }
-@utility text-label2-normal-medium { @apply text-label2-normal font-medium; }
-@utility text-label2-normal-semibold { @apply text-label2-normal font-semibold; }
-@utility text-label2-normal-bold { @apply text-label2-normal font-bold; }
+@utility text-label2-normal-regular {
+  @apply text-label2-normal font-normal;
+}
+@utility text-label2-normal-medium {
+  @apply text-label2-normal font-medium;
+}
+@utility text-label2-normal-semibold {
+  @apply text-label2-normal font-semibold;
+}
+@utility text-label2-normal-bold {
+  @apply text-label2-normal font-bold;
+}
 
-@utility text-label2-reading-regular { @apply text-label2-reading font-normal; }
-@utility text-label2-reading-medium { @apply text-label2-reading font-medium; }
-@utility text-label2-reading-semibold { @apply text-label2-reading font-semibold; }
-@utility text-label2-reading-bold { @apply text-label2-reading font-bold; }
+@utility text-label2-reading-regular {
+  @apply text-label2-reading font-normal;
+}
+@utility text-label2-reading-medium {
+  @apply text-label2-reading font-medium;
+}
+@utility text-label2-reading-semibold {
+  @apply text-label2-reading font-semibold;
+}
+@utility text-label2-reading-bold {
+  @apply text-label2-reading font-bold;
+}
 
-@utility text-caption-regular { @apply text-caption font-normal; }
-@utility text-caption-medium { @apply text-caption font-medium; }
-@utility text-caption-semibold { @apply text-caption font-semibold; }
-@utility text-caption-bold { @apply text-caption font-bold; }
+@utility text-caption-regular {
+  @apply text-caption font-normal;
+}
+@utility text-caption-medium {
+  @apply text-caption font-medium;
+}
+@utility text-caption-semibold {
+  @apply text-caption font-semibold;
+}
+@utility text-caption-bold {
+  @apply text-caption font-bold;
+}
 
 @layer utilities {
   :is(.text-title1-regular, .text-title1-medium, .text-title1-semibold, .text-title1-bold) {
@@ -157,61 +277,111 @@
     letter-spacing: var(--text-heading1--letter-spacing);
   }
 
-  :is(.text-body1-normal-regular, .text-body1-normal-medium, .text-body1-normal-semibold, .text-body1-normal-bold) {
+  :is(
+    .text-body1-normal-regular,
+    .text-body1-normal-medium,
+    .text-body1-normal-semibold,
+    .text-body1-normal-bold
+  ) {
     font-size: var(--text-body1-normal);
     line-height: var(--text-body1-normal--line-height);
     letter-spacing: var(--text-body1-normal--letter-spacing);
   }
 
-  :is(.text-body1-reading-regular, .text-body1-reading-medium, .text-body1-reading-semibold, .text-body1-reading-bold) {
+  :is(
+    .text-body1-reading-regular,
+    .text-body1-reading-medium,
+    .text-body1-reading-semibold,
+    .text-body1-reading-bold
+  ) {
     font-size: var(--text-body1-reading);
     line-height: var(--text-body1-reading--line-height);
     letter-spacing: var(--text-body1-reading--letter-spacing);
   }
 
-  :is(.text-body2-normal-regular, .text-body2-normal-medium, .text-body2-normal-semibold, .text-body2-normal-bold) {
+  :is(
+    .text-body2-normal-regular,
+    .text-body2-normal-medium,
+    .text-body2-normal-semibold,
+    .text-body2-normal-bold
+  ) {
     font-size: var(--text-body2-normal);
     line-height: var(--text-body2-normal--line-height);
     letter-spacing: var(--text-body2-normal--letter-spacing);
   }
 
-  :is(.text-body2-reading-regular, .text-body2-reading-medium, .text-body2-reading-semibold, .text-body2-reading-bold) {
+  :is(
+    .text-body2-reading-regular,
+    .text-body2-reading-medium,
+    .text-body2-reading-semibold,
+    .text-body2-reading-bold
+  ) {
     font-size: var(--text-body2-reading);
     line-height: var(--text-body2-reading--line-height);
     letter-spacing: var(--text-body2-reading--letter-spacing);
   }
 
-  :is(.text-body3-normal-regular, .text-body3-normal-medium, .text-body3-normal-semibold, .text-body3-normal-bold) {
+  :is(
+    .text-body3-normal-regular,
+    .text-body3-normal-medium,
+    .text-body3-normal-semibold,
+    .text-body3-normal-bold
+  ) {
     font-size: var(--text-body3-normal);
     line-height: var(--text-body3-normal--line-height);
     letter-spacing: var(--text-body3-normal--letter-spacing);
   }
 
-  :is(.text-body3-reading-regular, .text-body3-reading-medium, .text-body3-reading-semibold, .text-body3-reading-bold) {
+  :is(
+    .text-body3-reading-regular,
+    .text-body3-reading-medium,
+    .text-body3-reading-semibold,
+    .text-body3-reading-bold
+  ) {
     font-size: var(--text-body3-reading);
     line-height: var(--text-body3-reading--line-height);
     letter-spacing: var(--text-body3-reading--letter-spacing);
   }
 
-  :is(.text-label1-normal-regular, .text-label1-normal-medium, .text-label1-normal-semibold, .text-label1-normal-bold) {
+  :is(
+    .text-label1-normal-regular,
+    .text-label1-normal-medium,
+    .text-label1-normal-semibold,
+    .text-label1-normal-bold
+  ) {
     font-size: var(--text-label1-normal);
     line-height: var(--text-label1-normal--line-height);
     letter-spacing: var(--text-label1-normal--letter-spacing);
   }
 
-  :is(.text-label1-reading-regular, .text-label1-reading-medium, .text-label1-reading-semibold, .text-label1-reading-bold) {
+  :is(
+    .text-label1-reading-regular,
+    .text-label1-reading-medium,
+    .text-label1-reading-semibold,
+    .text-label1-reading-bold
+  ) {
     font-size: var(--text-label1-reading);
     line-height: var(--text-label1-reading--line-height);
     letter-spacing: var(--text-label1-reading--letter-spacing);
   }
 
-  :is(.text-label2-normal-regular, .text-label2-normal-medium, .text-label2-normal-semibold, .text-label2-normal-bold) {
+  :is(
+    .text-label2-normal-regular,
+    .text-label2-normal-medium,
+    .text-label2-normal-semibold,
+    .text-label2-normal-bold
+  ) {
     font-size: var(--text-label2-normal);
     line-height: var(--text-label2-normal--line-height);
     letter-spacing: var(--text-label2-normal--letter-spacing);
   }
 
-  :is(.text-label2-reading-regular, .text-label2-reading-medium, .text-label2-reading-semibold, .text-label2-reading-bold) {
+  :is(
+    .text-label2-reading-regular,
+    .text-label2-reading-medium,
+    .text-label2-reading-semibold,
+    .text-label2-reading-bold
+  ) {
     font-size: var(--text-label2-reading);
     line-height: var(--text-label2-reading--line-height);
     letter-spacing: var(--text-label2-reading--letter-spacing);
