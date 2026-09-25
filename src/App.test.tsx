@@ -221,7 +221,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.type(screen.getByLabelText('이메일'), 'login.test@example.com')
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!')
     await user.click(screen.getByRole('button', { name: '로그인' }))
-    await user.click(await screen.findByRole('button', { name: '채팅' }))
+    await user.click(await screen.findByRole('button', { name: '채팅방' }))
 
     expect(await screen.findByRole('heading', { name: '우리 지역 채팅방' })).toBeInTheDocument()
     expect(window.location.pathname).toBe('/chat')
