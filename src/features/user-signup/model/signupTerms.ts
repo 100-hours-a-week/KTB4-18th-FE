@@ -1,6 +1,6 @@
 export type SignupTerm = {
   id: number
-  type: 'SERVICE' | 'PROFILE' | 'AIPERSONAL' | 'LOCATIONTERMS' | 'LOCATION'
+  type: 'SERVICE' | 'PROFILE' | 'AIPERSONAL' | 'LOCATIONTERMS' | 'LOCATION' | 'PRIVACY'
   required: boolean
   label: string
   description: string
@@ -9,6 +9,17 @@ export type SignupTerm = {
     version: string
     sections: Array<{ heading: string; content: string }>
   }
+}
+
+export const privacyPolicyDetail = {
+  title: '개인정보 처리방침',
+  version: 'v0.2 · 2026-09-20 시행',
+  sections: [
+    { heading: '수집 항목', content: '계정·필수 가입 정보로 이메일, 비밀번호 해시, 닉네임, 출생연도, 성별, 가입·인증 기록을 처리합니다.' },
+    { heading: '처리 목적', content: '회원 식별, 로그인, 연령 확인 및 서비스 제공을 위해 처리합니다. 출생연도·성별은 별도 선택 동의 없이 AI 맞춤 추천·분석에 이용하지 않습니다.' },
+    { heading: '보유 기간', content: '회원 탈퇴 시까지 보유하며, 법령상 보관 의무가 있는 정보는 해당 기간 동안 보관합니다.' },
+    { heading: '이용자 권리', content: '회원은 설정에서 프로필 조회·수정·삭제, 선택 동의 철회와 탈퇴를 요청할 수 있습니다.' },
+  ],
 }
 
 // 회원가입에서 사용하는 현재 시행 약관입니다. 이 초기 버전의 ID는 가입 마이그레이션의 terms 데이터와 대응합니다.
@@ -53,9 +64,9 @@ export const signupTerms: SignupTerm[] = [
   {
     id: 2,
     type: 'AIPERSONAL',
-    required: false,
-    label: '[선택] AI 맞춤 음악 추천을 위한 정보 이용에 동의합니다',
-    description: '공개 범위 내 음악 기록·선호·추천 반응을 맞춤 추천에 이용합니다.',
+    required: true,
+    label: '[필수] AI 맞춤 음악 추천을 위한 정보 이용에 동의합니다',
+    description: '가입하려면 이 약관에 동의해야 합니다.',
     detail: {
       title: 'AI 맞춤 음악 추천 정보 이용 동의',
       version: 'v0.2 · 2026-09-20 시행',
@@ -63,7 +74,7 @@ export const signupTerms: SignupTerm[] = [
         { heading: '목적', content: '공개 범위 내 음악 기록·선호·추천 반응을 반영한 맞춤 추천' },
         { heading: '항목', content: '공개 범위 내 음악 기록·선호·추천 반응' },
         { heading: '보유 기간', content: '동의 철회 또는 회원 탈퇴 시까지' },
-        { heading: '거부 권리', content: '거부해도 일반 음악 추천과 기본 기능은 이용할 수 있습니다.' },
+        { heading: '가입 조건', content: '가입하려면 이 약관에 동의해야 합니다.' },
       ],
     },
   },
@@ -100,17 +111,12 @@ export const signupTerms: SignupTerm[] = [
       ],
     },
   },
+  {
+    id: 5,
+    type: 'PRIVACY',
+    required: false,
+    label: '[선택] 개인정보 처리방침에 동의합니다',
+    description: '계정·가입 정보의 처리 내용을 확인할 수 있어요.',
+    detail: privacyPolicyDetail,
+  },
 ]
-
-export const privacyNotice = '개인정보 처리방침을 확인했습니다'
-
-export const privacyPolicyDetail = {
-  title: '개인정보 처리방침',
-  version: 'v0.2 · 2026-09-20 시행',
-  sections: [
-    { heading: '수집 항목', content: '계정·필수 가입 정보로 이메일, 비밀번호 해시, 닉네임, 출생연도, 성별, 가입·인증 기록을 처리합니다.' },
-    { heading: '처리 목적', content: '회원 식별, 로그인, 연령 확인 및 서비스 제공을 위해 처리합니다. 출생연도·성별은 별도 선택 동의 없이 AI 맞춤 추천·분석에 이용하지 않습니다.' },
-    { heading: '보유 기간', content: '회원 탈퇴 시까지 보유하며, 법령상 보관 의무가 있는 정보는 해당 기간 동안 보관합니다.' },
-    { heading: '이용자 권리', content: '회원은 설정에서 프로필 조회·수정·삭제, 선택 동의 철회와 탈퇴를 요청할 수 있습니다.' },
-  ],
-}

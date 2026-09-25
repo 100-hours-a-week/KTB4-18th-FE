@@ -14,7 +14,7 @@ import {
 import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { signup } from '../api/signupApi'
-import { privacyNotice, privacyPolicyDetail, signupTerms } from '../model/signupTerms'
+import { signupTerms } from '../model/signupTerms'
 import type { SignupTerm } from '../model/signupTerms'
 import './SignupPage.css'
 
@@ -658,13 +658,6 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
               <Checkbox.Label>전체 동의</Checkbox.Label>
               <Checkbox.HiddenInput />
             </Checkbox.Root>
-            <button
-              className="signup-privacy text-body3-reading-regular"
-              type="button"
-              onClick={() => setSelectedTerm(privacyPolicyDetail)}
-            >
-              [확인] {privacyNotice}
-            </button>
             <Checkbox.Group className="signup-check-list">
               {signupTerms.map((term) => (
                 <div className="signup-term-row" key={term.id}>
