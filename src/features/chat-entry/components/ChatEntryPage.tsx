@@ -8,6 +8,7 @@ import {
   type ChatRoomSummary,
 } from '../../../api/chatRooms';
 import { useChatLocation } from '../../../hooks/useChatLocation';
+import { useChatRoomLocationRevalidation } from '../hooks/useChatRoomLocationRevalidation';
 
 export interface ActiveChatRoom {
   room: ChatRoomSummary;
@@ -18,6 +19,7 @@ interface ChatEntryPageProps {
   accessToken: string | null;
   activeChatRoom: ActiveChatRoom | null;
   onEntered: (activeChatRoom: ActiveChatRoom) => void;
+  onMembershipEnded: () => void;
   onLogin: () => void;
 }
 
@@ -40,6 +42,7 @@ export function ChatEntryPage({
   accessToken,
   activeChatRoom,
   onEntered,
+  onMembershipEnded,
   onLogin,
 }: ChatEntryPageProps) {
   const location = useChatLocation({ accessToken });
@@ -49,9 +52,20 @@ export function ChatEntryPage({
   const [entryError, setEntryError] = useState('');
   const handledTokenRef = useRef<string | null>(null);
   const entryRequestRef = useRef<AbortController | null>(null);
+  const membershipEndedRef = useRef(false);
+  const handleMembershipEnded = useCallback(() => {
+    membershipEndedRef.current = true;
+    onMembershipEnded();
+  }, [onMembershipEnded]);
+  const revalidation = useChatRoomLocationRevalidation({
+    accessToken,
+    activeChatRoom,
+    onMoved: onEntered,
+    onMembershipEnded: handleMembershipEnded,
+  });
 
   useEffect(() => {
-    if (!activeChatRoom) {
+    if (!activeChatRoom && !membershipEndedRef.current) {
       void requestLocation();
     }
   }, [activeChatRoom, requestLocation]);
@@ -111,6 +125,7 @@ export function ChatEntryPage({
   useEffect(() => () => entryRequestRef.current?.abort(), []);
 
   const retryEntry = useCallback(() => {
+    membershipEndedRef.current = false;
     handledTokenRef.current = null;
     setPhase('locating');
     setEntryError('');
@@ -118,7 +133,10 @@ export function ChatEntryPage({
   }, [retryLocation]);
 
   const displayedRoom = activeChatRoom;
-  const error = entryError || location.error;
+  const error =
+    entryError ||
+    location.error ||
+    (revalidation.status === 'roomFull' ? revalidation.message : '');
   const isAuthenticationError =
     !accessToken || (entryError && entryError.includes('로그인이 만료'));
 
@@ -140,6 +158,18 @@ export function ChatEntryPage({
             <p className="chat-entry-placeholder text-body2-normal-regular">
               메시지 목록과 실시간 연결은 다음 작업에서 제공됩니다.
             </p>
+            {revalidation.message && (
+              <p
+                className="chat-entry-description text-body2-normal-regular"
+                role={
+                  revalidation.status === 'roomFull' || revalidation.status === 'error'
+                    ? 'alert'
+                    : 'status'
+                }
+              >
+                {revalidation.message}
+              </p>
+            )}
           </>
         ) : error || phase === 'error' ? (
           <div className="chat-entry-error" role="alert">

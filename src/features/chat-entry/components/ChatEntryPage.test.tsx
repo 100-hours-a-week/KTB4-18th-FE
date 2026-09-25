@@ -41,6 +41,7 @@ function Harness() {
       accessToken="access-token"
       activeChatRoom={activeChatRoom}
       onEntered={setActiveChatRoom}
+      onMembershipEnded={() => setActiveChatRoom(null)}
       onLogin={vi.fn()}
     />
   );

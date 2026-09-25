@@ -101,6 +101,7 @@ function App() {
         accessToken={accessToken}
         activeChatRoom={activeChatRoom}
         onEntered={setActiveChatRoom}
+        onMembershipEnded={() => setActiveChatRoom(null)}
         onLogin={() => navigate(LOGIN_PATH)}
       />
     );
