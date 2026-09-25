@@ -2,7 +2,7 @@ import { ActionButton } from '@seed-design/react';
 import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 
-import { login, LoginRequestError } from '../api/loginApi';
+import { login, LoginRequestError, type LoginSuccessResponse } from '../api/loginApi';
 
 type FieldErrors = {
   email?: string;
@@ -10,7 +10,7 @@ type FieldErrors = {
 };
 
 type LoginPageProps = {
-  onLoginSuccess?: () => void;
+  onLoginSuccess?: (response: LoginSuccessResponse) => void;
   onLoginStart?: () => void;
   onLoginFailure?: () => void;
 };
@@ -80,9 +80,9 @@ export function LoginPage({ onLoginSuccess, onLoginStart, onLoginFailure }: Logi
     isSubmittingRef.current = true;
     onLoginStart?.();
     try {
-      await login({ email: email.trim().toLowerCase(), password });
+      const response = await login({ email: email.trim().toLowerCase(), password });
       if (onLoginSuccess) {
-        onLoginSuccess();
+        onLoginSuccess(response);
         return;
       }
       setIsLoginSuccessful(true);

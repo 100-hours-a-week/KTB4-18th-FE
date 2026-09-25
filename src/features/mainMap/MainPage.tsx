@@ -15,7 +15,7 @@ const routes: Record<MainDestination | "recordCreate", Route> = {
   map: { destination: "map", path: "/" },
   records: { destination: "records", path: "/music-records" },
   recordCreate: { destination: "recordCreate", path: "/music-records/new" },
-  chatRooms: { destination: "chatRooms", path: "/chatbot" },
+  chatRooms: { destination: "chatRooms", path: "/chat" },
   my: { destination: "my", path: "/my" },
 };
 
@@ -205,6 +205,7 @@ type MainPageProps = {
   onLogin: () => void;
   onLogout: () => void;
   onRetryAuth: () => void;
+  onChat: () => void;
 };
 
 export function MainPage({
@@ -216,11 +217,18 @@ export function MainPage({
   onLogin,
   onLogout,
   onRetryAuth,
+  onChat,
 }: MainPageProps) {
   const route = getRoute(window.location.pathname);
 
   function navigate(destination: MainDestination | "recordCreate") {
+    if (destination === "chatRooms") {
+      onChat();
+      return;
+    }
+
     const nextRoute = routes[destination];
+    navigateTo(nextRoute.path);
     navigateTo(nextRoute.path);
   }
 

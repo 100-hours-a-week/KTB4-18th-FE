@@ -15,6 +15,10 @@ import {
   AUTH_EXPIRED_EVENT, AuthRequestError, clearAccessToken, getAccessToken, refreshAccessToken,
   type AuthStatus,
 } from "./features/auth-login/api/authSession";
+import {
+  ChatEntryPage,
+  type ActiveChatRoom,
+} from "./features/chat-entry/components/ChatEntryPage";
 import { SignupPage } from "./features/user-signup/components/SignupPage";
 import { useVoiceInput } from "./hooks/useVoiceInput";
 import type { RecommendationInputType } from "./api/recommendations";
@@ -28,6 +32,7 @@ const SIGNUP_PATH = "/signup";
 const CHATBOT_PATH = "/chatbot";
 const MUSIC_RECORDS_PATH = "/music-records";
 const MUSIC_RECORD_CREATE_PATH = "/music-records/new";
+const CHAT_PATH = "/chat";
 
 type ChatMessage = { id: string; sentAt: Date } & (
   { role: "user"; text: string } | { role: "assistant"; result: Recommendation }
@@ -41,6 +46,7 @@ function App() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>('restoring');
   const authIntent = useRef(0);
   const isLoggingOutRef = useRef(false);
+  const [activeChatRoom, setActiveChatRoom] = useState<ActiveChatRoom | null>(null);
   const [logoutError, setLogoutError] = useState("");
 
   useEffect(() => {
@@ -73,8 +79,11 @@ function App() {
   useEffect(() => { queueMicrotask(() => void restore()); }, [restore]);
 
   useEffect(() => {
-    const onExpired = () => setAuthStatus((current) =>
-      current === 'logging-in' || current === 'logging-out' ? current : 'guest');
+    const onExpired = () => {
+      setAuthStatus((current) =>
+        current === 'logging-in' || current === 'logging-out' ? current : 'guest');
+      setActiveChatRoom(null);
+    };
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
   }, []);
@@ -99,6 +108,7 @@ function App() {
       await logout();
       clearAccessToken();
       setAuthStatus('guest');
+      setActiveChatRoom(null);
       navigate(LOGIN_PATH);
     } catch (error) {
       setAuthStatus(getAccessToken() ? 'authenticated' : 'retryable-error');
@@ -129,6 +139,19 @@ function App() {
   const detailMatch = /^\/music-records\/([1-9]\d*)$/.exec(pathname);
   if (detailMatch) return <MusicRecordDetailPage recordId={Number(detailMatch[1])} />;
 
+  if (pathname === CHAT_PATH) {
+    if (authStatus === 'restoring') return <main role="status">로그인 확인 중</main>;
+    return (
+      <ChatEntryPage
+        accessToken={getAccessToken()}
+        activeChatRoom={activeChatRoom}
+        onEntered={setActiveChatRoom}
+        onMembershipEnded={() => setActiveChatRoom(null)}
+        onLogin={() => navigate(LOGIN_PATH)}
+      />
+    );
+  }
+
   return (
     <MainPage
       isAuthenticated={authStatus === 'authenticated' || (authStatus === 'retryable-error' && Boolean(getAccessToken()))}
@@ -139,6 +162,7 @@ function App() {
       logoutError={logoutError}
       onLogin={() => navigate(LOGIN_PATH)}
       onLogout={handleLogout}
+      onChat={() => navigate(authStatus === 'authenticated' ? CHAT_PATH : LOGIN_PATH)}
     />
   );
 }
