@@ -11,11 +11,11 @@ import {
   RadioGroupField,
   TextField,
 } from '@seed-design/react'
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { signup } from '../api/signupApi'
-import { signupTerms } from '../model/signupTerms'
-import type { SignupTerm } from '../model/signupTerms'
+import { getCurrentTerms, getTermDetail } from '../api/termsApi'
+import type { CurrentTerm, TermDetail } from '../api/termsApi'
 import './SignupPage.css'
 
 type Gender = '' | 'MALE' | 'FEMALE'
@@ -186,8 +186,6 @@ const checkIcon = (
   </svg>
 )
 
-type TermDetail = SignupTerm['detail']
-
 function convertHangulToKeyboardInput(value: string) {
   return Array.from(value)
     .map((character) => {
@@ -263,6 +261,8 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
   const [birthYear, setBirthYear] = useState('')
   const [gender, setGender] = useState<Gender>('')
   const [agreedTermIds, setAgreedTermIds] = useState<number[]>([])
+  const [currentTerms, setCurrentTerms] = useState<CurrentTerm[]>([])
+  const [termsError, setTermsError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<InputField, string>>>({})
   const [touchedFields, setTouchedFields] = useState<Partial<Record<InputField, boolean>>>({})
   const [selectedTerm, setSelectedTerm] = useState<TermDetail | null>(null)
@@ -270,18 +270,55 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  const requiredTermIds = useMemo(
-    () => signupTerms.filter((term) => term.required).map((term) => term.id),
-    [],
-  )
+  useEffect(() => {
+    const controller = new AbortController()
+    getCurrentTerms(controller.signal)
+      .then((items) => {
+        setCurrentTerms(items)
+        setTermsError('')
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setTermsError('약관을 불러오지 못했어요. 다시 시도해 주세요.')
+      })
+    return () => controller.abort()
+  }, [])
+
+  async function reloadTerms() {
+    try {
+      const items = await getCurrentTerms()
+      setCurrentTerms(items)
+      setAgreedTermIds((previous) => previous.filter((id) => items.some((item) => item.terms_id === id)))
+      setTermsError('')
+      return items
+    } catch {
+      setCurrentTerms([])
+      setAgreedTermIds([])
+      setTermsError('약관을 불러오지 못했어요. 다시 시도해 주세요.')
+      return null
+    }
+  }
+
+  async function showTermDetail(term: CurrentTerm) {
+    try {
+      setSelectedTerm(await getTermDetail(term))
+      setTermsError('')
+    } catch {
+      setSelectedTerm(null)
+      setTermsError('약관 내용을 불러오지 못했어요. 다시 시도해 주세요.')
+    }
+  }
+
+  const requiredTermIds = currentTerms.filter((term) => term.is_required).map((term) => term.terms_id)
   const emailLocalPart = email.split('@')[0]
   const formValid =
     !getInputError('email', email) &&
     !getInputError('password', password) &&
     !getInputError('nickname', nickname) &&
     !getInputError('birthYear', birthYear) &&
+    currentTerms.length === 6 && !termsError &&
     requiredTermIds.every((id) => agreedTermIds.includes(id))
-  const allTermsSelected = signupTerms.every((term) => agreedTermIds.includes(term.id))
+  const allTermsSelected = currentTerms.length === 6 &&
+    currentTerms.every((term) => agreedTermIds.includes(term.terms_id))
 
   function toggleTerm(id: number, checked: boolean) {
     setAgreedTermIds((current) =>
@@ -290,7 +327,7 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
   }
 
   function toggleAllTerms(checked: boolean) {
-    setAgreedTermIds(checked ? signupTerms.map((term) => term.id) : [])
+    setAgreedTermIds(checked ? currentTerms.map((term) => term.terms_id) : [])
   }
 
   function setFieldError(field: InputField, message?: string) {
@@ -428,7 +465,14 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
       setSuccess(`회원가입이 완료되었어요. 회원 번호: ${result.data.user_id}`)
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'internal server error'
-      setError(errorMessages[message] ?? errorMessages['internal server error'])
+      if (message === 'invalid request') {
+        const refreshed = await reloadTerms()
+        const changed = refreshed && refreshed.some((term) =>
+          !currentTerms.some((previous) => previous.type === term.type && previous.terms_id === term.terms_id))
+        setError(changed ? '약관이 변경되었어요. 현재 약관을 확인하고 다시 동의해 주세요.' : errorMessages[message])
+      } else {
+        setError(errorMessages[message] ?? errorMessages['internal server error'])
+      }
     } finally {
       setSubmitting(false)
     }
@@ -651,6 +695,7 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
               checked={allTermsSelected}
               onCheckedChange={toggleAllTerms}
               className="signup-check-all"
+              disabled={currentTerms.length !== 6}
             >
               <Checkbox.Control>
                 <Checkbox.Indicator checked={checkIcon} />
@@ -659,12 +704,13 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
               <Checkbox.HiddenInput />
             </Checkbox.Root>
             <Checkbox.Group className="signup-check-list">
-              {signupTerms.map((term) => (
-                <div className="signup-term-row" key={term.id}>
+              {currentTerms.map((term) => {
+                const label = `${term.is_required ? '[필수]' : '[선택]'} ${term.title}`
+                return <div className="signup-term-row" key={term.terms_id}>
                   <Checkbox.Root
-                    checked={agreedTermIds.includes(term.id)}
-                    onCheckedChange={(checked) => toggleTerm(term.id, checked)}
-                    aria-label={term.label}
+                    checked={agreedTermIds.includes(term.terms_id)}
+                    onCheckedChange={(checked) => toggleTerm(term.terms_id, checked)}
+                    aria-label={label}
                   >
                     <Checkbox.Control>
                       <Checkbox.Indicator checked={checkIcon} />
@@ -675,17 +721,18 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
                     <button
                       className="signup-term-link"
                       type="button"
-                      onClick={() => setSelectedTerm(term.detail)}
+                      onClick={() => showTermDetail(term)}
                     >
-                      {term.label}
+                      {label}
                     </button>
                     <span className="signup-term-description text-caption-regular">
-                      {term.description}
+                      {term.is_required ? '가입하려면 이 약관에 동의해야 합니다.' : '선택적으로 동의할 수 있어요.'}
                     </span>
                   </div>
                 </div>
-              ))}
+              })}
             </Checkbox.Group>
+            {termsError && <p role="alert">{termsError} <button type="button" onClick={reloadTerms}>다시 시도</button></p>}
           </section>
 
           {error && (
@@ -723,12 +770,7 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
               <BottomSheet.CloseButton aria-label="약관 상세 닫기">닫기</BottomSheet.CloseButton>
             </BottomSheet.Header>
             <BottomSheet.Body className="signup-term-sheet-body">
-              {selectedTerm?.sections.map((section) => (
-                <section key={section.heading} className="signup-term-sheet-section">
-                  <h3 className="text-label1-normal-semibold">{section.heading}</h3>
-                  <p className="text-body3-reading-regular">{section.content}</p>
-                </section>
-              ))}
+              <p className="text-body3-reading-regular">{selectedTerm?.content}</p>
             </BottomSheet.Body>
           </BottomSheet.Content>
         </BottomSheet.Positioner>
