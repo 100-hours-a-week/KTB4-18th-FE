@@ -10,6 +10,7 @@ import {
   MusicRecordListPage,
 } from './features/music-record/components/MusicRecordPages';
 import { MusicRecordDetailPage } from './features/music-record/components/MusicRecordDetailPage';
+import { MyPage } from './features/mypage/components/MyPage';
 import { logout, LogoutRequestError } from './features/auth-login/api/logoutApi';
 import {
   AUTH_EXPIRED_EVENT,
@@ -34,6 +35,7 @@ const CHATBOT_PATH = '/chatbot';
 const MUSIC_RECORDS_PATH = '/music-records';
 const MUSIC_RECORD_CREATE_PATH = '/music-records/new';
 const CHAT_PATH = '/chat';
+const MY_PATH = '/my';
 
 type ChatMessage = { id: string; sentAt: Date } & (
   { role: 'user'; text: string } | { role: 'assistant'; result: Recommendation }
@@ -126,6 +128,15 @@ function App() {
     }
   };
 
+  const handleWithdrawalComplete = () => {
+    authIntent.current += 1;
+    clearAccessToken();
+    setAuthStatus('guest');
+    setActiveChatRoom(null);
+    setLogoutError('');
+    navigate(LOGIN_PATH);
+  };
+
   if (pathname === LOGIN_PATH) {
     return (
       <LoginPage
@@ -159,6 +170,17 @@ function App() {
         onEntered={setActiveChatRoom}
         onMembershipEnded={() => setActiveChatRoom(null)}
         onLogin={() => navigate(LOGIN_PATH)}
+      />
+    );
+  }
+
+  if (pathname === MY_PATH) {
+    return (
+      <MyPage
+        accessToken={getAccessToken()}
+        onLogin={() => navigate(LOGIN_PATH)}
+        onLogout={handleLogout}
+        onWithdrawn={handleWithdrawalComplete}
       />
     );
   }

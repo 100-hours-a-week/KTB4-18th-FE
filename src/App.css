@@ -91,6 +91,383 @@
   color: var(--color-icon-interactive-primary);
 }
 
+.mypage-screen {
+  box-sizing: border-box;
+  width: min(100%, 42.5rem);
+  min-height: 100svh;
+  margin: 0 auto;
+  padding: max(1.25rem, env(safe-area-inset-top)) 1rem calc(2rem + env(safe-area-inset-bottom));
+  color: var(--color-text-primary);
+  background: var(--color-bg-primary);
+}
+
+.mypage-header {
+  display: grid;
+  min-height: 2.75rem;
+  grid-template-columns: 2.75rem 1fr 2.75rem;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+
+.mypage-header a {
+  color: var(--color-text-primary);
+  font-size: 2rem;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.mypage-header h1,
+.mypage-card h2,
+.mypage-dialog h3 {
+  margin: 0;
+}
+
+.mypage-header h1 {
+  font-size: var(--text-title3);
+  text-align: center;
+}
+
+.mypage-header-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.mypage-icon-button {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  color: var(--color-text-primary);
+  background: transparent;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.mypage-summary,
+.mypage-card,
+.mypage-empty {
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 1.25rem;
+  background: var(--color-bg-primary);
+}
+
+.mypage-summary {
+  display: flex;
+  gap: 0.875rem;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  padding: 1.125rem;
+}
+
+.mypage-avatar {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  flex: none;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  color: var(--color-text-interactive-inverse);
+  background: var(--color-bg-interactive-primary);
+  font-size: var(--text-title3);
+  font-weight: 700;
+}
+
+.mypage-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mypage-avatar-placeholder {
+  font-size: 1.75rem;
+}
+
+.mypage-summary > div:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 0.2rem;
+}
+
+.mypage-summary > div:nth-child(2) strong {
+  font-size: var(--text-body1-normal);
+}
+.mypage-summary span,
+.mypage-summary small,
+.mypage-card > p {
+  color: var(--color-text-secondary);
+}
+.mypage-summary span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-body3-normal);
+}
+.mypage-summary small {
+  font-size: var(--text-caption);
+}
+
+.mypage-song-count {
+  display: grid;
+  min-width: 4.25rem;
+  margin-left: auto;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--color-border-tertiary);
+  text-align: center;
+}
+
+.mypage-song-count strong {
+  font-size: var(--text-title3);
+}
+.mypage-song-count span {
+  font-size: var(--text-caption);
+}
+
+.mypage-card {
+  display: grid;
+  gap: 1rem;
+  margin-top: 0.875rem;
+  padding: 1.25rem;
+}
+
+.mypage-card h2 {
+  font-size: var(--text-title3);
+}
+.mypage-card--danger {
+  background: var(--color-bg-error);
+}
+.mypage-card--danger h2 {
+  color: var(--color-text-error);
+}
+
+.mypage-form {
+  display: grid;
+  gap: 1rem;
+}
+.mypage-form label {
+  display: grid;
+  gap: 0.45rem;
+  color: var(--color-text-secondary);
+  font-size: var(--text-label1-normal);
+  font-weight: 600;
+}
+.mypage-form input,
+.mypage-form select,
+.mypage-dialog input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 2.875rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 0.75rem;
+  color: var(--color-text-primary);
+  background: var(--color-bg-primary);
+}
+
+.mypage-form input:focus,
+.mypage-form select:focus,
+.mypage-dialog input:focus {
+  outline: 2px solid var(--color-border-interactive-primary);
+  outline-offset: 1px;
+}
+.mypage-notice,
+.mypage-page-error {
+  margin: 0;
+  color: var(--color-text-error);
+  font-size: var(--text-body3-normal);
+}
+
+.mypage-switch-row {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--color-border-tertiary);
+}
+
+.mypage-switch-row:last-of-type {
+  border-bottom: 0;
+}
+.mypage-switch-row span {
+  display: grid;
+  gap: 0.25rem;
+}
+.mypage-switch-row small {
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+}
+.mypage-switch-row input {
+  width: 2.75rem;
+  height: 1.5rem;
+  accent-color: var(--color-bg-interactive-primary);
+}
+
+.mypage-link,
+.mypage-text-button {
+  display: flex;
+  justify-content: space-between;
+  color: var(--color-text-primary);
+  font-size: var(--text-body2-normal);
+  text-align: left;
+  text-decoration: none;
+}
+
+.mypage-navigation {
+  display: grid;
+  margin-top: 0.875rem;
+  border-top: 1px solid var(--color-border-tertiary);
+}
+
+.mypage-navigation-row {
+  display: flex;
+  width: 100%;
+  min-height: 3.5rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.875rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--color-border-tertiary);
+  color: var(--color-text-primary);
+  background: transparent;
+  font-size: var(--text-body2-normal);
+  text-align: left;
+}
+
+.mypage-logout-button,
+.mypage-inline-button {
+  padding: 0;
+  border: 0;
+  color: var(--color-text-secondary);
+  background: transparent;
+  font-size: var(--text-body3-normal);
+}
+
+.mypage-logout-button {
+  text-decoration: underline;
+  text-underline-offset: 0.2rem;
+}
+
+.mypage-logout-button {
+  display: block;
+  margin-top: 2rem;
+}
+
+.mypage-term-sheet-body {
+  white-space: pre-wrap;
+}
+
+.mypage-navigation-row:focus-visible,
+.mypage-inline-button:focus-visible,
+.mypage-logout-button:focus-visible,
+.mypage-icon-button:focus-visible {
+  outline: 2px solid var(--color-border-interactive-primary);
+  outline-offset: 2px;
+}
+
+.mypage-recommendations {
+  gap: 0;
+}
+
+.mypage-recommendations > h2,
+.mypage-recommendations > .mypage-notice,
+.mypage-recommendations > .mypage-loading,
+.mypage-recommendations > .mypage-inline-button {
+  margin-top: 1rem;
+}
+
+.mypage-recommendations > h2:first-child {
+  margin-top: 0;
+}
+
+.mypage-recommendation-item {
+  display: flex;
+  min-height: 4.5rem;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border-tertiary);
+}
+
+.mypage-recommendation-item > div:first-child {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.mypage-recommendation-item span,
+.mypage-recommendation-item small {
+  color: var(--color-text-secondary);
+}
+
+.mypage-recommendation-item span {
+  font-size: var(--text-body3-normal);
+}
+
+.mypage-recommendation-item small {
+  font-size: var(--text-caption);
+}
+
+.mypage-text-button {
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  color: var(--color-text-error);
+  background: transparent;
+}
+.mypage-empty {
+  display: grid;
+  gap: 1rem;
+  max-width: 24rem;
+  margin: 22svh auto 0;
+  padding: 1.5rem;
+  text-align: center;
+}
+.mypage-empty h1,
+.mypage-empty p {
+  margin: 0;
+}
+.mypage-empty p {
+  color: var(--color-text-secondary);
+}
+.mypage-loading {
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.mypage-dialog-backdrop {
+  position: fixed;
+  z-index: 10;
+  inset: 0;
+  display: grid;
+  padding: 1rem;
+  place-items: center;
+  background: rgb(0 0 0 / 48%);
+}
+.mypage-dialog {
+  display: grid;
+  width: min(100%, 23rem);
+  gap: 1rem;
+  padding: 1.5rem;
+  border-radius: 1.25rem;
+  background: var(--color-bg-primary);
+}
+.mypage-dialog p {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+.mypage-dialog > div {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+.mypage-dialog > div > button:first-child {
+  border: 0;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  color: var(--color-text-primary);
+  background: var(--color-bg-tertiary);
+}
+
 button {
   font: inherit;
 }
