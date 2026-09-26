@@ -1,5 +1,4 @@
 @theme inline {
-  /* Color/Text */
   --color-text-primary: var(--color-neutral-900);
   --color-text-secondary: var(--color-neutral-700);
   --color-text-tertiary: var(--color-neutral-500);
@@ -9,7 +8,6 @@
   --color-text-success: var(--color-green-500);
   --color-text-warning: var(--color-yellow-500);
 
-  /* Color/Text/interactive */
   --color-text-interactive-primary: var(--color-orange-500);
   --color-text-interactive-primary-hover: var(--color-orange-600);
   --color-text-interactive-primary-press: var(--color-orange-700);
@@ -17,7 +15,6 @@
   --color-text-interactive-secondary: var(--color-neutral-700);
   --color-text-interactive-inverse: var(--color-white);
 
-  /* Color/Icon */
   --color-icon-primary: var(--color-neutral-900);
   --color-icon-secondary: var(--color-neutral-700);
   --color-icon-tertiary: var(--color-neutral-500);
@@ -33,7 +30,6 @@
   --color-icon-interactive-secondary: var(--color-neutral-700);
   --color-icon-interactive-inverse: var(--color-white);
 
-  /* Color/Bg */
   --color-bg-primary: var(--color-white);
   --color-bg-secondary: var(--color-neutral-50);
   --color-bg-tertiary: var(--color-neutral-100);
@@ -51,7 +47,6 @@
   --color-bg-interactive-secondary: var(--color-neutral-200);
   --color-bg-interactive-inverse: var(--color-neutral-900);
 
-  /* Color/Border */
   --color-border-black: var(--color-black);
   --color-border-white: var(--color-white);
   --color-border-primary: var(--color-neutral-400);
@@ -68,7 +63,6 @@
   --color-border-interactive-secondary: var(--color-neutral-700);
   --color-border-interactive-inverse: var(--color-white);
 
-  /* Color/Text|Icon|Border/Opacity */
   --color-text-opacity-default: rgb(0 0 0 / 16%);
   --color-text-opacity-assistive: rgb(0 0 0 / 28%);
   --color-text-opacity-alternative: rgb(0 0 0 / 61%);
@@ -82,7 +76,6 @@
   --color-border-opacity-alternative: var(--color-text-opacity-alternative);
   --color-border-opacity-normal: var(--color-text-opacity-normal);
 
-  /* Color/Bg/Opacity */
   --color-bg-opacity-default: rgb(229 229 229 / 16%);
   --color-bg-opacity-assistive: rgb(229 229 229 / 28%);
   --color-bg-opacity-alternative: rgb(229 229 229 / 61%);
