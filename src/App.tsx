@@ -20,7 +20,7 @@ import {
   refreshAccessToken,
   type AuthStatus,
 } from './features/auth-login/api/authSession';
-import { ChatEntryPage, type ActiveChatRoom } from './features/chat-entry/components/ChatEntryPage';
+import { ChatEntryPage } from './features/chat-entry/components/ChatEntryPage';
 import { SignupPage } from './features/user-signup/components/SignupPage';
 import { useVoiceInput } from './hooks/useVoiceInput';
 import type { RecommendationInputType } from './api/recommendations';
@@ -49,7 +49,6 @@ function App() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>('restoring');
   const authIntent = useRef(0);
   const isLoggingOutRef = useRef(false);
-  const [activeChatRoom, setActiveChatRoom] = useState<ActiveChatRoom | null>(null);
   const [logoutError, setLogoutError] = useState('');
 
   useEffect(() => {
@@ -88,7 +87,6 @@ function App() {
       setAuthStatus((current) =>
         current === 'logging-in' || current === 'logging-out' ? current : 'guest',
       );
-      setActiveChatRoom(null);
     };
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
@@ -114,7 +112,6 @@ function App() {
       await logout();
       clearAccessToken();
       setAuthStatus('guest');
-      setActiveChatRoom(null);
       navigate(LOGIN_PATH);
     } catch (error) {
       setAuthStatus(getAccessToken() ? 'authenticated' : 'retryable-error');
@@ -132,7 +129,6 @@ function App() {
     authIntent.current += 1;
     clearAccessToken();
     setAuthStatus('guest');
-    setActiveChatRoom(null);
     setLogoutError('');
     navigate(LOGIN_PATH);
   };
@@ -162,16 +158,7 @@ function App() {
   if (detailMatch) return <MusicRecordDetailPage recordId={Number(detailMatch[1])} />;
 
   if (pathname === CHAT_PATH) {
-    if (authStatus === 'restoring') return <main role="status">로그인 확인 중</main>;
-    return (
-      <ChatEntryPage
-        accessToken={getAccessToken()}
-        activeChatRoom={activeChatRoom}
-        onEntered={setActiveChatRoom}
-        onMembershipEnded={() => setActiveChatRoom(null)}
-        onLogin={() => navigate(LOGIN_PATH)}
-      />
-    );
+    return <ChatEntryPage accessToken={getAccessToken()} />;
   }
 
   if (pathname === MY_PATH) {
@@ -198,7 +185,7 @@ function App() {
       logoutError={logoutError}
       onLogin={() => navigate(LOGIN_PATH)}
       onLogout={handleLogout}
-      onChat={() => navigate(authStatus === 'authenticated' ? CHAT_PATH : LOGIN_PATH)}
+      onChat={() => navigate(CHAT_PATH)}
     />
   );
 }
