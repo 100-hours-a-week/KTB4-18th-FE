@@ -102,7 +102,7 @@ function PlaceholderSection({ destination }: { destination: PlaceholderDestinati
   const copy = {
     records: ['기록', '음악으로 남긴 오늘의 순간을 모아볼까요?'],
     recordCreate: ['새 기록', '지금 떠오른 이야기를 음악과 함께 남겨보세요.'],
-    chatRooms: ['채팅방', '취향이 닿는 사람들과 이야기를 나눠요.'],
+    chatRooms: ['채팅', '취향이 닿는 사람들과 이야기를 나눠요.'],
     my: ['마이', '나의 음악 여정을 한눈에 확인해요.'],
   } as const;
   const [title, description] = copy[destination];
@@ -136,7 +136,7 @@ function Gnb({ currentDestination, onNavigate }: GnbProps) {
   const items: GnbItem[] = [
     { destination: 'map', label: '지도', icon: GridIcon },
     { destination: 'records', label: '기록', icon: RecordIcon },
-    { destination: 'chatRooms', label: '채팅방', icon: ChatIcon },
+    { destination: 'chatRooms', label: '채팅', icon: ChatIcon },
     { destination: 'my', label: '마이', icon: MyIcon },
   ];
 
