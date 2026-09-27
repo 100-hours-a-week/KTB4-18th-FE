@@ -10,6 +10,7 @@ import {
   MusicRecordListPage,
 } from './features/music-record/components/MusicRecordPages';
 import { MusicRecordDetailPage } from './features/music-record/components/MusicRecordDetailPage';
+import { MyPage } from './features/mypage/components/MyPage';
 import { logout, LogoutRequestError } from './features/auth-login/api/logoutApi';
 import {
   AUTH_EXPIRED_EVENT,
@@ -34,6 +35,7 @@ const CHATBOT_PATH = '/chatbot';
 const MUSIC_RECORDS_PATH = '/music-records';
 const MUSIC_RECORD_CREATE_PATH = '/music-records/new';
 const CHAT_PATH = '/chat';
+const MY_PATH = '/my';
 
 type ChatMessage = { id: string; sentAt: Date } & (
   { role: 'user'; text: string } | { role: 'assistant'; result: Recommendation }
@@ -126,6 +128,15 @@ function App() {
     }
   };
 
+  const handleWithdrawalComplete = () => {
+    authIntent.current += 1;
+    clearAccessToken();
+    setAuthStatus('guest');
+    setActiveChatRoom(null);
+    setLogoutError('');
+    navigate(LOGIN_PATH);
+  };
+
   if (pathname === LOGIN_PATH) {
     return (
       <LoginPage
@@ -163,6 +174,17 @@ function App() {
     );
   }
 
+  if (pathname === MY_PATH) {
+    return (
+      <MyPage
+        accessToken={getAccessToken()}
+        onLogin={() => navigate(LOGIN_PATH)}
+        onLogout={handleLogout}
+        onWithdrawn={handleWithdrawalComplete}
+      />
+    );
+  }
+
   return (
     <MainPage
       isAuthenticated={
@@ -182,6 +204,7 @@ function App() {
 }
 
 function ChatbotPage() {
+  const accessToken = getAccessToken();
   const [conversationKey] = useState(() => crypto.randomUUID());
   const [openedAt] = useState(() => new Date());
   const [prompt, setPrompt] = useState('');
@@ -199,7 +222,7 @@ function ChatbotPage() {
     setInputType('VOICE');
     requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
-  const voice = useVoiceInput({ onTranscript: handleTranscript });
+  const voice = useVoiceInput({ accessToken, onTranscript: handleTranscript });
   const resetVoiceForTextInput = voice.useTextInput;
 
   const useTextInput = useCallback(() => {
@@ -219,6 +242,10 @@ function ChatbotPage() {
     if (!text || requestRef.current) {
       return;
     }
+    if (!accessToken) {
+      setError('로그인이 만료되었습니다. 다시 로그인해 주세요.');
+      return;
+    }
 
     const controller = new AbortController();
     const messageId = crypto.randomUUID();
@@ -233,7 +260,13 @@ function ChatbotPage() {
     setPrompt('');
 
     try {
-      const result = await recommend(text, conversationKey, controller.signal, inputType);
+      const result = await recommend(
+        text,
+        conversationKey,
+        accessToken,
+        controller.signal,
+        inputType,
+      );
       setMessages((previous) => [
         ...previous,
         {

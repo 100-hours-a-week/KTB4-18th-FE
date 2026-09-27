@@ -131,6 +131,22 @@ export const getMusicRecords = (cursor?: string | null) =>
   fetchData<Page<MusicRecord>>(
     `/users/me/music-records${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
   );
+
+export async function getAllMusicRecords(): Promise<MusicRecord[]> {
+  const records: MusicRecord[] = [];
+  let cursor: string | null = null;
+
+  while (true) {
+    const page = await getMusicRecords(cursor);
+    records.push(...page.items);
+    if (!page.has_next) {
+      return records;
+    }
+    if (!page.next_cursor)
+      throw new MusicApiError(null, '다음 음악 기록 위치를 확인하지 못했습니다.');
+    cursor = page.next_cursor;
+  }
+}
 export const getMusicRecord = (recordId: number) =>
   fetchData<MusicRecordDetail>(`/music-records/${recordId}`);
 export const updateMusicRecord = (
