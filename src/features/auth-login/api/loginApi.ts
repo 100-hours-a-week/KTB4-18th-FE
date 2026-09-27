@@ -1,3 +1,5 @@
+import { getCsrfToken, runAuthTransition } from './authSession';
+
 // This module owns only the email/password login contract.
 export type LoginRequest = {
   email: string;
@@ -27,15 +29,23 @@ export class LoginRequestError extends Error {
 }
 
 export async function login(request: LoginRequest): Promise<LoginSuccessResponse> {
+  return runAuthTransition(() => submitLogin(request));
+}
+
+async function submitLogin(request: LoginRequest): Promise<LoginSuccessResponse> {
   let response: Response;
 
   try {
-    response = await fetch('/api/v1/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(request),
-    });
+    const csrf = await getCsrfToken();
+    response = await fetch(
+      `${(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api/v1/auth/login`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+        credentials: 'include',
+        body: JSON.stringify(request),
+      },
+    );
   } catch {
     throw new LoginRequestError(null);
   }
@@ -54,5 +64,6 @@ export async function login(request: LoginRequest): Promise<LoginSuccessResponse
     throw new LoginRequestError(500);
   }
 
+  sessionStorage.setItem('access_token', payload.data.access_token);
   return payload;
 }

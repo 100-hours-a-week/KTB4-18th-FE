@@ -1,5 +1,5 @@
 import { ActionButton } from '@seed-design/react';
-import { useEffect, useState } from 'react';
+import { navigate as navigateTo } from '../../shared/navigation';
 import type { JSX } from 'react';
 import { ZoneMapCanvas } from './ZoneMapCanvas';
 import { useMapZones } from './useMapZones';
@@ -13,8 +13,8 @@ type Route = {
 
 const routes: Record<MainDestination | 'recordCreate', Route> = {
   map: { destination: 'map', path: '/' },
-  records: { destination: 'records', path: '/records' },
-  recordCreate: { destination: 'recordCreate', path: '/records/new' },
+  records: { destination: 'records', path: '/music-records' },
+  recordCreate: { destination: 'recordCreate', path: '/music-records/new' },
   chatRooms: { destination: 'chatRooms', path: '/chat' },
   my: { destination: 'my', path: '/my' },
 };
@@ -183,30 +183,27 @@ function Gnb({ currentDestination, onNavigate }: GnbProps) {
 type MainPageProps = {
   isAuthenticated: boolean;
   isLoggingOut: boolean;
+  isRestoring: boolean;
+  isRetryableError: boolean;
   logoutError: string;
   onLogin: () => void;
   onLogout: () => void;
+  onRetryAuth: () => void;
   onChat: () => void;
 };
 
 export function MainPage({
   isAuthenticated,
   isLoggingOut,
+  isRestoring,
+  isRetryableError,
   logoutError,
   onLogin,
   onLogout,
+  onRetryAuth,
   onChat,
 }: MainPageProps) {
-  const [route, setRoute] = useState(() => getRoute(window.location.pathname));
-
-  useEffect(() => {
-    function syncRoute() {
-      setRoute(getRoute(window.location.pathname));
-    }
-
-    window.addEventListener('popstate', syncRoute);
-    return () => window.removeEventListener('popstate', syncRoute);
-  }, []);
+  const route = getRoute(window.location.pathname);
 
   function navigate(destination: MainDestination | 'recordCreate') {
     if (destination === 'chatRooms') {
@@ -215,11 +212,7 @@ export function MainPage({
     }
 
     const nextRoute = routes[destination];
-    if (window.location.pathname !== nextRoute.path) {
-      window.history.pushState(null, '', nextRoute.path);
-    }
-
-    setRoute(nextRoute);
+    navigateTo(nextRoute.path);
   }
 
   return (
@@ -232,12 +225,21 @@ export function MainPage({
           type="button"
           variant="brandSolid"
           size="small"
-          loading={isLoggingOut}
+          loading={isLoggingOut || isRestoring}
+          disabled={isLoggingOut || isRestoring}
           onClick={isAuthenticated ? onLogout : onLogin}
         >
-          {isAuthenticated ? '로그아웃' : '로그인'}
+          {isRestoring ? '로그인 확인 중' : isAuthenticated ? '로그아웃' : '로그인'}
         </ActionButton>
       </header>
+      {isRetryableError && (
+        <p role="alert" className="main-header__auth-error">
+          로그인 상태를 확인하지 못했습니다.{' '}
+          <button type="button" onClick={onRetryAuth}>
+            다시 확인
+          </button>
+        </p>
+      )}
       {logoutError && (
         <p className="main-header__auth-error text-body3-normal-regular" role="alert">
           {logoutError}

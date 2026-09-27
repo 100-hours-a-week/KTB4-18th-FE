@@ -33,7 +33,6 @@ export function RecommendationCards({ recommendation, activePreview, onPreviewCh
       return;
     }
     onPreviewChange(key);
-    // effect가 이전 플레이어를 정리한 뒤 새 클릭에 의한 재생을 시작합니다.
     const audio = new Audio(url);
     audioRef.current = audio;
     audio.ontimeupdate = () => {

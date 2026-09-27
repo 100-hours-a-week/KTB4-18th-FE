@@ -1,28 +1,22 @@
 @theme {
-  /* font-family */
   --font-sans: 'Pretendard', system-ui, sans-serif;
 
-  /* Title1 */
   --text-title1: 1.75rem;
   --text-title1--line-height: 2.375rem;
   --text-title1--letter-spacing: 0.014375rem;
 
-  /* Title2 */
   --text-title2: 1.5rem;
   --text-title2--line-height: 2rem;
   --text-title2--letter-spacing: -0.014375rem;
 
-  /* Title3 */
   --text-title3: 1.25rem;
   --text-title3--line-height: 1.75rem;
   --text-title3--letter-spacing: -0.0075rem;
 
-  /* Heading 1 */
   --text-heading1: 1.125rem;
   --text-heading1--line-height: 1.625rem;
   --text-heading1--letter-spacing: -0.005625rem;
 
-  /* body1 */
   --text-body1-normal: 1rem;
   --text-body1-normal--line-height: 1.5rem;
   --text-body1-normal--letter-spacing: 0.0035625rem;
@@ -30,7 +24,6 @@
   --text-body1-reading--line-height: 1.625rem;
   --text-body1-reading--letter-spacing: 0.0035625rem;
 
-  /* body2 */
   --text-body2-normal: 0.9375rem;
   --text-body2-normal--line-height: 1.375rem;
   --text-body2-normal--letter-spacing: 0.00625rem;
@@ -38,7 +31,6 @@
   --text-body2-reading--line-height: 1.5rem;
   --text-body2-reading--letter-spacing: 0.00625rem;
 
-  /* body3 */
   --text-body3-normal: 0.875rem;
   --text-body3-normal--line-height: 1.25rem;
   --text-body3-normal--letter-spacing: 0.0090625rem;
@@ -46,7 +38,6 @@
   --text-body3-reading--line-height: 1.375rem;
   --text-body3-reading--letter-spacing: 0.0090625rem;
 
-  /* label1 */
   --text-label1-normal: 0.8125rem;
   --text-label1-normal--line-height: 1.125rem;
   --text-label1-normal--letter-spacing: 0.01575rem;
@@ -54,7 +45,6 @@
   --text-label1-reading--line-height: 1.25rem;
   --text-label1-reading--letter-spacing: 0.01575rem;
 
-  /* label2 */
   --text-label2-normal: 0.75rem;
   --text-label2-normal--line-height: 1rem;
   --text-label2-normal--letter-spacing: 0.01575rem;
@@ -62,13 +52,11 @@
   --text-label2-reading--line-height: 1.125rem;
   --text-label2-reading--letter-spacing: 0.01575rem;
 
-  /* caption */
   --text-caption: 0.6875rem;
   --text-caption--line-height: 0.875rem;
   --text-caption--letter-spacing: 0.0194375rem;
 }
 
-/* Title1 */
 @utility text-title1-regular {
   @apply text-title1 font-normal;
 }
@@ -82,7 +70,6 @@
   @apply text-title1 font-bold;
 }
 
-/* Title2 */
 @utility text-title2-regular {
   @apply text-title2 font-normal;
 }
@@ -96,7 +83,6 @@
   @apply text-title2 font-bold;
 }
 
-/* Title3 */
 @utility text-title3-regular {
   @apply text-title3 font-normal;
 }
@@ -110,7 +96,6 @@
   @apply text-title3 font-bold;
 }
 
-/* Heading 1 */
 @utility text-heading1-regular {
   @apply text-heading1 font-normal;
 }
@@ -124,7 +109,6 @@
   @apply text-heading1 font-bold;
 }
 
-/* body1/line-height/normal */
 @utility text-body1-normal-regular {
   @apply text-body1-normal font-normal;
 }
@@ -138,7 +122,6 @@
   @apply text-body1-normal font-bold;
 }
 
-/* body1/line-height/reading */
 @utility text-body1-reading-regular {
   @apply text-body1-reading font-normal;
 }
@@ -152,7 +135,6 @@
   @apply text-body1-reading font-bold;
 }
 
-/* body2/line-height/normal */
 @utility text-body2-normal-regular {
   @apply text-body2-normal font-normal;
 }
@@ -166,7 +148,6 @@
   @apply text-body2-normal font-bold;
 }
 
-/* body2/line-height/reading */
 @utility text-body2-reading-regular {
   @apply text-body2-reading font-normal;
 }
@@ -180,7 +161,6 @@
   @apply text-body2-reading font-bold;
 }
 
-/* body3/line-height/normal */
 @utility text-body3-normal-regular {
   @apply text-body3-normal font-normal;
 }
@@ -194,7 +174,6 @@
   @apply text-body3-normal font-bold;
 }
 
-/* body3/line-height/reading */
 @utility text-body3-reading-regular {
   @apply text-body3-reading font-normal;
 }
@@ -208,7 +187,6 @@
   @apply text-body3-reading font-bold;
 }
 
-/* label1/line-height/normal */
 @utility text-label1-normal-regular {
   @apply text-label1-normal font-normal;
 }
@@ -222,7 +200,6 @@
   @apply text-label1-normal font-bold;
 }
 
-/* label1/line-height/reading */
 @utility text-label1-reading-regular {
   @apply text-label1-reading font-normal;
 }
@@ -236,7 +213,6 @@
   @apply text-label1-reading font-bold;
 }
 
-/* label2/line-height/normal */
 @utility text-label2-normal-regular {
   @apply text-label2-normal font-normal;
 }
@@ -250,7 +226,6 @@
   @apply text-label2-normal font-bold;
 }
 
-/* label2/line-height/reading */
 @utility text-label2-reading-regular {
   @apply text-label2-reading font-normal;
 }
@@ -264,7 +239,6 @@
   @apply text-label2-reading font-bold;
 }
 
-/* caption */
 @utility text-caption-regular {
   @apply text-caption font-normal;
 }

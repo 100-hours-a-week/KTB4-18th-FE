@@ -3,6 +3,11 @@
 .env.*
 !.env.example
 
+# Local design and test documents are not part of feature commits.
+/docs/
+/*.md
+!/README.md
+
 # Logs
 logs
 *.log
