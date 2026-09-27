@@ -1,0 +1,32 @@
+# PR과 push마다 lint·포맷·테스트·빌드를 돌려, 깨진 코드가 dev/main에 들어가지 않게 한다.
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+# PR에 새 커밋이 오면 이전 실행은 취소한다. dev/main push는 커밋마다 결과를 남기려고 취소하지 않는다
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22 # 운영 이미지(fe.Dockerfile, node:22-alpine)와 같은 버전
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test
+      - run: npm run build
