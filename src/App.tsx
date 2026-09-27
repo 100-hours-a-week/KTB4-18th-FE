@@ -204,6 +204,7 @@ function App() {
 }
 
 function ChatbotPage() {
+  const accessToken = getAccessToken();
   const [conversationKey] = useState(() => crypto.randomUUID());
   const [openedAt] = useState(() => new Date());
   const [prompt, setPrompt] = useState('');
@@ -221,7 +222,7 @@ function ChatbotPage() {
     setInputType('VOICE');
     requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
-  const voice = useVoiceInput({ onTranscript: handleTranscript });
+  const voice = useVoiceInput({ accessToken, onTranscript: handleTranscript });
   const resetVoiceForTextInput = voice.useTextInput;
 
   const useTextInput = useCallback(() => {
@@ -241,6 +242,10 @@ function ChatbotPage() {
     if (!text || requestRef.current) {
       return;
     }
+    if (!accessToken) {
+      setError('로그인이 만료되었습니다. 다시 로그인해 주세요.');
+      return;
+    }
 
     const controller = new AbortController();
     const messageId = crypto.randomUUID();
@@ -255,7 +260,13 @@ function ChatbotPage() {
     setPrompt('');
 
     try {
-      const result = await recommend(text, conversationKey, controller.signal, inputType);
+      const result = await recommend(
+        text,
+        conversationKey,
+        accessToken,
+        controller.signal,
+        inputType,
+      );
       setMessages((previous) => [
         ...previous,
         {

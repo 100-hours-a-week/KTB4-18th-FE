@@ -19,11 +19,12 @@ describe('transcribeAudio', () => {
     vi.stubGlobal('fetch', fetchMock);
     const file = new File(['audio'], 'voice.webm', { type: 'audio/webm' });
 
-    const transcript = await transcribeAudio(file, new AbortController().signal);
+    const transcript = await transcribeAudio(file, new AbortController().signal, 'access-token');
 
     expect(transcript).toBe('비 오는 날 드라이브');
     const [, options] = fetchMock.mock.calls[0];
     expect(options.method).toBe('POST');
+    expect(options.headers).toEqual({ Authorization: 'Bearer access-token' });
     expect(options.body).toBeInstanceOf(FormData);
     expect((options.body as FormData).get('audio')).toBe(file);
   });
@@ -45,6 +46,7 @@ describe('transcribeAudio', () => {
     const error = await transcribeAudio(
       new File(['audio'], 'voice.webm', { type: 'audio/webm' }),
       new AbortController().signal,
+      'access-token',
     ).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(SpeechTranscriptionError);
@@ -68,6 +70,7 @@ describe('transcribeAudio', () => {
     const error = await transcribeAudio(
       new File(['audio'], 'voice.webm', { type: 'audio/webm' }),
       new AbortController().signal,
+      'access-token',
     ).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(SpeechTranscriptionError);
@@ -80,6 +83,7 @@ describe('transcribeAudio', () => {
     const error = await transcribeAudio(
       new File(['audio'], 'voice.webm', { type: 'audio/webm' }),
       new AbortController().signal,
+      'access-token',
     ).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(SpeechTranscriptionError);

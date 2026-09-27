@@ -71,6 +71,7 @@ afterEach(() => {
 describe('음성 transcript 공통 추천 흐름', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.setItem('access_token', 'test-access-token');
     window.history.replaceState(null, '', '/chatbot');
     voiceState = {
       status: 'idle',
@@ -125,6 +126,7 @@ describe('음성 transcript 공통 추천 흐름', () => {
     expect(recommend).toHaveBeenCalledWith(
       '비 오는 날 드라이브 음악',
       expect.any(String),
+      'test-access-token',
       expect.any(AbortSignal),
       'VOICE',
     );

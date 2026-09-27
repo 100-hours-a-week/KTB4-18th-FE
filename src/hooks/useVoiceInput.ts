@@ -14,6 +14,7 @@ export type VoiceStatus =
   'idle' | 'requestingPermission' | 'recording' | 'transcribing' | 'reviewing';
 
 interface UseVoiceInputOptions {
+  accessToken: string | null;
   onTranscript: (transcript: string) => void;
 }
 
@@ -31,7 +32,7 @@ function extensionFor(mimeType: string) {
   return mimeType.includes('mp4') ? 'mp4' : 'webm';
 }
 
-export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
+export function useVoiceInput({ accessToken, onTranscript }: UseVoiceInputOptions) {
   const [status, setStatus] = useState<VoiceStatus>('idle');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState('');
@@ -70,49 +71,57 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
     setElapsedSeconds(0);
   }, [clearTimers, stopStream]);
 
-  const sendForTranscription = useCallback(async (blob: Blob, mimeType: string) => {
-    setError('');
-    setCanRetry(false);
-    if (blob.size === 0) {
-      setError('녹음된 음성이 없습니다. 다시 녹음해 주세요.');
-      setStatus('idle');
-      return;
-    }
-    if (blob.size > MAX_AUDIO_SIZE) {
-      setError('음성 파일이 10MB를 초과했습니다. 더 짧게 녹음해 주세요.');
-      setStatus('idle');
-      return;
-    }
-
-    const controller = new AbortController();
-    transcriptionRequestRef.current = controller;
-    setStatus('transcribing');
-    try {
-      const file = new File([blob], `voice-${Date.now()}.${extensionFor(mimeType)}`, {
-        type: mimeType,
-      });
-      const transcript = await transcribeAudio(file, controller.signal);
-      if (!mountedRef.current || controller.signal.aborted) return;
-      failedRecordingRef.current = null;
-      onTranscriptRef.current(transcript);
-      setStatus('reviewing');
-    } catch (caught) {
-      if (!controller.signal.aborted && mountedRef.current) {
-        setError(caught instanceof Error ? caught.message : '음성을 변환하지 못했습니다.');
-        if (caught instanceof SpeechTranscriptionError && caught.isRetryable) {
-          failedRecordingRef.current = { blob, mimeType };
-          setCanRetry(true);
-        } else {
-          failedRecordingRef.current = null;
-        }
+  const sendForTranscription = useCallback(
+    async (blob: Blob, mimeType: string) => {
+      setError('');
+      setCanRetry(false);
+      if (!accessToken) {
+        setError('로그인이 만료되었습니다. 다시 로그인해 주세요.');
         setStatus('idle');
+        return;
       }
-    } finally {
-      if (transcriptionRequestRef.current === controller) {
-        transcriptionRequestRef.current = null;
+      if (blob.size === 0) {
+        setError('녹음된 음성이 없습니다. 다시 녹음해 주세요.');
+        setStatus('idle');
+        return;
       }
-    }
-  }, []);
+      if (blob.size > MAX_AUDIO_SIZE) {
+        setError('음성 파일이 10MB를 초과했습니다. 더 짧게 녹음해 주세요.');
+        setStatus('idle');
+        return;
+      }
+
+      const controller = new AbortController();
+      transcriptionRequestRef.current = controller;
+      setStatus('transcribing');
+      try {
+        const file = new File([blob], `voice-${Date.now()}.${extensionFor(mimeType)}`, {
+          type: mimeType,
+        });
+        const transcript = await transcribeAudio(file, controller.signal, accessToken);
+        if (!mountedRef.current || controller.signal.aborted) return;
+        failedRecordingRef.current = null;
+        onTranscriptRef.current(transcript);
+        setStatus('reviewing');
+      } catch (caught) {
+        if (!controller.signal.aborted && mountedRef.current) {
+          setError(caught instanceof Error ? caught.message : '음성을 변환하지 못했습니다.');
+          if (caught instanceof SpeechTranscriptionError && caught.isRetryable) {
+            failedRecordingRef.current = { blob, mimeType };
+            setCanRetry(true);
+          } else {
+            failedRecordingRef.current = null;
+          }
+          setStatus('idle');
+        }
+      } finally {
+        if (transcriptionRequestRef.current === controller) {
+          transcriptionRequestRef.current = null;
+        }
+      }
+    },
+    [accessToken],
+  );
 
   const stopRecording = useCallback(() => {
     const recorder = recorderRef.current;
