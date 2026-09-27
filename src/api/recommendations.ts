@@ -19,12 +19,16 @@ export type RecommendationInputType = 'TEXT' | 'VOICE';
 export async function recommend(
   prompt: string,
   conversationKey: string,
+  accessToken: string,
   signal: AbortSignal,
   inputType: RecommendationInputType = 'TEXT',
 ) {
   const result = await request<Recommendation>('/recommendations', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify({
       input_type: inputType,
       trigger_type: 'CHATBOT',

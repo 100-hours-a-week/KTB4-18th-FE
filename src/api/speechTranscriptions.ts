@@ -38,7 +38,7 @@ function userMessage(status: number, serverMessage?: string) {
   }
 }
 
-export async function transcribeAudio(audio: File, signal: AbortSignal) {
+export async function transcribeAudio(audio: File, signal: AbortSignal, accessToken: string) {
   const formData = new FormData();
   formData.append('audio', audio);
 
@@ -47,6 +47,7 @@ export async function transcribeAudio(audio: File, signal: AbortSignal) {
     response = await fetch(`${baseUrl}/api/v1/speech-transcriptions`, {
       method: 'POST',
       credentials: 'include',
+      headers: { Authorization: `Bearer ${accessToken}` },
       body: formData,
       signal,
     });
