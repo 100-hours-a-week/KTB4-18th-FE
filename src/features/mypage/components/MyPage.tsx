@@ -22,6 +22,7 @@ import {
   type UserSettings,
 } from '../api/mypageApi';
 import { getAllMusicRecords } from '../../music-record/api/musicRecordsApi';
+import { validateProfileFields } from '../model/profileValidation';
 
 type MyPageProps = {
   accessToken: string | null;
@@ -91,9 +92,13 @@ function ProfilePage({
   const [gender, setGender] = useState(profile.gender ?? '');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  const validationErrors = validateProfileFields(nickname, birthYear);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!nickname.trim() || saving) return;
+    if (Object.values(validationErrors).some(Boolean) || saving) {
+      setNotice('프로필 정보를 확인해 주세요.');
+      return;
+    }
     setSaving(true);
     setNotice('');
     try {
@@ -121,8 +126,18 @@ function ProfilePage({
             <input
               value={nickname}
               maxLength={12}
-              onChange={(event) => setNickname(event.target.value)}
+              onChange={(event) => {
+                setNickname(event.target.value);
+                setNotice('');
+              }}
+              aria-invalid={Boolean(validationErrors.nickname)}
+              aria-describedby={validationErrors.nickname ? 'mypage-nickname-error' : undefined}
             />
+            {validationErrors.nickname && (
+              <span id="mypage-nickname-error" className="mypage-notice" role="alert">
+                {validationErrors.nickname}
+              </span>
+            )}
           </label>
           <label>
             출생 연도
@@ -130,8 +145,18 @@ function ProfilePage({
               value={birthYear}
               inputMode="numeric"
               maxLength={4}
-              onChange={(event) => setBirthYear(event.target.value.replace(/\D/g, ''))}
+              onChange={(event) => {
+                setBirthYear(event.target.value.replace(/\D/g, ''));
+                setNotice('');
+              }}
+              aria-invalid={Boolean(validationErrors.birthYear)}
+              aria-describedby={validationErrors.birthYear ? 'mypage-birth-year-error' : undefined}
             />
+            {validationErrors.birthYear && (
+              <span id="mypage-birth-year-error" className="mypage-notice" role="alert">
+                {validationErrors.birthYear}
+              </span>
+            )}
           </label>
           <label>
             성별
@@ -151,7 +176,7 @@ function ProfilePage({
             variant="brandSolid"
             size="medium"
             loading={saving}
-            disabled={!nickname.trim()}
+            disabled={saving}
           >
             저장
           </ActionButton>
