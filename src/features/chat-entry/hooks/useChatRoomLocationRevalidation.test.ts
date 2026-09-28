@@ -80,7 +80,6 @@ describe('useChatRoomLocationRevalidation', () => {
     const onMoved = vi.fn();
     const { result } = renderHook(() =>
       useChatRoomLocationRevalidation({
-        accessToken: 'access-token',
         activeChatRoom,
         onMoved,
         onMembershipEnded: vi.fn(),
@@ -103,7 +102,6 @@ describe('useChatRoomLocationRevalidation', () => {
     const onMoved = vi.fn();
     const { result } = renderHook(() =>
       useChatRoomLocationRevalidation({
-        accessToken: 'access-token',
         activeChatRoom,
         onMoved,
         onMembershipEnded: vi.fn(),
@@ -115,12 +113,7 @@ describe('useChatRoomLocationRevalidation', () => {
     await act(async () => vi.advanceTimersByTimeAsync(15_000));
 
     expect(resolveCurrentChatLocation).toHaveBeenCalledTimes(2);
-    expect(joinChatRoom).toHaveBeenCalledWith(
-      701,
-      'confirmed-token',
-      'access-token',
-      expect.any(AbortSignal),
-    );
+    expect(joinChatRoom).toHaveBeenCalledWith(701, 'confirmed-token', expect.any(AbortSignal));
     expect(onMoved).toHaveBeenCalledWith({ room: movedRoom, membership: movedMembership });
     expect(result.current.status).toBe('moved');
   });
@@ -132,7 +125,6 @@ describe('useChatRoomLocationRevalidation', () => {
     const onMoved = vi.fn();
     const { result } = renderHook(() =>
       useChatRoomLocationRevalidation({
-        accessToken: 'access-token',
         activeChatRoom,
         onMoved,
         onMembershipEnded: vi.fn(),
@@ -158,7 +150,6 @@ describe('useChatRoomLocationRevalidation', () => {
     const onMembershipEnded = vi.fn();
     const { result } = renderHook(() =>
       useChatRoomLocationRevalidation({
-        accessToken: 'access-token',
         activeChatRoom,
         onMoved: vi.fn(),
         onMembershipEnded,
@@ -177,7 +168,6 @@ describe('useChatRoomLocationRevalidation', () => {
     vi.mocked(resolveCurrentChatLocation).mockResolvedValueOnce(resolution(30, 'candidate-token'));
     const { unmount } = renderHook(() =>
       useChatRoomLocationRevalidation({
-        accessToken: 'access-token',
         activeChatRoom,
         onMoved: vi.fn(),
         onMembershipEnded: vi.fn(),

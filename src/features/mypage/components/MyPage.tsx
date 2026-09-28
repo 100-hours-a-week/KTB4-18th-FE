@@ -25,7 +25,6 @@ import { getAllMusicRecords } from '../../music-record/api/musicRecordsApi';
 import { validateProfileFields } from '../model/profileValidation';
 
 type MyPageProps = {
-  accessToken: string | null;
   onLogin: () => void;
   onLogout: () => void;
   onWithdrawn: () => void;
@@ -78,12 +77,10 @@ function Header({
 
 function ProfilePage({
   profile,
-  token,
   reload,
   back,
 }: {
   profile: UserProfile;
-  token: string;
   reload: () => void;
   back: () => void;
 }) {
@@ -102,7 +99,7 @@ function ProfilePage({
     setSaving(true);
     setNotice('');
     try {
-      await updateMyProfile(token, {
+      await updateMyProfile({
         nickname: nickname.trim(),
         ...(birthYear ? { birth_year: Number(birthYear) } : {}),
         ...(gender ? { gender } : {}),
@@ -187,12 +184,10 @@ function ProfilePage({
 }
 
 function SettingsPage({
-  token,
   settings,
   reload,
   back,
 }: {
-  token: string;
   settings: UserSettings;
   reload: () => void;
   back: () => void;
@@ -204,7 +199,7 @@ function SettingsPage({
     setValue(next);
     setNotice('');
     try {
-      await updateMySettings(token, next);
+      await updateMySettings(next);
       reload();
     } catch (error) {
       setValue(previous);
@@ -255,7 +250,7 @@ function SettingsPage({
   );
 }
 
-function PasswordPage({ token, back }: { token: string; back: () => void }) {
+function PasswordPage({ back }: { back: () => void }) {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirmation, setConfirmation] = useState('');
@@ -271,7 +266,7 @@ function PasswordPage({ token, back }: { token: string; back: () => void }) {
     }
     setSaving(true);
     try {
-      await changeMyPassword(token, current, next);
+      await changeMyPassword(current, next);
       setNotice('비밀번호를 변경했어요.');
     } catch (error) {
       setNotice(message(error, '비밀번호를 변경하지 못했어요.'));
@@ -419,7 +414,7 @@ function flattenRecommendationPage(
   );
 }
 
-function RecommendationPage({ token, back }: { token: string; back: () => void }) {
+function RecommendationPage({ back }: { back: () => void }) {
   const [songs, setSongs] = useState<RecommendedSong[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasNext, setHasNext] = useState(false);
@@ -430,30 +425,27 @@ function RecommendationPage({ token, back }: { token: string; back: () => void }
   const isLoadingRef = useRef(false);
   const loadedSongCountRef = useRef(0);
 
-  const load = useCallback(
-    async (nextCursor?: string | null) => {
-      if (isLoadingRef.current) return;
-      isLoadingRef.current = true;
-      setIsLoading(true);
-      setError('');
-      try {
-        const page = await getRecommendationHistoryPage(token, nextCursor);
-        const pageSongs = flattenRecommendationPage(page.groups);
-        const start = nextCursor ? loadedSongCountRef.current : 0;
-        loadedSongCountRef.current = start + pageSongs.length;
-        setLastPage({ start, length: pageSongs.length });
-        setSongs((current) => (nextCursor ? [...current, ...pageSongs] : pageSongs));
-        setCursor(page.next_cursor);
-        setHasNext(page.has_next);
-      } catch (caught) {
-        setError(message(caught, '추천 받은 곡을 불러오지 못했어요.'));
-      } finally {
-        isLoadingRef.current = false;
-        setIsLoading(false);
-      }
-    },
-    [token],
-  );
+  const load = useCallback(async (nextCursor?: string | null) => {
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    setIsLoading(true);
+    setError('');
+    try {
+      const page = await getRecommendationHistoryPage(nextCursor);
+      const pageSongs = flattenRecommendationPage(page.groups);
+      const start = nextCursor ? loadedSongCountRef.current : 0;
+      loadedSongCountRef.current = start + pageSongs.length;
+      setLastPage({ start, length: pageSongs.length });
+      setSongs((current) => (nextCursor ? [...current, ...pageSongs] : pageSongs));
+      setCursor(page.next_cursor);
+      setHasNext(page.has_next);
+    } catch (caught) {
+      setError(message(caught, '추천 받은 곡을 불러오지 못했어요.'));
+    } finally {
+      isLoadingRef.current = false;
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
@@ -523,12 +515,10 @@ function RecommendationPage({ token, back }: { token: string; back: () => void }
 }
 
 function WithdrawalDialog({
-  token,
   open,
   setOpen,
   onWithdrawn,
 }: {
-  token: string;
   open: boolean;
   setOpen: (open: boolean) => void;
   onWithdrawn: () => void;
@@ -549,7 +539,7 @@ function WithdrawalDialog({
     setSubmitting(true);
     setNotice('');
     try {
-      await withdrawMyAccount(token, password);
+      await withdrawMyAccount(password);
       setPassword('');
       onWithdrawn();
     } catch (error) {
@@ -612,33 +602,38 @@ function WithdrawalDialog({
   );
 }
 
-export function MyPage({ accessToken, onLogin, onLogout, onWithdrawn }: MyPageProps) {
+export function MyPage({ onLogin, onLogout, onWithdrawn }: MyPageProps) {
   const [view, setView] = useState<View>('overview');
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [settings, setSettings] = useState<UserSettings>(INITIAL_SETTINGS);
   const [savedSongCount, setSavedSongCount] = useState<number | null>(null);
   const [savedSongError, setSavedSongError] = useState('');
   const [error, setError] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const version = useRef(0);
   const reload = useCallback(async () => {
-    if (!accessToken) return;
     const current = ++version.current;
     setProfile(null);
     setSavedSongCount(null);
     setError('');
     setSavedSongError('');
     try {
-      const [nextProfile, nextSettings] = await Promise.all([
-        getMyProfile(accessToken),
-        getMySettings(accessToken),
-      ]);
+      const [nextProfile, nextSettings] = await Promise.all([getMyProfile(), getMySettings()]);
       if (current !== version.current) return;
+      setIsAuthenticated(true);
       setProfile(nextProfile);
       setSettings(nextSettings);
     } catch (caught) {
-      if (current === version.current)
+      if (
+        current === version.current &&
+        caught instanceof MyPageRequestError &&
+        caught.status === 401
+      ) {
+        setIsAuthenticated(false);
+      } else if (current === version.current) {
         setError(message(caught, '마이페이지 정보를 불러오지 못했어요.'));
+      }
       return;
     }
     try {
@@ -647,7 +642,7 @@ export function MyPage({ accessToken, onLogin, onLogout, onWithdrawn }: MyPagePr
     } catch {
       if (current === version.current) setSavedSongError('저장한 곡 수를 불러오지 못했어요.');
     }
-  }, [accessToken]);
+  }, []);
   useEffect(() => {
     const timer = window.setTimeout(() => void reload(), 0);
     return () => {
@@ -666,7 +661,7 @@ export function MyPage({ accessToken, onLogin, onLogout, onWithdrawn }: MyPagePr
         : '',
     [profile],
   );
-  if (!accessToken)
+  if (isAuthenticated === false)
     return (
       <main className="mypage-screen">
         <section className="mypage-empty">
@@ -683,7 +678,6 @@ export function MyPage({ accessToken, onLogin, onLogout, onWithdrawn }: MyPagePr
     content = (
       <ProfilePage
         profile={profile}
-        token={accessToken}
         reload={() => void reload()}
         back={() => setView('overview')}
       />
@@ -691,17 +685,15 @@ export function MyPage({ accessToken, onLogin, onLogout, onWithdrawn }: MyPagePr
   else if (view === 'settings')
     content = (
       <SettingsPage
-        token={accessToken}
         settings={settings}
         reload={() => void reload()}
         back={() => setView('overview')}
       />
     );
-  else if (view === 'password')
-    content = <PasswordPage token={accessToken} back={() => setView('overview')} />;
+  else if (view === 'password') content = <PasswordPage back={() => setView('overview')} />;
   else if (view === 'terms') content = <TermsPage back={() => setView('overview')} />;
   else if (view === 'recommendations')
-    content = <RecommendationPage token={accessToken} back={() => setView('overview')} />;
+    content = <RecommendationPage back={() => setView('overview')} />;
   else
     content = (
       <>
@@ -810,12 +802,7 @@ export function MyPage({ accessToken, onLogin, onLogout, onWithdrawn }: MyPagePr
   return (
     <main className="mypage-screen">
       {content}
-      <WithdrawalDialog
-        token={accessToken}
-        open={withdrawOpen}
-        setOpen={setWithdrawOpen}
-        onWithdrawn={onWithdrawn}
-      />
+      <WithdrawalDialog open={withdrawOpen} setOpen={setWithdrawOpen} onWithdrawn={onWithdrawn} />
     </main>
   );
 }

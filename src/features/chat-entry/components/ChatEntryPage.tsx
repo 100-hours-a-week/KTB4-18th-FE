@@ -8,12 +8,8 @@ export interface ActiveChatRoom {
   membership: ChatRoomMembership;
 }
 
-interface ChatEntryPageProps {
-  accessToken: string | null;
-}
-
-export function ChatEntryPage({ accessToken }: ChatEntryPageProps) {
-  const location = useChatLocation({ accessToken });
+export function ChatEntryPage() {
+  const location = useChatLocation();
   const { requestLocation, resolution } = location;
 
   useEffect(() => {
