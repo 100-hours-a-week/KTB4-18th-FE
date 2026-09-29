@@ -51,7 +51,7 @@ describe('resolveCurrentChatLocation', () => {
     vi.stubGlobal('navigator', { geolocation: { getCurrentPosition } });
     const signal = new AbortController().signal;
 
-    const result = await resolveCurrentChatLocation('access-token', signal);
+    const result = await resolveCurrentChatLocation(signal);
 
     expect(result).toEqual(resolvedLocation);
     expect(getCurrentPosition).toHaveBeenCalledWith(expect.any(Function), expect.any(Function), {
@@ -69,7 +69,7 @@ describe('resolveCurrentChatLocation', () => {
       .mockImplementationOnce((success: PositionCallback) => success(position(30)));
     vi.stubGlobal('navigator', { geolocation: { getCurrentPosition } });
 
-    const request = resolveCurrentChatLocation('access-token', new AbortController().signal);
+    const request = resolveCurrentChatLocation(new AbortController().signal);
     await vi.advanceTimersByTimeAsync(3_000);
 
     await expect(request).resolves.toEqual(resolvedLocation);
@@ -82,7 +82,7 @@ describe('resolveCurrentChatLocation', () => {
     vi.stubGlobal('navigator', { geolocation: { getCurrentPosition } });
     const controller = new AbortController();
 
-    const request = resolveCurrentChatLocation('access-token', controller.signal);
+    const request = resolveCurrentChatLocation(controller.signal);
     await Promise.resolve();
     controller.abort();
 

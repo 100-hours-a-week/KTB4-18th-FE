@@ -1,10 +1,13 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { setAccessToken } from '../features/auth-login/api/authSession';
 import { ChatRoomRequestError, getRegionChatRoom, joinChatRoom } from './chatRooms';
 
 describe('chat room API', () => {
+  beforeEach(() => setAccessToken('access-token'));
   afterEach(() => {
     vi.unstubAllGlobals();
+    sessionStorage.clear();
   });
 
   it('현재 행정구역 채팅방을 조회한다', async () => {
@@ -25,7 +28,7 @@ describe('chat room API', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const room = await getRegionChatRoom(25, 'access-token', new AbortController().signal);
+    const room = await getRegionChatRoom(25, new AbortController().signal);
 
     expect(room).toEqual({
       roomId: 700,
@@ -34,13 +37,10 @@ describe('chat room API', () => {
       capacity: 25,
       status: 'ACTIVE',
     });
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/v1/regions/25/chat-room',
-      expect.objectContaining({
-        method: 'GET',
-        headers: { Authorization: 'Bearer access-token' },
-      }),
-    );
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/regions/25/chat-room');
+    expect(options.method).toBe('GET');
+    expect(new Headers(options.headers).get('Authorization')).toBe('Bearer access-token');
   });
 
   it.each([200, 201])('%i 응답에서 membership을 저장 가능한 형태로 반환한다', async (status) => {
@@ -60,12 +60,7 @@ describe('chat room API', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const membership = await joinChatRoom(
-      700,
-      'location-token',
-      'access-token',
-      new AbortController().signal,
-    );
+    const membership = await joinChatRoom(700, 'location-token', new AbortController().signal);
 
     expect(membership).toEqual({
       membershipId: 900,
@@ -90,12 +85,9 @@ describe('chat room API', () => {
       ),
     );
 
-    const error = await joinChatRoom(
-      700,
-      'location-token',
-      'access-token',
-      new AbortController().signal,
-    ).catch((caught: unknown) => caught);
+    const error = await joinChatRoom(700, 'location-token', new AbortController().signal).catch(
+      (caught: unknown) => caught,
+    );
 
     expect(error).toBeInstanceOf(ChatRoomRequestError);
     expect(error).toMatchObject({ status: 409 });
@@ -116,12 +108,9 @@ describe('chat room API', () => {
       ),
     );
 
-    const error = await joinChatRoom(
-      700,
-      'location-token',
-      'access-token',
-      new AbortController().signal,
-    ).catch((caught: unknown) => caught);
+    const error = await joinChatRoom(700, 'location-token', new AbortController().signal).catch(
+      (caught: unknown) => caught,
+    );
 
     expect(error).toBeInstanceOf(ChatRoomRequestError);
     expect((error as Error).message).toContain(expectedMessage);
@@ -130,7 +119,7 @@ describe('chat room API', () => {
   it('네트워크 실패를 재시도 안내로 변환한다', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network')));
 
-    const error = await getRegionChatRoom(25, 'access-token', new AbortController().signal).catch(
+    const error = await getRegionChatRoom(25, new AbortController().signal).catch(
       (caught: unknown) => caught,
     );
 

@@ -19,7 +19,6 @@ export type RevalidationStatus =
   | 'error';
 
 interface UseChatRoomLocationRevalidationOptions {
-  accessToken: string | null;
   activeChatRoom: ActiveChatRoom | null;
   onMoved: (activeChatRoom: ActiveChatRoom) => void;
   onMembershipEnded: () => void;
@@ -44,7 +43,6 @@ function waitForConfirmation(signal: AbortSignal) {
 }
 
 export function useChatRoomLocationRevalidation({
-  accessToken,
   activeChatRoom,
   onMoved,
   onMembershipEnded,
@@ -65,7 +63,7 @@ export function useChatRoomLocationRevalidation({
   }, [onMembershipEnded]);
 
   useEffect(() => {
-    if (!accessToken || !activeChatRoom) {
+    if (!activeChatRoom) {
       return;
     }
 
@@ -81,7 +79,7 @@ export function useChatRoomLocationRevalidation({
       setMessage('현재 지역을 다시 확인하고 있어요.');
 
       try {
-        const candidate = await resolveCurrentChatLocation(accessToken, controller.signal);
+        const candidate = await resolveCurrentChatLocation(controller.signal);
         if (candidate.region.sigungu.regionId === activeChatRoom.room.regionId) {
           if (isMounted) {
             setStatus('stable');
@@ -95,7 +93,7 @@ export function useChatRoomLocationRevalidation({
           setMessage('지역 이동 여부를 15초 후 한 번 더 확인합니다.');
         }
         await waitForConfirmation(controller.signal);
-        const confirmation = await resolveCurrentChatLocation(accessToken, controller.signal);
+        const confirmation = await resolveCurrentChatLocation(controller.signal);
         if (confirmation.region.sigungu.regionId !== candidate.region.sigungu.regionId) {
           if (isMounted) {
             setStatus('mismatch');
@@ -110,13 +108,11 @@ export function useChatRoomLocationRevalidation({
         }
         const room = await getRegionChatRoom(
           confirmation.region.sigungu.regionId,
-          accessToken,
           controller.signal,
         );
         const membership = await joinChatRoom(
           room.roomId,
           confirmation.locationResolutionToken,
-          accessToken,
           controller.signal,
         );
         if (!isMounted || controller.signal.aborted) {
@@ -157,7 +153,7 @@ export function useChatRoomLocationRevalidation({
       requestRef.current = null;
       isCheckingRef.current = false;
     };
-  }, [accessToken, activeChatRoom]);
+  }, [activeChatRoom]);
 
   return {
     status,

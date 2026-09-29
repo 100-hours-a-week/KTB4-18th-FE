@@ -1,9 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setAccessToken } from '../features/auth-login/api/authSession';
 import { SpeechTranscriptionError, transcribeAudio } from './speechTranscriptions';
 
 describe('transcribeAudio', () => {
+  beforeEach(() => setAccessToken('access-token'));
   afterEach(() => {
     vi.unstubAllGlobals();
+    sessionStorage.clear();
   });
 
   it('음성 파일을 multipart로 전송하고 transcript를 반환한다', async () => {
@@ -19,12 +22,12 @@ describe('transcribeAudio', () => {
     vi.stubGlobal('fetch', fetchMock);
     const file = new File(['audio'], 'voice.webm', { type: 'audio/webm' });
 
-    const transcript = await transcribeAudio(file, new AbortController().signal, 'access-token');
+    const transcript = await transcribeAudio(file, new AbortController().signal);
 
     expect(transcript).toBe('비 오는 날 드라이브');
     const [, options] = fetchMock.mock.calls[0];
     expect(options.method).toBe('POST');
-    expect(options.headers).toEqual({ Authorization: 'Bearer access-token' });
+    expect(new Headers(options.headers).get('Authorization')).toBe('Bearer access-token');
     expect(options.body).toBeInstanceOf(FormData);
     expect((options.body as FormData).get('audio')).toBe(file);
   });
@@ -46,7 +49,6 @@ describe('transcribeAudio', () => {
     const error = await transcribeAudio(
       new File(['audio'], 'voice.webm', { type: 'audio/webm' }),
       new AbortController().signal,
-      'access-token',
     ).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(SpeechTranscriptionError);
@@ -70,7 +72,6 @@ describe('transcribeAudio', () => {
     const error = await transcribeAudio(
       new File(['audio'], 'voice.webm', { type: 'audio/webm' }),
       new AbortController().signal,
-      'access-token',
     ).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(SpeechTranscriptionError);
@@ -83,7 +84,6 @@ describe('transcribeAudio', () => {
     const error = await transcribeAudio(
       new File(['audio'], 'voice.webm', { type: 'audio/webm' }),
       new AbortController().signal,
-      'access-token',
     ).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(SpeechTranscriptionError);

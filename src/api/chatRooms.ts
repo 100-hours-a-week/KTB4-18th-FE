@@ -1,3 +1,5 @@
+import { AuthRequestError, authenticatedFetch } from '../features/auth-login/api/authSession';
+
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
 interface ApiBody<T> {
@@ -73,13 +75,21 @@ function errorMessage(status: number, serverMessage?: string) {
 async function request<T>(url: string, options: RequestInit): Promise<ApiBody<T>> {
   let response: Response;
   try {
-    response = await fetch(`${baseUrl}${url}`, {
+    response = await authenticatedFetch(`${baseUrl}${url}`, {
       ...options,
       credentials: 'include',
     });
   } catch (caught) {
     if (caught instanceof DOMException && caught.name === 'AbortError') {
       throw caught;
+    }
+    if (caught instanceof AuthRequestError) {
+      throw new ChatRoomRequestError(
+        caught.status === null
+          ? '로그인 상태를 확인하지 못했습니다. 다시 시도해 주세요.'
+          : errorMessage(caught.status),
+        caught.status,
+      );
     }
     throw new ChatRoomRequestError(
       '서버에 연결하지 못했습니다. 연결 상태를 확인하고 다시 시도해 주세요.',
@@ -99,12 +109,10 @@ async function request<T>(url: string, options: RequestInit): Promise<ApiBody<T>
 
 export async function getRegionChatRoom(
   regionId: number,
-  accessToken: string,
   signal: AbortSignal,
 ): Promise<ChatRoomSummary> {
   const body = await request<ChatRoomBody>(`/api/v1/regions/${regionId}/chat-room`, {
     method: 'GET',
-    headers: { Authorization: `Bearer ${accessToken}` },
     signal,
   });
   const data = body.data;
@@ -130,13 +138,11 @@ export async function getRegionChatRoom(
 export async function joinChatRoom(
   roomId: number,
   locationResolutionToken: string,
-  accessToken: string,
   signal: AbortSignal,
 ): Promise<ChatRoomMembership> {
   const body = await request<ChatRoomMembershipBody>(`/api/v1/chat-rooms/${roomId}/members`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ location_resolution_token: locationResolutionToken }),

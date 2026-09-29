@@ -40,7 +40,7 @@ describe('ChatEntryPage', () => {
       retryLocation,
     });
 
-    render(<ChatEntryPage accessToken="access-token" />);
+    render(<ChatEntryPage />);
 
     expect(requestLocation).toHaveBeenCalledOnce();
     expect(screen.getByText('성남시 분당구 채팅 기능을 준비하고 있어요.')).toBeInTheDocument();
@@ -60,7 +60,7 @@ describe('ChatEntryPage', () => {
       retryLocation,
     });
 
-    render(<ChatEntryPage accessToken="access-token" />);
+    render(<ChatEntryPage />);
 
     expect(screen.getByText('채팅 기능을 준비하고 있어요.')).toBeInTheDocument();
   });

@@ -60,14 +60,7 @@ describe('MyPage profile validation', () => {
 
   async function openProfileEditor() {
     const user = userEvent.setup();
-    render(
-      <MyPage
-        accessToken="access-token"
-        onLogin={vi.fn()}
-        onLogout={vi.fn()}
-        onWithdrawn={vi.fn()}
-      />,
-    );
+    render(<MyPage onLogin={vi.fn()} onLogout={vi.fn()} onWithdrawn={vi.fn()} />);
     await screen.findByText('기존닉');
     await user.click(screen.getByRole('button', { name: '더보기' }));
     await user.click(screen.getByText('프로필 수정'));

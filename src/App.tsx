@@ -17,7 +17,9 @@ import {
   AuthRequestError,
   clearAccessToken,
   getAccessToken,
+  getAccessTokenExpiresAt,
   refreshAccessToken,
+  shouldRefreshAccessToken,
   type AuthStatus,
 } from './features/auth-login/api/authSession';
 import { ChatEntryPage } from './features/chat-entry/components/ChatEntryPage';
@@ -25,7 +27,12 @@ import { SignupPage } from './features/user-signup/components/SignupPage';
 import { useVoiceInput } from './hooks/useVoiceInput';
 import type { RecommendationInputType } from './api/recommendations';
 import type { Recommendation } from './types/recommendation';
-import { navigate, ROUTE_CHANGE_EVENT } from './shared/navigation';
+import {
+  installSpaLinkHandler,
+  navigate,
+  readRouteLocation,
+  ROUTE_CHANGE_EVENT,
+} from './shared/navigation';
 
 import './App.css';
 
@@ -45,20 +52,23 @@ const formatTime = (date: Date) =>
   date.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
 
 function App() {
-  const [pathname, setPathname] = useState(() => window.location.pathname);
+  const [routeLocation, setRouteLocation] = useState(() => readRouteLocation());
+  const pathname = routeLocation.pathname;
   const [authStatus, setAuthStatus] = useState<AuthStatus>('restoring');
   const authIntent = useRef(0);
   const isLoggingOutRef = useRef(false);
   const [logoutError, setLogoutError] = useState('');
 
   useEffect(() => {
-    const updatePathname = () => setPathname(window.location.pathname);
+    const updateLocation = () => setRouteLocation(readRouteLocation());
+    const removeSpaLinkHandler = installSpaLinkHandler();
 
-    window.addEventListener('popstate', updatePathname);
-    window.addEventListener(ROUTE_CHANGE_EVENT, updatePathname);
+    window.addEventListener('popstate', updateLocation);
+    window.addEventListener(ROUTE_CHANGE_EVENT, updateLocation);
     return () => {
-      window.removeEventListener('popstate', updatePathname);
-      window.removeEventListener(ROUTE_CHANGE_EVENT, updatePathname);
+      removeSpaLinkHandler();
+      window.removeEventListener('popstate', updateLocation);
+      window.removeEventListener(ROUTE_CHANGE_EVENT, updateLocation);
     };
   }, []);
 
@@ -66,6 +76,10 @@ function App() {
     const currentIntent = authIntent.current;
     setAuthStatus('restoring');
     try {
+      if (getAccessToken() && !shouldRefreshAccessToken()) {
+        if (currentIntent === authIntent.current) setAuthStatus('authenticated');
+        return;
+      }
       await refreshAccessToken();
       if (currentIntent === authIntent.current) setAuthStatus('authenticated');
     } catch (caught) {
@@ -92,11 +106,57 @@ function App() {
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
   }, []);
 
+  useEffect(() => {
+    if (authStatus !== 'authenticated') return;
+    let timer: number | undefined;
+    let refreshing = false;
+    const schedule = (delayOverride?: number) => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      const expiresAt = getAccessTokenExpiresAt();
+      const delay =
+        delayOverride ??
+        (expiresAt === null ? 0 : Math.max(0, expiresAt - Date.now() - 10 * 60 * 1000));
+      timer = window.setTimeout(() => void refreshIfDue(), delay);
+    };
+    const refreshIfDue = async () => {
+      if (refreshing || document.visibilityState === 'hidden' || !shouldRefreshAccessToken())
+        return;
+      refreshing = true;
+      let retryDelay: number | undefined;
+      try {
+        await refreshAccessToken();
+      } catch (caught) {
+        if (caught instanceof AuthRequestError && caught.status === 401) {
+          clearAccessToken();
+          setAuthStatus('guest');
+        } else {
+          retryDelay = 60_000;
+        }
+      } finally {
+        refreshing = false;
+        if (getAccessToken()) schedule(retryDelay);
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void refreshIfDue();
+    };
+    window.addEventListener('focus', onVisibility);
+    window.addEventListener('pageshow', onVisibility);
+    document.addEventListener('visibilitychange', onVisibility);
+    schedule();
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      window.removeEventListener('focus', onVisibility);
+      window.removeEventListener('pageshow', onVisibility);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [authStatus]);
+
   const handleLoginSuccess = () => {
     authIntent.current += 1;
     setAuthStatus('authenticated');
     setLogoutError('');
-    navigate('/');
+    navigate(getSafeReturnTo(window.location.search));
   };
 
   const handleLogout = async () => {
@@ -125,12 +185,23 @@ function App() {
     }
   };
 
-  const handleWithdrawalComplete = () => {
+  const handleWithdrawalComplete = async () => {
     authIntent.current += 1;
-    clearAccessToken();
-    setAuthStatus('guest');
+    setAuthStatus('logging-out');
     setLogoutError('');
-    navigate(LOGIN_PATH);
+    try {
+      await logout();
+      clearAccessToken();
+      setAuthStatus('guest');
+      navigate(LOGIN_PATH);
+    } catch (error) {
+      setAuthStatus('retryable-error');
+      setLogoutError(
+        error instanceof LogoutRequestError && error.status === null
+          ? '네트워크 상태를 확인한 뒤 다시 시도해 주세요.'
+          : '회원 탈퇴 후 세션 폐기에 실패했어요. 다시 로그인하거나 로그아웃을 재시도해 주세요.',
+      );
+    }
   };
 
   if (pathname === LOGIN_PATH) {
@@ -149,26 +220,69 @@ function App() {
   if (pathname === SIGNUP_PATH) {
     return <SignupPage onSignupSuccess={() => navigate(LOGIN_PATH)} />;
   }
-  if (pathname === CHATBOT_PATH) {
-    return <ChatbotPage />;
+  const isProtectedRoute =
+    pathname === CHATBOT_PATH ||
+    pathname === CHAT_PATH ||
+    pathname === MY_PATH ||
+    pathname === MUSIC_RECORDS_PATH ||
+    pathname === MUSIC_RECORD_CREATE_PATH ||
+    /^\/music-records\/([1-9]\d*)$/.test(pathname);
+
+  if (isProtectedRoute && authStatus === 'restoring') {
+    return (
+      <main role="status" aria-live="polite">
+        로그인 상태를 확인하고 있어요.
+      </main>
+    );
   }
+  if (isProtectedRoute && authStatus === 'retryable-error' && !getAccessToken()) {
+    return (
+      <main role="alert">
+        <p>인증 서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.</p>
+        <button type="button" onClick={() => void restore()}>
+          다시 시도
+        </button>
+        <a href={loginHref(routeLocation)}>로그인</a>
+      </main>
+    );
+  }
+  if (isProtectedRoute && authStatus === 'guest') {
+    return (
+      <main role="alert">
+        <p>로그인이 필요한 페이지입니다.</p>
+        <a href={loginHref(routeLocation)}>로그인하기</a>
+      </main>
+    );
+  }
+  if (isProtectedRoute && (authStatus === 'logging-in' || authStatus === 'logging-out')) {
+    return (
+      <main role="status" aria-live="polite">
+        인증 상태를 갱신하고 있어요.
+      </main>
+    );
+  }
+
+  if (pathname === CHATBOT_PATH) return <ChatbotPage />;
   if (pathname === MUSIC_RECORD_CREATE_PATH) return <MusicRecordCreatePage />;
   if (pathname === MUSIC_RECORDS_PATH) return <MusicRecordListPage />;
   const detailMatch = /^\/music-records\/([1-9]\d*)$/.exec(pathname);
   if (detailMatch) return <MusicRecordDetailPage recordId={Number(detailMatch[1])} />;
-
-  if (pathname === CHAT_PATH) {
-    return <ChatEntryPage accessToken={getAccessToken()} />;
-  }
-
+  if (pathname === CHAT_PATH) return <ChatEntryPage />;
   if (pathname === MY_PATH) {
     return (
       <MyPage
-        accessToken={getAccessToken()}
         onLogin={() => navigate(LOGIN_PATH)}
         onLogout={handleLogout}
         onWithdrawn={handleWithdrawalComplete}
       />
+    );
+  }
+  if (pathname !== '/') {
+    return (
+      <main>
+        <h1>페이지를 찾을 수 없습니다</h1>
+        <a href="/">홈으로</a>
+      </main>
     );
   }
 
@@ -190,8 +304,24 @@ function App() {
   );
 }
 
+function getSafeReturnTo(search: string): string {
+  const candidate = new URLSearchParams(search).get('returnTo');
+  if (!candidate || !candidate.startsWith('/') || candidate.startsWith('//')) return '/';
+  try {
+    const url = new URL(candidate, window.location.origin);
+    if (url.origin !== window.location.origin) return '/';
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return '/';
+  }
+}
+
+function loginHref(location: { pathname: string; search: string; hash: string }): string {
+  const returnTo = `${location.pathname}${location.search}${location.hash}`;
+  return `${LOGIN_PATH}?returnTo=${encodeURIComponent(returnTo)}`;
+}
+
 function ChatbotPage() {
-  const accessToken = getAccessToken();
   const [conversationKey] = useState(() => crypto.randomUUID());
   const [openedAt] = useState(() => new Date());
   const [prompt, setPrompt] = useState('');
@@ -209,7 +339,7 @@ function ChatbotPage() {
     setInputType('VOICE');
     requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
-  const voice = useVoiceInput({ accessToken, onTranscript: handleTranscript });
+  const voice = useVoiceInput({ onTranscript: handleTranscript });
   const resetVoiceForTextInput = voice.useTextInput;
 
   const useTextInput = useCallback(() => {
@@ -229,11 +359,6 @@ function ChatbotPage() {
     if (!text || requestRef.current) {
       return;
     }
-    if (!accessToken) {
-      setError('로그인이 만료되었습니다. 다시 로그인해 주세요.');
-      return;
-    }
-
     const controller = new AbortController();
     const messageId = crypto.randomUUID();
     requestRef.current = controller;
@@ -247,13 +372,7 @@ function ChatbotPage() {
     setPrompt('');
 
     try {
-      const result = await recommend(
-        text,
-        conversationKey,
-        accessToken,
-        controller.signal,
-        inputType,
-      );
+      const result = await recommend(text, conversationKey, controller.signal, inputType);
       setMessages((previous) => [
         ...previous,
         {
