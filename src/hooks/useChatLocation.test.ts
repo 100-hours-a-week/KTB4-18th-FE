@@ -50,7 +50,7 @@ describe('useChatLocation', () => {
   it('고정밀 옵션으로 위치를 확인하고 판정 API를 호출한다', async () => {
     const getCurrentPosition = vi.fn((success: PositionCallback) => success(position(18.5)));
     vi.stubGlobal('navigator', { geolocation: { getCurrentPosition } });
-    const { result } = renderHook(() => useChatLocation({ accessToken: 'access-token' }));
+    const { result } = renderHook(() => useChatLocation());
 
     await act(async () => result.current.requestLocation());
 
@@ -61,7 +61,6 @@ describe('useChatLocation', () => {
     });
     expect(resolveLocation).toHaveBeenCalledWith(
       { latitude: 37.3595704, longitude: 127.105399, accuracyMeters: 18.5 },
-      'access-token',
       expect.any(AbortSignal),
     );
     expect(result.current.status).toBe('resolved');
@@ -75,7 +74,7 @@ describe('useChatLocation', () => {
       .mockImplementationOnce((success: PositionCallback) => success(position(150)))
       .mockImplementationOnce((success: PositionCallback) => success(position(30)));
     vi.stubGlobal('navigator', { geolocation: { getCurrentPosition } });
-    const { result } = renderHook(() => useChatLocation({ accessToken: 'access-token' }));
+    const { result } = renderHook(() => useChatLocation());
 
     let request: Promise<void>;
     act(() => {
@@ -97,7 +96,7 @@ describe('useChatLocation', () => {
     vi.useFakeTimers();
     const getCurrentPosition = vi.fn((success: PositionCallback) => success(position(200)));
     vi.stubGlobal('navigator', { geolocation: { getCurrentPosition } });
-    const { result } = renderHook(() => useChatLocation({ accessToken: 'access-token' }));
+    const { result } = renderHook(() => useChatLocation());
 
     let request: Promise<void>;
     act(() => {
@@ -124,7 +123,7 @@ describe('useChatLocation', () => {
       success(position(positionRequestCount <= 3 ? 200 : 20));
     });
     vi.stubGlobal('navigator', { geolocation: { getCurrentPosition } });
-    const { result } = renderHook(() => useChatLocation({ accessToken: 'access-token' }));
+    const { result } = renderHook(() => useChatLocation());
 
     let firstRequest: Promise<void>;
     act(() => {
@@ -149,7 +148,7 @@ describe('useChatLocation', () => {
       failure(permissionDenied),
     );
     vi.stubGlobal('navigator', { geolocation: { getCurrentPosition } });
-    const { result } = renderHook(() => useChatLocation({ accessToken: 'access-token' }));
+    const { result } = renderHook(() => useChatLocation());
 
     await act(async () => result.current.requestLocation());
 
@@ -159,16 +158,15 @@ describe('useChatLocation', () => {
     expect(result.current.error).toContain('권한');
   });
 
-  it('로그인 토큰이 없으면 위치 권한을 요청하지 않는다', async () => {
-    const getCurrentPosition = vi.fn();
+  it('메모리 token이 없어도 위치 API를 호출해 refresh 복구를 시도한다', async () => {
+    const getCurrentPosition = vi.fn((success: PositionCallback) => success(position(20)));
     vi.stubGlobal('navigator', { geolocation: { getCurrentPosition } });
-    const { result } = renderHook(() => useChatLocation({ accessToken: null }));
+    const { result } = renderHook(() => useChatLocation());
 
     await act(async () => result.current.requestLocation());
 
-    expect(getCurrentPosition).not.toHaveBeenCalled();
-    expect(result.current.status).toBe('error');
-    expect(result.current.canRetry).toBe(false);
-    expect(result.current.error).toContain('로그인');
+    expect(getCurrentPosition).toHaveBeenCalledOnce();
+    expect(resolveLocation).toHaveBeenCalledOnce();
+    expect(result.current.status).toBe('resolved');
   });
 });

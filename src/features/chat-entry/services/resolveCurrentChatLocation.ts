@@ -88,10 +88,7 @@ function locationErrorMessage(error: unknown) {
   return '현재 위치를 다시 확인하지 못했습니다. 다음 확인 때 다시 시도합니다.';
 }
 
-export async function resolveCurrentChatLocation(
-  accessToken: string,
-  signal: AbortSignal,
-): Promise<LocationResolution> {
+export async function resolveCurrentChatLocation(signal: AbortSignal): Promise<LocationResolution> {
   if (!navigator.geolocation) {
     throw new Error('이 브라우저에서는 위치 확인을 지원하지 않습니다.');
   }
@@ -102,7 +99,7 @@ export async function resolveCurrentChatLocation(
       const position = await getCurrentPosition(signal);
       const coordinates = coordinatesFrom(position);
       if (coordinates) {
-        return await resolveLocation(coordinates, accessToken, signal);
+        return await resolveLocation(coordinates, signal);
       }
       lastError = new Error('위치 정확도가 충분하지 않습니다.');
     } catch (caught) {

@@ -1,10 +1,13 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { setAccessToken } from '../features/auth-login/api/authSession';
 import { LocationResolutionError, resolveLocation } from './locationResolutions';
 
 describe('resolveLocation', () => {
+  beforeEach(() => setAccessToken('access-token'));
   afterEach(() => {
     vi.unstubAllGlobals();
+    sessionStorage.clear();
   });
 
   it('위치 정보를 snake_case로 전송하고 판정 결과를 반환한다', async () => {
@@ -29,7 +32,6 @@ describe('resolveLocation', () => {
 
     const result = await resolveLocation(
       { latitude: 37.3595704, longitude: 127.105399, accuracyMeters: 18.5 },
-      'access-token',
       new AbortController().signal,
     );
 
@@ -40,10 +42,9 @@ describe('resolveLocation', () => {
     });
     expect(result.locationResolutionToken).toBe('loc-token');
     const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(options.headers).toEqual({
-      Authorization: 'Bearer access-token',
-      'Content-Type': 'application/json',
-    });
+    const headers = new Headers(options.headers);
+    expect(headers.get('Authorization')).toBe('Bearer access-token');
+    expect(headers.get('Content-Type')).toBe('application/json');
     expect(JSON.parse(options.body as string)).toEqual({
       latitude: 37.3595704,
       longitude: 127.105399,
@@ -64,7 +65,6 @@ describe('resolveLocation', () => {
 
     const error = await resolveLocation(
       { latitude: 37.3595704, longitude: 127.105399, accuracyMeters: 18.5 },
-      'expired-token',
       new AbortController().signal,
     ).catch((caught: unknown) => caught);
 
@@ -86,7 +86,6 @@ describe('resolveLocation', () => {
 
     const error = await resolveLocation(
       { latitude: 37.3595704, longitude: 127.105399, accuracyMeters: 18.5 },
-      'access-token',
       new AbortController().signal,
     ).catch((caught: unknown) => caught);
 

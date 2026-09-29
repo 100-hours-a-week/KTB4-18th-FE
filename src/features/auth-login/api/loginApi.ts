@@ -1,4 +1,4 @@
-import { getCsrfToken, runAuthTransition } from './authSession';
+import { runAuthTransition, setAccessToken } from './authSession';
 
 // This module owns only the email/password login contract.
 export type LoginRequest = {
@@ -36,12 +36,11 @@ async function submitLogin(request: LoginRequest): Promise<LoginSuccessResponse>
   let response: Response;
 
   try {
-    const csrf = await getCsrfToken();
     response = await fetch(
       `${(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api/v1/auth/login`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(request),
       },
@@ -64,6 +63,6 @@ async function submitLogin(request: LoginRequest): Promise<LoginSuccessResponse>
     throw new LoginRequestError(500);
   }
 
-  sessionStorage.setItem('access_token', payload.data.access_token);
+  setAccessToken(payload.data.access_token);
   return payload;
 }

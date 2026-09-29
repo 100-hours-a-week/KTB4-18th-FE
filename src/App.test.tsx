@@ -5,7 +5,11 @@ import App from './App';
 import { recommend } from './api/recommendations';
 import { login } from './features/auth-login/api/loginApi';
 import { logout } from './features/auth-login/api/logoutApi';
-import { resetAuthSessionForTests } from './features/auth-login/api/authSession';
+import {
+  getAccessToken,
+  resetAuthSessionForTests,
+  setAccessToken,
+} from './features/auth-login/api/authSession';
 import { signup } from './features/user-signup/api/signupApi';
 import { getCurrentTerms, TermType } from './features/user-signup/api/termsApi';
 import type { VoiceStatus } from './hooks/useVoiceInput';
@@ -71,7 +75,7 @@ afterEach(() => {
 describe('음성 transcript 공통 추천 흐름', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    sessionStorage.setItem('access_token', 'test-access-token');
+    setAccessToken('test-access-token');
     window.history.replaceState(null, '', '/chatbot');
     voiceState = {
       status: 'idle',
@@ -114,6 +118,7 @@ describe('음성 transcript 공통 추천 흐름', () => {
     const user = userEvent.setup();
     render(<App />);
 
+    await screen.findByLabelText('추천받고 싶은 상황');
     act(() => transcriptHandler('비 오는 날 노래'));
     const input = screen.getByLabelText('추천받고 싶은 상황');
     expect(input).toHaveValue('비 오는 날 노래');
@@ -126,7 +131,6 @@ describe('음성 transcript 공통 추천 흐름', () => {
     expect(recommend).toHaveBeenCalledWith(
       '비 오는 날 드라이브 음악',
       expect.any(String),
-      'test-access-token',
       expect.any(AbortSignal),
       'VOICE',
     );
@@ -141,6 +145,7 @@ describe('음성 transcript 공통 추천 흐름', () => {
     const user = userEvent.setup();
     render(<App />);
 
+    await screen.findByRole('button', { name: '전사 다시 시도' });
     await user.click(screen.getByRole('button', { name: '전사 다시 시도' }));
     await user.click(screen.getByRole('button', { name: '다시 녹음' }));
     await user.click(screen.getByRole('button', { name: '텍스트로 입력' }));
@@ -327,7 +332,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     });
   });
 
-  it('브라우저 뒤로가기 popstate로 메인에 복귀해도 로그인 표시를 유지한다', async () => {
+  it('챗봇 플로팅 버튼과 브라우저 뒤로·앞으로가 렌더된 SPA 경로를 바꾼다', async () => {
     const user = userEvent.setup();
     window.history.replaceState(null, '', '/login');
     render(<App />);
@@ -336,16 +341,58 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.click(screen.getByRole('button', { name: '로그인' }));
     expect(await screen.findByRole('button', { name: '로그아웃' })).toBeInTheDocument();
 
-    act(() => {
-      window.history.replaceState(null, '', '/music-records');
-      window.dispatchEvent(new PopStateEvent('popstate'));
-    });
-    act(() => {
-      window.history.replaceState(null, '', '/');
-      window.dispatchEvent(new PopStateEvent('popstate'));
-    });
-    expect(screen.getByRole('button', { name: '로그아웃' })).toBeInTheDocument();
+    const chatbotLink = screen.getByRole('link', { name: '음악 추천 챗봇 열기' });
+    await user.click(chatbotLink);
+    expect(await screen.findByRole('heading', { name: '음악 추천 챗봇' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/chatbot');
     expect(logout).not.toHaveBeenCalled();
+
+    await act(async () => window.history.back());
+    await waitFor(() => expect(window.location.pathname).toBe('/'));
+    expect(screen.getByRole('heading', { name: '음악 지도' })).toBeInTheDocument();
+
+    await act(async () => window.history.forward());
+    await waitFor(() => expect(window.location.pathname).toBe('/chatbot'));
+    expect(screen.getByRole('heading', { name: '음악 추천 챗봇' })).toBeInTheDocument();
+    expect(logout).not.toHaveBeenCalled();
+  });
+
+  it('일시적인 sessionStorage 접근 오류 후 보호 경로에서 재시도해 복구한다', async () => {
+    const user = userEvent.setup();
+    resetAuthSessionForTests();
+    sessionStorage.clear();
+    window.history.replaceState(null, '', '/chatbot');
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementationOnce(() => {
+      throw new DOMException('temporarily blocked', 'SecurityError');
+    });
+    let csrfCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith('/api/v1/auth/token/csrf')) {
+          csrfCount += 1;
+          return Promise.resolve(
+            csrfCount === 1
+              ? Response.json({ message: 'unavailable', data: null }, { status: 503 })
+              : Response.json({ data: { csrf_token: 'csrf' } }),
+          );
+        }
+        if (url.endsWith('/api/v1/auth/token/refresh')) {
+          return Promise.resolve(Response.json({ data: { access_token: 'restored-token' } }));
+        }
+        return Promise.resolve(Response.json({ data: 'unexpected' }));
+      }),
+    );
+    render(<App />);
+
+    const retry = await screen.findByRole('button', { name: '다시 시도' });
+    expect(screen.queryByRole('heading', { name: '음악 추천 챗봇' })).not.toBeInTheDocument();
+    expect(recommend).not.toHaveBeenCalled();
+    await user.click(retry);
+
+    expect(await screen.findByRole('heading', { name: '음악 추천 챗봇' })).toBeInTheDocument();
+    expect(getAccessToken()).toBe('restored-token');
   });
 
   it('데이터 401 뒤 refresh도 401이면 메인 인증 상태를 guest로 바꾼다', async () => {
@@ -387,7 +434,7 @@ describe('로그인과 회원가입 화면 연결', () => {
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
     expect(await screen.findByRole('button', { name: '로그인' })).toBeInTheDocument();
-    expect(sessionStorage.getItem('access_token')).toBeNull();
+    expect(getAccessToken()).toBeNull();
   });
 
   it('로그인 후 채팅 탭을 누르면 준비 안내 화면으로 이동한다', async () => {

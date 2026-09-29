@@ -1,3 +1,5 @@
+import { AuthRequestError, authenticatedFetch } from '../features/auth-login/api/authSession';
+
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
 interface ApiBody<T> {
@@ -84,17 +86,13 @@ function toRegionSummary(region: RegionBody): RegionSummary {
 
 export async function resolveLocation(
   coordinates: LocationCoordinates,
-  accessToken: string,
   signal: AbortSignal,
 ): Promise<LocationResolution> {
   let response: Response;
   try {
-    response = await fetch(`${baseUrl}/api/v1/locations/resolve`, {
+    response = await authenticatedFetch(`${baseUrl}/api/v1/locations/resolve`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({
         latitude: coordinates.latitude,
@@ -106,6 +104,16 @@ export async function resolveLocation(
   } catch (caught) {
     if (caught instanceof DOMException && caught.name === 'AbortError') {
       throw caught;
+    }
+    if (caught instanceof AuthRequestError) {
+      const status = caught.status;
+      throw new LocationResolutionError(
+        status === null
+          ? '로그인 상태를 확인하지 못했습니다. 다시 시도해 주세요.'
+          : userMessage(status),
+        status,
+        status === null || status >= 500,
+      );
     }
     throw new LocationResolutionError(
       '서버에 연결하지 못했습니다. ' + '연결 상태를 확인하고 다시 시도해 주세요.',

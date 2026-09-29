@@ -1,3 +1,5 @@
+import { AuthRequestError, authenticatedFetch } from '../features/auth-login/api/authSession';
+
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
 interface SpeechTranscription {
@@ -38,21 +40,30 @@ function userMessage(status: number, serverMessage?: string) {
   }
 }
 
-export async function transcribeAudio(audio: File, signal: AbortSignal, accessToken: string) {
+export async function transcribeAudio(audio: File, signal: AbortSignal) {
   const formData = new FormData();
   formData.append('audio', audio);
 
   let response: Response;
   try {
-    response = await fetch(`${baseUrl}/api/v1/speech-transcriptions`, {
+    response = await authenticatedFetch(`${baseUrl}/api/v1/speech-transcriptions`, {
       method: 'POST',
       credentials: 'include',
-      headers: { Authorization: `Bearer ${accessToken}` },
       body: formData,
       signal,
     });
   } catch (caught) {
     if (caught instanceof DOMException && caught.name === 'AbortError') throw caught;
+    if (caught instanceof AuthRequestError) {
+      const status = caught.status;
+      throw new SpeechTranscriptionError(
+        status === null
+          ? '로그인 상태를 확인하지 못했습니다. 다시 시도해 주세요.'
+          : userMessage(status),
+        status,
+        status === null || status >= 500,
+      );
+    }
     throw new SpeechTranscriptionError(
       '서버에 연결하지 못했습니다. 연결 상태를 확인하고 다시 시도해 주세요.',
       null,

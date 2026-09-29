@@ -21,10 +21,6 @@ const GEOLOCATION_OPTIONS: PositionOptions = {
 export type ChatLocationStatus =
   'idle' | 'requestingPermission' | 'retrying' | 'resolving' | 'resolved' | 'error';
 
-interface UseChatLocationOptions {
-  accessToken: string | null;
-}
-
 function getCurrentPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(resolve, reject, GEOLOCATION_OPTIONS);
@@ -51,7 +47,7 @@ function positionErrorMessage(error: unknown) {
   }
 }
 
-export function useChatLocation({ accessToken }: UseChatLocationOptions) {
+export function useChatLocation() {
   const [status, setStatus] = useState<ChatLocationStatus>('idle');
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState('');
@@ -96,11 +92,6 @@ export function useChatLocation({ accessToken }: UseChatLocationOptions) {
     setResolution(null);
     setAttempt(0);
 
-    if (!accessToken) {
-      setStatus('error');
-      setError('채팅방에 입장하려면 로그인이 필요합니다.');
-      return;
-    }
     if (!navigator.geolocation) {
       setStatus('error');
       setError('이 브라우저에서는 위치 확인을 지원하지 않습니다.');
@@ -164,7 +155,7 @@ export function useChatLocation({ accessToken }: UseChatLocationOptions) {
     resolutionRequestRef.current = controller;
     setStatus('resolving');
     try {
-      const nextResolution = await resolveLocation(coordinates, accessToken, controller.signal);
+      const nextResolution = await resolveLocation(coordinates, controller.signal);
       if (!mountedRef.current || runId !== runIdRef.current || controller.signal.aborted) {
         return;
       }
@@ -182,7 +173,7 @@ export function useChatLocation({ accessToken }: UseChatLocationOptions) {
         resolutionRequestRef.current = null;
       }
     }
-  }, [accessToken, cancelRetryWait, waitForRetry]);
+  }, [cancelRetryWait, waitForRetry]);
 
   useEffect(() => {
     mountedRef.current = true;

@@ -10,6 +10,7 @@ import {
 } from './api/musicRecordsApi';
 import { MusicRecordCreatePage, MusicRecordListPage } from './components/MusicRecordPages';
 import { MusicRecordDetailPage } from './components/MusicRecordDetailPage';
+import { setAccessToken } from '../auth-login/api/authSession';
 
 const region = {
   sido: { region_id: 1, code: '11', name: '서울특별시' },
@@ -49,7 +50,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       created_at: '2026-09-22T06:30:00Z',
       updated_at: null,
     };
-    sessionStorage.setItem('access_token', 'test-access-token');
+    setAccessToken('test-access-token');
     vi.stubGlobal(
       'IntersectionObserver',
       class {

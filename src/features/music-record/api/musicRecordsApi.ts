@@ -1,9 +1,4 @@
-import {
-  AuthRequestError,
-  getAccessToken,
-  getCsrfToken,
-  refreshAccessToken,
-} from '../../auth-login/api/authSession';
+import { AuthRequestError, authenticatedFetch } from '../../auth-login/api/authSession';
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
@@ -57,42 +52,7 @@ export class MusicApiError extends Error {
   }
 }
 
-async function fetchData<T>(
-  path: string,
-  options: RequestInit = {},
-  hasRetried = false,
-): Promise<T> {
-  const headers = new Headers(options.headers);
-  const accessToken = getAccessToken();
-  if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
-  if (options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase())) {
-    try {
-      headers.set('X-CSRF-TOKEN', await getCsrfToken());
-    } catch {
-      throw new MusicApiError(null, '보안 토큰을 불러오지 못했습니다.');
-    }
-  }
-  let response: Response;
-  try {
-    response = await fetch(`${baseUrl}/api/v1${path}`, {
-      ...options,
-      credentials: 'include',
-      headers,
-    });
-  } catch {
-    throw new MusicApiError(null, '서버에 연결하지 못했습니다. 다시 시도해 주세요.');
-  }
-  if (response.status === 401 && !hasRetried) {
-    try {
-      await refreshAccessToken();
-    } catch (caught) {
-      if (caught instanceof AuthRequestError && caught.status === 401) {
-        throw new MusicApiError(401, '로그인이 만료되었습니다. 다시 로그인해 주세요.');
-      }
-      throw new MusicApiError(null, '인증을 확인하지 못했습니다. 다시 시도해 주세요.');
-    }
-    return fetchData<T>(path, options, true);
-  }
+async function parseResponse<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => null);
   if (!response.ok || body?.data == null) {
     throw new MusicApiError(response.status, body?.message ?? '요청을 처리하지 못했습니다.');
@@ -100,13 +60,49 @@ async function fetchData<T>(
   return body.data as T;
 }
 
+async function fetchPublicData<T>(path: string): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/api/v1${path}`, {
+      credentials: 'include',
+    });
+  } catch {
+    throw new MusicApiError(null, '서버에 연결하지 못했습니다. 다시 시도해 주세요.');
+  }
+  return parseResponse<T>(response);
+}
+
+async function fetchProtectedData<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers = new Headers(options.headers);
+  let response: Response;
+  try {
+    response = await authenticatedFetch(`${baseUrl}/api/v1${path}`, {
+      ...options,
+      credentials: 'include',
+      headers,
+    });
+  } catch (caught) {
+    if (caught instanceof AuthRequestError) {
+      const status = caught.status;
+      throw new MusicApiError(
+        status,
+        status === 401
+          ? '로그인이 만료되었습니다. 다시 로그인해 주세요.'
+          : '인증을 확인하지 못했습니다. 다시 시도해 주세요.',
+      );
+    }
+    throw new MusicApiError(null, '서버에 연결하지 못했습니다. 다시 시도해 주세요.');
+  }
+  return parseResponse<T>(response);
+}
+
 export const searchMusic = (query: string, cursor?: string | null) => {
   const params = new URLSearchParams({ query, provider: 'ITUNES', size: '20' });
   if (cursor) params.set('cursor', cursor);
-  return fetchData<Page<Music>>(`/music/search?${params}`);
+  return fetchPublicData<Page<Music>>(`/music/search?${params}`);
 };
 export const resolveLocation = (latitude: number, longitude: number, accuracy_meters: number) =>
-  fetchData<Location>('/locations/resolve', {
+  fetchProtectedData<Location>('/locations/resolve', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ latitude, longitude, accuracy_meters }),
@@ -117,7 +113,7 @@ export const createMusicRecord = (
   customPlaceName: string,
   emotionMemo: string,
 ) =>
-  fetchData<CreatedRecord>('/music-records', {
+  fetchProtectedData<CreatedRecord>('/music-records', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -128,7 +124,7 @@ export const createMusicRecord = (
     }),
   });
 export const getMusicRecords = (cursor?: string | null) =>
-  fetchData<Page<MusicRecord>>(
+  fetchProtectedData<Page<MusicRecord>>(
     `/users/me/music-records${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
   );
 
@@ -148,13 +144,13 @@ export async function getAllMusicRecords(): Promise<MusicRecord[]> {
   }
 }
 export const getMusicRecord = (recordId: number) =>
-  fetchData<MusicRecordDetail>(`/music-records/${recordId}`);
+  fetchProtectedData<MusicRecordDetail>(`/music-records/${recordId}`);
 export const updateMusicRecord = (
   recordId: number,
   changes: MusicRecordChanges,
   signal?: AbortSignal,
 ) =>
-  fetchData<{ record_id: number; updated_at: string }>(`/music-records/${recordId}`, {
+  fetchProtectedData<{ record_id: number; updated_at: string }>(`/music-records/${recordId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(changes),

@@ -57,9 +57,7 @@ describe('useVoiceInput', () => {
       .mockRejectedValueOnce(new SpeechTranscriptionError('일시적인 오류', 502, true))
       .mockResolvedValueOnce('비 오는 날 드라이브 음악');
     const onTranscript = vi.fn();
-    const { result } = renderHook(() =>
-      useVoiceInput({ accessToken: 'access-token', onTranscript }),
-    );
+    const { result } = renderHook(() => useVoiceInput({ onTranscript }));
 
     await act(async () => result.current.startRecording());
     expect(result.current.isRecording).toBe(true);
@@ -72,11 +70,7 @@ describe('useVoiceInput', () => {
     await waitFor(() => expect(result.current.status).toBe('reviewing'));
 
     expect(transcribeAudio).toHaveBeenCalledTimes(2);
-    expect(transcribeAudio).toHaveBeenLastCalledWith(
-      expect.any(File),
-      expect.any(AbortSignal),
-      'access-token',
-    );
+    expect(transcribeAudio).toHaveBeenLastCalledWith(expect.any(File), expect.any(AbortSignal));
     expect(onTranscript).toHaveBeenCalledWith('비 오는 날 드라이브 음악');
     expect(stopTrack).toHaveBeenCalled();
   });
