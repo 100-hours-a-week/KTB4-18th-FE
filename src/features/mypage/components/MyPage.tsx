@@ -27,7 +27,7 @@ import { validateProfileFields } from '../model/profileValidation';
 type MyPageProps = {
   onLogin: () => void;
   onLogout: () => void;
-  onWithdrawn: () => void;
+  onWithdrawn: () => void | Promise<void>;
 };
 type View = 'overview' | 'profile' | 'settings' | 'password' | 'terms' | 'recommendations';
 const INITIAL_SETTINGS: UserSettings = {
@@ -521,7 +521,7 @@ function WithdrawalDialog({
 }: {
   open: boolean;
   setOpen: (open: boolean) => void;
-  onWithdrawn: () => void;
+  onWithdrawn: () => void | Promise<void>;
 }) {
   const [password, setPassword] = useState('');
   const [notice, setNotice] = useState('');
@@ -541,7 +541,7 @@ function WithdrawalDialog({
     try {
       await withdrawMyAccount(password);
       setPassword('');
-      onWithdrawn();
+      await onWithdrawn();
     } catch (error) {
       setNotice(message(error, '회원 탈퇴를 처리하지 못했어요.'));
     } finally {

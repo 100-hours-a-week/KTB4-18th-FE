@@ -7,11 +7,21 @@ import {
   authenticatedFetch,
   clearAccessToken,
   getAccessToken,
+  getAccessTokenExpiresAt,
   refreshAccessToken,
   resetAuthSessionForTests,
   runAuthTransition,
   setAccessToken,
+  shouldRefreshAccessToken,
 } from './authSession';
+
+function accessTokenWithExpiration(expiresAt: number): string {
+  const payload = btoa(JSON.stringify({ exp: Math.floor(expiresAt / 1000) }))
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  return `header.${payload}.signature`;
+}
 
 describe('refresh 쿠키와 계정 전환 요청 순서', () => {
   beforeEach(() => {
@@ -30,6 +40,16 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
 
     resetAuthSessionForTests();
     expect(getAccessToken()).toBe('persisted-token');
+  });
+
+  it('access JWT 만료 10분 전부터 refresh가 필요하다고 판단한다', () => {
+    const now = Date.now();
+    setAccessToken(accessTokenWithExpiration(now + 9 * 60 * 1000));
+    expect(getAccessTokenExpiresAt()).toBeGreaterThan(now);
+    expect(shouldRefreshAccessToken(now)).toBe(true);
+
+    setAccessToken(accessTokenWithExpiration(now + 11 * 60 * 1000));
+    expect(shouldRefreshAccessToken(now)).toBe(false);
   });
 
   it('로그인은 CSRF 세션 없이 Origin 정책과 access token 응답을 사용한다', async () => {
@@ -98,10 +118,11 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
       completeRefresh = resolve;
     });
     const order: string[] = [];
+    const logoutHeaders: Headers[] = [];
     setAccessToken('existing-token');
     vi.stubGlobal(
       'fetch',
-      vi.fn((input: string | URL) => {
+      vi.fn((input: string | URL, init?: RequestInit) => {
         const url = String(input);
         if (url.endsWith('/token/csrf'))
           return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
@@ -111,6 +132,7 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
         }
         if (url.endsWith('/auth/logout')) {
           order.push('logout');
+          logoutHeaders.push(new Headers(init?.headers));
           return Promise.resolve(new Response(null, { status: 204 }));
         }
         throw new Error(`Unexpected request: ${url}`);
@@ -124,6 +146,7 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     await expect(pending).rejects.toMatchObject({ status: null });
     await signingOut;
     expect(order).toEqual(['refresh', 'logout']);
+    expect(logoutHeaders[0]?.get('Authorization')).toBe('Bearer existing-token');
     expect(getAccessToken()).toBeNull();
   });
 

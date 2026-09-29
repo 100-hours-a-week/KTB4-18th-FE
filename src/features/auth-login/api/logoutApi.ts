@@ -16,12 +16,15 @@ async function submitLogout(): Promise<void> {
 
   try {
     const csrf = await getCsrfToken();
+    const accessToken = getAccessToken();
+    const headers = new Headers({ 'X-CSRF-TOKEN': csrf });
+    if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
     response = await fetch(
       `${(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api/v1/auth/logout`,
       {
         method: 'POST',
         credentials: 'include',
-        headers: { 'X-CSRF-TOKEN': csrf },
+        headers,
       },
     );
   } catch {
@@ -33,4 +36,4 @@ async function submitLogout(): Promise<void> {
   }
   clearAccessToken();
 }
-import { clearAccessToken, getCsrfToken, runAuthTransition } from './authSession';
+import { clearAccessToken, getAccessToken, getCsrfToken, runAuthTransition } from './authSession';

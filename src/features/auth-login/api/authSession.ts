@@ -1,5 +1,6 @@
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 const ACCESS_TOKEN_KEY = 'access_token';
+const REFRESH_EARLY_MS = 10 * 60 * 1000;
 const AUTH_LOCK_NAME = 'meomuneum:auth-transition';
 const AUTH_CHANNEL_NAME = 'meomuneum:auth-state';
 const AUTH_EPOCH_KEY = 'meomuneum:auth-epoch';
@@ -112,6 +113,24 @@ export function getAccessToken(): string | null {
     generation += 1;
     return null;
   }
+}
+
+export function getAccessTokenExpiresAt(): number | null {
+  const token = getAccessToken();
+  if (!token) return null;
+  try {
+    const encodedPayload = token.split('.')[1];
+    if (!encodedPayload) return null;
+    const payload = JSON.parse(window.atob(encodedPayload.replace(/-/g, '+').replace(/_/g, '/')));
+    return Number.isFinite(payload.exp) ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+export function shouldRefreshAccessToken(now = Date.now()): boolean {
+  const expiresAt = getAccessTokenExpiresAt();
+  return expiresAt === null || expiresAt - now <= REFRESH_EARLY_MS;
 }
 
 function persistAccessToken(token: string, invalidateRequests: boolean): void {

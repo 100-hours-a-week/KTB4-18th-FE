@@ -17,7 +17,9 @@ import {
   AuthRequestError,
   clearAccessToken,
   getAccessToken,
+  getAccessTokenExpiresAt,
   refreshAccessToken,
+  shouldRefreshAccessToken,
   type AuthStatus,
 } from './features/auth-login/api/authSession';
 import { ChatEntryPage } from './features/chat-entry/components/ChatEntryPage';
@@ -74,7 +76,7 @@ function App() {
     const currentIntent = authIntent.current;
     setAuthStatus('restoring');
     try {
-      if (getAccessToken()) {
+      if (getAccessToken() && !shouldRefreshAccessToken()) {
         if (currentIntent === authIntent.current) setAuthStatus('authenticated');
         return;
       }
@@ -103,6 +105,52 @@ function App() {
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
   }, []);
+
+  useEffect(() => {
+    if (authStatus !== 'authenticated') return;
+    let timer: number | undefined;
+    let refreshing = false;
+    const schedule = (delayOverride?: number) => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      const expiresAt = getAccessTokenExpiresAt();
+      const delay =
+        delayOverride ??
+        (expiresAt === null ? 0 : Math.max(0, expiresAt - Date.now() - 10 * 60 * 1000));
+      timer = window.setTimeout(() => void refreshIfDue(), delay);
+    };
+    const refreshIfDue = async () => {
+      if (refreshing || document.visibilityState === 'hidden' || !shouldRefreshAccessToken())
+        return;
+      refreshing = true;
+      let retryDelay: number | undefined;
+      try {
+        await refreshAccessToken();
+      } catch (caught) {
+        if (caught instanceof AuthRequestError && caught.status === 401) {
+          clearAccessToken();
+          setAuthStatus('guest');
+        } else {
+          retryDelay = 60_000;
+        }
+      } finally {
+        refreshing = false;
+        if (getAccessToken()) schedule(retryDelay);
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void refreshIfDue();
+    };
+    window.addEventListener('focus', onVisibility);
+    window.addEventListener('pageshow', onVisibility);
+    document.addEventListener('visibilitychange', onVisibility);
+    schedule();
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      window.removeEventListener('focus', onVisibility);
+      window.removeEventListener('pageshow', onVisibility);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [authStatus]);
 
   const handleLoginSuccess = () => {
     authIntent.current += 1;
@@ -137,13 +185,23 @@ function App() {
     }
   };
 
-  const handleWithdrawalComplete = () => {
+  const handleWithdrawalComplete = async () => {
     authIntent.current += 1;
-    clearAccessToken();
-    setAuthStatus('guest');
+    setAuthStatus('logging-out');
     setLogoutError('');
-    navigate(LOGIN_PATH);
-    void logout().catch(() => undefined);
+    try {
+      await logout();
+      clearAccessToken();
+      setAuthStatus('guest');
+      navigate(LOGIN_PATH);
+    } catch (error) {
+      setAuthStatus('retryable-error');
+      setLogoutError(
+        error instanceof LogoutRequestError && error.status === null
+          ? '네트워크 상태를 확인한 뒤 다시 시도해 주세요.'
+          : '회원 탈퇴 후 세션 폐기에 실패했어요. 다시 로그인하거나 로그아웃을 재시도해 주세요.',
+      );
+    }
   };
 
   if (pathname === LOGIN_PATH) {
