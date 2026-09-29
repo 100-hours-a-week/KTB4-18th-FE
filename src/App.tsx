@@ -299,10 +299,7 @@ function ChatbotPage() {
             <p>지금의 순간에 음악을 더해볼까요?</p>
             <p>느껴지는 분위기나 장소, 날씨를 편하게 들려주세요.</p>
             <p>이 순간에 어울리는 음악을 골라드릴게요.</p>
-            <p className="sample-notice">
-              현재는 입력 문장으로 iTunes에서 음악을 검색합니다. 입력 문장은 연속 추천을 위해
-              대화별로 저장합니다.
-            </p>
+            <p className="sample-notice">대화 맥락을 반영해 AI가 음악을 추천해 드립니다.</p>
           </div>
           <time>{formatTime(openedAt)}</time>
         </div>

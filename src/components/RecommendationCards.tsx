@@ -56,6 +56,15 @@ export function RecommendationCards({ recommendation, activePreview, onPreviewCh
     }
   }
 
+  if (recommendation.items.length === 0) {
+    return (
+      <section className="recommendation-bubble" aria-label="추천 음악 없음">
+        <p className="recommendation-intro">조건에 맞는 추천곡을 찾지 못했어요.</p>
+        <p className="sample-notice">다른 분위기나 상황으로 다시 요청해 주세요.</p>
+      </section>
+    );
+  }
+
   return (
     <section
       className="recommendation-bubble"
@@ -66,7 +75,7 @@ export function RecommendationCards({ recommendation, activePreview, onPreviewCh
           ? `검색 결과 ${recommendation.items.length}곡을 찾았어요.`
           : '이런 곡은 어떠세요?'}
       </p>
-      <p className="sample-notice">AI 분석 연동 전의 iTunes 검색 결과입니다.</p>
+      <p className="sample-notice">AI가 대화 맥락을 반영해 고른 곡입니다.</p>
       <ol className="music-list">
         {recommendation.items.map(({ rank_no, music }) => {
           const key = `${recommendation.recommendation_id}-${rank_no}`;

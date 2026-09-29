@@ -151,6 +151,29 @@ describe('음성 transcript 공통 추천 흐름', () => {
   });
 });
 
+describe('추천 결과 없음 안내', () => {
+  it('빈 추천 결과를 오류가 아닌 대화 안내로 표시한다', async () => {
+    vi.mocked(recommend).mockResolvedValue({
+      recommendation_id: 1,
+      conversation_key: 'conversation',
+      status: 'COMPLETED',
+      items: [],
+      completed_at: '2026-09-29T12:00:00Z',
+    });
+    sessionStorage.setItem('access_token', 'test-access-token');
+    window.history.replaceState(null, '', '/chatbot');
+    const user = userEvent.setup();
+
+    render(<App />);
+    await user.type(screen.getByLabelText('추천받고 싶은 상황'), '아무 조건');
+    await user.click(screen.getByRole('button', { name: '추천 요청 보내기' }));
+
+    expect(await screen.findByText('조건에 맞는 추천곡을 찾지 못했어요.')).toBeInTheDocument();
+    expect(screen.getByText('다른 분위기나 상황으로 다시 요청해 주세요.')).toBeInTheDocument();
+    expect(screen.queryByText(/입력창에서 다시 전송할 수 있습니다/)).not.toBeInTheDocument();
+  });
+});
+
 describe('로그인과 회원가입 화면 연결', () => {
   beforeEach(() => {
     const types = [

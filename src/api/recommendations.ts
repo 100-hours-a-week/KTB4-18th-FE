@@ -37,7 +37,7 @@ export async function recommend(
     }),
     signal,
   });
-  if (result.status !== 'COMPLETED' || result.items.length < 1 || result.items.length > 5) {
+  if (result.status !== 'COMPLETED' || result.items.length > 5) {
     throw new Error('추천 결과를 확인할 수 없습니다. 다시 시도해 주세요.');
   }
   return result;
