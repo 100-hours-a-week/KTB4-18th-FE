@@ -18,30 +18,17 @@ describe('recommend', () => {
           data: {
             recommendation_id: 1,
             conversation_key: 'conversation',
-            status: 'COMPLETED',
-            items: [
-              {
-                rank_no: 1,
-                music: {
-                  music_id: 1,
-                  title: '밤편지',
-                  artist_name: '아이유',
-                  album_cover_url: null,
-                  preview_url: null,
-                },
-              },
-            ],
-            completed_at: '2026-09-27T00:00:00Z',
+            status: 'PROCESSING',
           },
         }),
-        { status: 201, headers: { 'Content-Type': 'application/json' } },
+        { status: 202, headers: { 'Content-Type': 'application/json' } },
       ),
     );
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
       recommend('비 오는 날', 'conversation', new AbortController().signal),
-    ).resolves.toMatchObject({ status: 'COMPLETED' });
+    ).resolves.toMatchObject({ status: 'PROCESSING', recommendation_id: 1 });
 
     const [, options] = fetchMock.mock.calls[0];
     const headers = new Headers(options.headers);

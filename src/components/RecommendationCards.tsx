@@ -56,6 +56,15 @@ export function RecommendationCards({ recommendation, activePreview, onPreviewCh
     }
   }
 
+  if (recommendation.items.length === 0) {
+    return (
+      <section className="recommendation-bubble" aria-label="추천 음악 없음">
+        <p className="recommendation-intro">조건에 맞는 추천곡을 찾지 못했어요.</p>
+        <p className="sample-notice">다른 분위기나 상황으로 다시 요청해 주세요.</p>
+      </section>
+    );
+  }
+
   return (
     <section
       className="recommendation-bubble"
