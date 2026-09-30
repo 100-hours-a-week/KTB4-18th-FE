@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
@@ -6,7 +6,10 @@ import { recommend, streamRecommendation } from './api/recommendations';
 import { login } from './features/auth-login/api/loginApi';
 import { logout } from './features/auth-login/api/logoutApi';
 import {
+  ACCESS_TOKEN_REFRESH_EARLY_MS,
+  authenticatedFetch,
   getAccessToken,
+  getLastAccessTokenRefreshAt,
   resetAuthSessionForTests,
   setAccessToken,
 } from './features/auth-login/api/authSession';
@@ -69,7 +72,369 @@ beforeEach(() => {
   cleanup();
 });
 afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+function accessTokenWithExpiration(expiresAt: number): string {
+  const payload = btoa(JSON.stringify({ exp: Math.floor(expiresAt / 1000) }))
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  return `header.${payload}.signature`;
+}
+
+describe('access token 사전 재발급 스케줄러', () => {
+  const initialTime = new Date('2026-10-01T00:00:00.000Z').getTime();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetAuthSessionForTests();
+    sessionStorage.clear();
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(initialTime);
+    window.history.replaceState(null, '', '/chatbot');
+  });
+
+  it('만료 10분 전에 refresh하고 새 만료 시각으로 다음 재발급을 예약한다', async () => {
+    let refreshCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith('/token/csrf')) {
+          return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+        }
+        if (url.endsWith('/token/refresh')) {
+          refreshCount += 1;
+          return Promise.resolve(
+            Response.json({
+              data: { access_token: accessTokenWithExpiration(Date.now() + 60 * 60 * 1000) },
+            }),
+          );
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }),
+    );
+    setAccessToken(accessTokenWithExpiration(initialTime + 60 * 60 * 1000));
+
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('heading', { name: '음악 추천 챗봇' })).toBeInTheDocument();
+
+    await act(async () => vi.advanceTimersByTimeAsync(50 * 60 * 1000 - 1));
+    expect(refreshCount).toBe(0);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(refreshCount).toBe(1);
+    expect(sessionStorage.getItem('access_token')).toBe(getAccessToken());
+
+    await act(async () => vi.advanceTimersByTimeAsync(50 * 60 * 1000));
+    expect(refreshCount).toBe(2);
+  });
+
+  it('보호 API 복구 refresh도 due token cooldown을 공유한다', async () => {
+    let refreshCount = 0;
+    let protectedRequestCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith('/token/csrf')) {
+          return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+        }
+        if (url.endsWith('/token/refresh')) {
+          refreshCount += 1;
+          const expiresAt =
+            refreshCount === 1 ? Date.now() + 9 * 60 * 1000 : Date.now() + 60 * 60 * 1000;
+          return Promise.resolve(
+            Response.json({ data: { access_token: accessTokenWithExpiration(expiresAt) } }),
+          );
+        }
+        if (url.endsWith('/protected')) {
+          protectedRequestCount += 1;
+          return Promise.resolve(
+            protectedRequestCount === 1
+              ? Response.json({ message: 'unauthorized', data: null }, { status: 401 })
+              : Response.json({ data: 'ok' }),
+          );
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }),
+    );
+    setAccessToken(accessTokenWithExpiration(initialTime + 60 * 60 * 1000));
+
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(5 * 60 * 1000));
+    await act(async () => {
+      await authenticatedFetch('/protected');
+    });
+
+    expect(refreshCount).toBe(1);
+    expect(getLastAccessTokenRefreshAt()).toBe(Date.now());
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+      window.dispatchEvent(new Event('pageshow'));
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(59_000));
+    expect(refreshCount).toBe(1);
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(refreshCount).toBe(2);
+    expect(ACCESS_TOKEN_REFRESH_EARLY_MS).toBe(10 * 60 * 1000);
+  });
+
+  it('exp를 읽을 수 없는 refresh 응답도 공통 cooldown을 우회하지 않는다', async () => {
+    let refreshCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith('/token/csrf')) {
+          return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+        }
+        if (url.endsWith('/token/refresh')) {
+          refreshCount += 1;
+          return Promise.resolve(Response.json({ data: { access_token: 'token-without-exp' } }));
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }),
+    );
+    setAccessToken(accessTokenWithExpiration(initialTime + 60 * 60 * 1000));
+
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(50 * 60 * 1000));
+    expect(refreshCount).toBe(1);
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+      window.dispatchEvent(new Event('pageshow'));
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(59_000));
+    expect(refreshCount).toBe(1);
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(refreshCount).toBe(2);
+  });
+
+  it('숨겨진 탭에서 미뤄진 due timer는 visible 복귀 시 refresh한다', async () => {
+    let refreshCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith('/token/csrf')) {
+          return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+        }
+        if (url.endsWith('/token/refresh')) {
+          refreshCount += 1;
+          return Promise.resolve(
+            Response.json({
+              data: { access_token: accessTokenWithExpiration(Date.now() + 60 * 60 * 1000) },
+            }),
+          );
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }),
+    );
+    setAccessToken(accessTokenWithExpiration(initialTime + 60 * 60 * 1000));
+    const visibilitySpy = vi.spyOn(document, 'visibilityState', 'get');
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    visibilitySpy.mockReturnValue('hidden');
+    await act(async () => vi.advanceTimersByTimeAsync(50 * 60 * 1000));
+    expect(refreshCount).toBe(0);
+
+    visibilitySpy.mockReturnValue('visible');
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(refreshCount).toBe(1);
+  });
+
+  it('일시 오류는 60초 후 재시도하고 terminal 4xx는 자동 재시도하지 않는다', async () => {
+    let refreshCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith('/token/csrf')) {
+          return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+        }
+        if (url.endsWith('/token/refresh')) {
+          refreshCount += 1;
+          return Promise.resolve(
+            refreshCount === 1
+              ? Response.json({ message: 'unavailable', data: null }, { status: 503 })
+              : Response.json({
+                  data: { access_token: accessTokenWithExpiration(Date.now() + 60 * 60 * 1000) },
+                }),
+          );
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }),
+    );
+    setAccessToken(accessTokenWithExpiration(initialTime + 60 * 60 * 1000));
+
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(50 * 60 * 1000));
+    expect(refreshCount).toBe(1);
+    await act(async () => vi.advanceTimersByTimeAsync(59_000));
+    expect(refreshCount).toBe(1);
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(refreshCount).toBe(2);
+
+    cleanup();
+    resetAuthSessionForTests();
+    sessionStorage.clear();
+    refreshCount = 0;
+    let protectedRequestCount = 0;
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/token/csrf')) {
+        return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+      }
+      if (url.endsWith('/token/refresh')) {
+        refreshCount += 1;
+        if (refreshCount <= 2) {
+          return Promise.resolve(
+            Response.json({ message: 'forbidden', data: null }, { status: 403 }),
+          );
+        }
+        const expiresAt =
+          refreshCount === 3 ? Date.now() + 9 * 60 * 1000 : Date.now() + 60 * 60 * 1000;
+        return Promise.resolve(
+          Response.json({ data: { access_token: accessTokenWithExpiration(expiresAt) } }),
+        );
+      }
+      if (url.endsWith('/protected')) {
+        protectedRequestCount += 1;
+        return Promise.resolve(
+          protectedRequestCount === 1
+            ? Response.json({ message: 'unauthorized', data: null }, { status: 401 })
+            : Response.json({ data: 'ok' }),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    setAccessToken(accessTokenWithExpiration(Date.now() + 60 * 60 * 1000));
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(50 * 60 * 1000));
+    expect(refreshCount).toBe(2);
+    await act(async () => vi.advanceTimersByTimeAsync(3 * 60 * 1000));
+    expect(refreshCount).toBe(2);
+
+    await act(async () => {
+      await authenticatedFetch('/protected');
+    });
+    expect(refreshCount).toBe(3);
+    await act(async () => vi.advanceTimersByTimeAsync(59_000));
+    expect(refreshCount).toBe(3);
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(refreshCount).toBe(4);
+  });
+
+  it('긴 만료 deadline은 최대 타이머 지연으로 나눠 재검사한다', async () => {
+    const maxTimeoutDelay = 2_147_483_647;
+    const timeoutSpy = vi.spyOn(window, 'setTimeout');
+    let refreshCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith('/token/csrf')) {
+          return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+        }
+        if (url.endsWith('/token/refresh')) {
+          refreshCount += 1;
+          return Promise.resolve(Response.json({ data: { access_token: 'refreshed-token' } }));
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }),
+    );
+    setAccessToken(accessTokenWithExpiration(initialTime + 3 * maxTimeoutDelay + 20 * 60 * 1000));
+
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(timeoutSpy.mock.calls.some(([, delay]) => delay === maxTimeoutDelay)).toBe(true);
+
+    await act(async () => vi.advanceTimersByTimeAsync(maxTimeoutDelay));
+    expect(refreshCount).toBe(0);
+    expect(timeoutSpy.mock.calls.filter(([, delay]) => delay === maxTimeoutDelay).length).toBe(2);
+  });
+
+  it('로그아웃 시 예약된 refresh timer를 정리한다', async () => {
+    let refreshCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith('/token/csrf')) {
+          return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+        }
+        if (url.endsWith('/token/refresh')) {
+          refreshCount += 1;
+          return Promise.resolve(Response.json({ data: { access_token: 'refreshed-token' } }));
+        }
+        if (url.endsWith('/map-zone-grid.json')) {
+          return Promise.resolve(
+            Response.json({
+              zones: Array.from({ length: 1050 }, (_, index) => ({
+                code: `test-${index}`,
+                gridRow: Math.floor(index / 30),
+                gridColumn: index % 30,
+              })),
+            }),
+          );
+        }
+        if (url.endsWith('/api/v1/map-dots')) {
+          return Promise.resolve(Response.json({ data: { items: [] } }));
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }),
+    );
+    setAccessToken(accessTokenWithExpiration(initialTime + 60 * 60 * 1000));
+    window.history.replaceState(null, '', '/');
+
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const logoutButton = screen.getByRole('button', { name: '로그아웃' });
+    await act(async () => fireEvent.click(logoutButton));
+    expect(getAccessToken()).toBeNull();
+
+    await act(async () => vi.advanceTimersByTimeAsync(61 * 60 * 1000));
+    expect(refreshCount).toBe(0);
+  });
 });
 
 describe('음성 transcript 공통 추천 흐름', () => {

@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { login } from './loginApi';
 import { logout } from './logoutApi';
 import {
+  ACCESS_TOKEN_CHANGED_EVENT,
   AUTH_EXPIRED_EVENT,
   authenticatedFetch,
   clearAccessToken,
   getAccessToken,
   getAccessTokenExpiresAt,
+  getLastAccessTokenRefreshAt,
   refreshAccessToken,
   resetAuthSessionForTests,
   runAuthTransition,
@@ -29,6 +31,7 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     sessionStorage.clear();
   });
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     resetAuthSessionForTests();
@@ -50,6 +53,47 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
 
     setAccessToken(accessTokenWithExpiration(now + 11 * 60 * 1000));
     expect(shouldRefreshAccessToken(now)).toBe(false);
+  });
+
+  it('유한하지만 millisecond 변환에서 overflow 되는 exp는 알 수 없는 만료로 처리한다', () => {
+    const payload = btoa(JSON.stringify({ exp: 1e308 }))
+      .replace(/=/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
+    setAccessToken(`header.${payload}.signature`);
+
+    expect(getAccessTokenExpiresAt()).toBeNull();
+    expect(shouldRefreshAccessToken()).toBe(true);
+  });
+
+  it('보호 API 등에서 완료된 refresh 시각을 기록하고 토큰 변경을 알린다', async () => {
+    vi.useFakeTimers();
+    const now = new Date('2026-10-01T00:00:00.000Z');
+    vi.setSystemTime(now);
+    const tokenChanged = vi.fn();
+    window.addEventListener(ACCESS_TOKEN_CHANGED_EVENT, tokenChanged);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith('/token/csrf')) {
+          return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+        }
+        if (url.endsWith('/token/refresh')) {
+          return Promise.resolve(
+            Response.json({ data: { access_token: 'refreshed-access-token' } }),
+          );
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }),
+    );
+
+    await refreshAccessToken();
+
+    expect(getLastAccessTokenRefreshAt()).toBe(now.getTime());
+    expect(getAccessToken()).toBe('refreshed-access-token');
+    expect(tokenChanged).toHaveBeenCalledOnce();
+    window.removeEventListener(ACCESS_TOKEN_CHANGED_EVENT, tokenChanged);
   });
 
   it('로그인은 CSRF 세션 없이 Origin 정책과 access token 응답을 사용한다', async () => {

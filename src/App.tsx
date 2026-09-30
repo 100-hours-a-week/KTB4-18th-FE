@@ -13,11 +13,14 @@ import { MusicRecordDetailPage } from './features/music-record/components/MusicR
 import { MyPage } from './features/mypage/components/MyPage';
 import { logout, LogoutRequestError } from './features/auth-login/api/logoutApi';
 import {
+  ACCESS_TOKEN_CHANGED_EVENT,
+  ACCESS_TOKEN_REFRESH_EARLY_MS,
   AUTH_EXPIRED_EVENT,
   AuthRequestError,
   clearAccessToken,
   getAccessToken,
   getAccessTokenExpiresAt,
+  getLastAccessTokenRefreshAt,
   refreshAccessToken,
   shouldRefreshAccessToken,
   type AuthStatus,
@@ -43,6 +46,7 @@ const MUSIC_RECORDS_PATH = '/music-records';
 const MUSIC_RECORD_CREATE_PATH = '/music-records/new';
 const CHAT_PATH = '/chat';
 const MY_PATH = '/my';
+const MAX_TIMEOUT_DELAY_MS = 2_147_483_647;
 
 type ChatMessage = { id: string; sentAt: Date } & (
   | { role: 'user'; text: string }
@@ -117,42 +121,109 @@ function App() {
     if (authStatus !== 'authenticated') return;
     let timer: number | undefined;
     let refreshing = false;
-    const schedule = (delayOverride?: number) => {
+    let terminalRefreshFailure = false;
+    let nextAllowedRefreshAt = 0;
+    const retryDelayMs = 60_000;
+
+    const schedule = () => {
       if (timer !== undefined) window.clearTimeout(timer);
-      const expiresAt = getAccessTokenExpiresAt();
-      const delay =
-        delayOverride ??
-        (expiresAt === null ? 0 : Math.max(0, expiresAt - Date.now() - 10 * 60 * 1000));
-      timer = window.setTimeout(() => void refreshIfDue(), delay);
-    };
-    const refreshIfDue = async () => {
-      if (refreshing || document.visibilityState === 'hidden' || !shouldRefreshAccessToken())
+      if (!getAccessToken() || terminalRefreshFailure) {
+        timer = undefined;
         return;
+      }
+      const expiresAt = getAccessTokenExpiresAt();
+      const refreshDelay =
+        expiresAt === null
+          ? 0
+          : Math.max(0, expiresAt - Date.now() - ACCESS_TOKEN_REFRESH_EARLY_MS);
+      const cooldownDelay = Math.max(0, nextAllowedRefreshAt - Date.now());
+      timer = window.setTimeout(
+        () => {
+          timer = undefined;
+          void refreshIfDue();
+        },
+        Math.min(Math.max(refreshDelay, cooldownDelay), MAX_TIMEOUT_DELAY_MS),
+      );
+    };
+
+    const refreshIfDue = async () => {
+      if (refreshing || terminalRefreshFailure || !getAccessToken()) return;
+      if (document.visibilityState === 'hidden') return;
+      const cooldownDelay = nextAllowedRefreshAt - Date.now();
+      if (cooldownDelay > 0) {
+        schedule();
+        return;
+      }
+      if (!shouldRefreshAccessToken()) {
+        schedule();
+        return;
+      }
+
       refreshing = true;
-      let retryDelay: number | undefined;
       try {
         await refreshAccessToken();
       } catch (caught) {
         if (caught instanceof AuthRequestError && caught.status === 401) {
           clearAccessToken();
           setAuthStatus('guest');
+        } else if (
+          caught instanceof AuthRequestError &&
+          (caught.status === null ||
+            caught.status === 408 ||
+            caught.status === 429 ||
+            caught.status >= 500)
+        ) {
+          nextAllowedRefreshAt = Date.now() + retryDelayMs;
         } else {
-          retryDelay = 60_000;
+          terminalRefreshFailure = true;
         }
       } finally {
         refreshing = false;
-        if (getAccessToken()) schedule(retryDelay);
+        if (getAccessToken() && !terminalRefreshFailure) schedule();
       }
     };
+
+    const onAccessTokenChanged = () => {
+      if (!getAccessToken()) {
+        if (timer !== undefined) window.clearTimeout(timer);
+        timer = undefined;
+        return;
+      }
+      terminalRefreshFailure = false;
+      const expiresAt = getAccessTokenExpiresAt();
+      if (expiresAt !== null && expiresAt - Date.now() > ACCESS_TOKEN_REFRESH_EARLY_MS) {
+        nextAllowedRefreshAt = 0;
+        terminalRefreshFailure = false;
+      } else {
+        const lastRefreshAt = getLastAccessTokenRefreshAt();
+        if (lastRefreshAt > 0) {
+          nextAllowedRefreshAt = Math.max(nextAllowedRefreshAt, lastRefreshAt + retryDelayMs);
+        }
+      }
+      schedule();
+    };
+
     const onVisibility = () => {
       if (document.visibilityState === 'visible') void refreshIfDue();
     };
+
+    const initialExpiresAt = getAccessTokenExpiresAt();
+    const initialRefreshAt = getLastAccessTokenRefreshAt();
+    if (
+      initialRefreshAt > 0 &&
+      (initialExpiresAt === null || initialExpiresAt - Date.now() <= ACCESS_TOKEN_REFRESH_EARLY_MS)
+    ) {
+      nextAllowedRefreshAt = initialRefreshAt + retryDelayMs;
+    }
+
+    window.addEventListener(ACCESS_TOKEN_CHANGED_EVENT, onAccessTokenChanged);
     window.addEventListener('focus', onVisibility);
     window.addEventListener('pageshow', onVisibility);
     document.addEventListener('visibilitychange', onVisibility);
     schedule();
     return () => {
       if (timer !== undefined) window.clearTimeout(timer);
+      window.removeEventListener(ACCESS_TOKEN_CHANGED_EVENT, onAccessTokenChanged);
       window.removeEventListener('focus', onVisibility);
       window.removeEventListener('pageshow', onVisibility);
       document.removeEventListener('visibilitychange', onVisibility);
