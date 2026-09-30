@@ -851,6 +851,21 @@ button {
 .assistant-row {
   justify-content: flex-start;
 }
+.assistant-content {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  width: min(100%, 450px);
+}
+.assistant-text-bubble {
+  background: #efeff1;
+  border-radius: 22px;
+  padding: 16px 20px;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
 .user-row {
   flex-direction: row-reverse;
 }

@@ -2,7 +2,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
-import { recommend } from './api/recommendations';
+import { recommend, streamRecommendation } from './api/recommendations';
 import { login } from './features/auth-login/api/loginApi';
 import { logout } from './features/auth-login/api/logoutApi';
 import {
@@ -40,7 +40,7 @@ let voiceState: {
   isTranscribing: false,
 };
 
-vi.mock('./api/recommendations', () => ({ recommend: vi.fn() }));
+vi.mock('./api/recommendations', () => ({ recommend: vi.fn(), streamRecommendation: vi.fn() }));
 vi.mock('./hooks/useVoiceInput', () => ({
   useVoiceInput: ({ onTranscript }: { onTranscript: (transcript: string) => void }) => {
     transcriptHandler = onTranscript;
@@ -86,6 +86,11 @@ describe('음성 transcript 공통 추천 흐름', () => {
       isTranscribing: false,
     };
     vi.mocked(recommend).mockResolvedValue({
+      recommendation_id: 1,
+      conversation_key: 'conversation',
+      status: 'PROCESSING',
+    });
+    vi.mocked(streamRecommendation).mockResolvedValue({
       recommendation_id: 1,
       conversation_key: 'conversation',
       status: 'COMPLETED',
@@ -161,15 +166,21 @@ describe('추천 결과 없음 안내', () => {
     vi.mocked(recommend).mockResolvedValue({
       recommendation_id: 1,
       conversation_key: 'conversation',
+      status: 'PROCESSING',
+    });
+    vi.mocked(streamRecommendation).mockResolvedValue({
+      recommendation_id: 1,
+      conversation_key: 'conversation',
       status: 'COMPLETED',
       items: [],
       completed_at: '2026-09-29T12:00:00Z',
     });
-    sessionStorage.setItem('access_token', 'test-access-token');
+    setAccessToken('test-access-token');
     window.history.replaceState(null, '', '/chatbot');
     const user = userEvent.setup();
 
     render(<App />);
+    await screen.findByLabelText('추천받고 싶은 상황');
     await user.type(screen.getByLabelText('추천받고 싶은 상황'), '아무 조건');
     await user.click(screen.getByRole('button', { name: '추천 요청 보내기' }));
 

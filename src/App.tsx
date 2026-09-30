@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 
-import { recommend } from './api/recommendations';
+import { recommend, streamRecommendation } from './api/recommendations';
 import { RecommendationCards } from './components/RecommendationCards';
 import { LoginPage } from './features/auth-login/components/LoginPage';
 import { MainPage } from './features/mainMap/MainPage';
@@ -45,7 +45,14 @@ const CHAT_PATH = '/chat';
 const MY_PATH = '/my';
 
 type ChatMessage = { id: string; sentAt: Date } & (
-  { role: 'user'; text: string } | { role: 'assistant'; result: Recommendation }
+  | { role: 'user'; text: string }
+  | {
+      role: 'assistant';
+      text: string;
+      result: Recommendation;
+      streamStatus: 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'TIMEOUT';
+      failureMessage?: string;
+    }
 );
 
 const formatTime = (date: Date) =>
@@ -371,23 +378,91 @@ function ChatbotPage() {
     ]);
     setPrompt('');
 
+    let accepted = false;
+    let assistantId: string | null = null;
     try {
-      const result = await recommend(text, conversationKey, controller.signal, inputType);
+      const acceptedResult = await recommend(text, conversationKey, controller.signal, inputType);
+      accepted = true;
+      const currentAssistantId = crypto.randomUUID();
+      assistantId = currentAssistantId;
       setMessages((previous) => [
         ...previous,
         {
-          id: crypto.randomUUID(),
+          id: currentAssistantId,
           role: 'assistant',
-          result,
+          text: '',
+          result: {
+            recommendation_id: acceptedResult.recommendation_id,
+            conversation_key: acceptedResult.conversation_key,
+            status: 'PROCESSING',
+            items: [],
+            completed_at: null,
+          },
+          streamStatus: 'PROCESSING',
           sentAt: new Date(),
         },
       ]);
+      const updateAssistant = (
+        update: (
+          message: Extract<ChatMessage, { role: 'assistant' }>,
+        ) => Extract<ChatMessage, { role: 'assistant' }>,
+      ) => {
+        setMessages((previous) =>
+          previous.map((message) =>
+            message.id === currentAssistantId && message.role === 'assistant'
+              ? update(message)
+              : message,
+          ),
+        );
+      };
+      const result = await streamRecommendation(
+        acceptedResult.recommendation_id,
+        controller.signal,
+        {
+          onText: (delta) =>
+            updateAssistant((message) => ({ ...message, text: message.text + delta })),
+          onTracks: (tracks) =>
+            updateAssistant((message) => ({
+              ...message,
+              result: {
+                ...message.result,
+                items: tracks.map((track, index) => ({
+                  rank_no: index + 1,
+                  music: {
+                    music_id: index + 1,
+                    title: track.title,
+                    artist_name: track.artist,
+                    album_cover_url: track.artwork_url,
+                    preview_url: track.preview_url,
+                  },
+                })),
+              },
+            })),
+        },
+      );
+      updateAssistant((message) => ({ ...message, result, streamStatus: result.status }));
       setInputType('TEXT');
       voice.finishReview();
     } catch (caught) {
       if (!controller.signal.aborted) {
-        setMessages((previous) => previous.filter((message) => message.id !== messageId));
-        setError(caught instanceof Error ? caught.message : '서버에 연결하지 못했습니다.');
+        const message = caught instanceof Error ? caught.message : '서버에 연결하지 못했습니다.';
+        if (accepted && assistantId) {
+          setMessages((previous) =>
+            previous.map((item) =>
+              item.id === assistantId && item.role === 'assistant'
+                ? {
+                    ...item,
+                    streamStatus: 'FAILED',
+                    result: { ...item.result, items: [], status: 'FAILED' },
+                    failureMessage: message,
+                  }
+                : item,
+            ),
+          );
+        } else {
+          setMessages((previous) => previous.filter((item) => item.id !== messageId));
+          setError(message);
+        }
         setPrompt(text);
       }
     } finally {
@@ -418,7 +493,10 @@ function ChatbotPage() {
             <p>지금의 순간에 음악을 더해볼까요?</p>
             <p>느껴지는 분위기나 장소, 날씨를 편하게 들려주세요.</p>
             <p>이 순간에 어울리는 음악을 골라드릴게요.</p>
-            <p className="sample-notice">대화 맥락을 반영해 AI가 음악을 추천해 드립니다.</p>
+            <p className="sample-notice">
+              현재는 입력 문장으로 iTunes에서 음악을 검색합니다. 입력 문장은 연속 추천을 위해
+              대화별로 저장합니다.
+            </p>
           </div>
           <time>{formatTime(openedAt)}</time>
         </div>
@@ -430,11 +508,26 @@ function ChatbotPage() {
             {message.role === 'user' ? (
               <p className="user-bubble">{message.text}</p>
             ) : (
-              <RecommendationCards
-                recommendation={message.result}
-                activePreview={activePreview}
-                onPreviewChange={setActivePreview}
-              />
+              <div className="assistant-content">
+                {message.text && <p className="assistant-text-bubble">{message.text}</p>}
+                {message.streamStatus === 'PROCESSING' && (
+                  <p className="assistant-text-bubble" role="status">
+                    추천 결과를 받고 있어요…
+                  </p>
+                )}
+                {message.failureMessage && (
+                  <p role="alert" className="assistant-text-bubble error-message">
+                    {message.failureMessage}
+                  </p>
+                )}
+                {(message.streamStatus === 'COMPLETED' || message.result.items.length > 0) && (
+                  <RecommendationCards
+                    recommendation={message.result}
+                    activePreview={activePreview}
+                    onPreviewChange={setActivePreview}
+                  />
+                )}
+              </div>
             )}
             <time dateTime={message.sentAt.toISOString()}>{formatTime(message.sentAt)}</time>
           </div>

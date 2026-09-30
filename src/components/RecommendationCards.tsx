@@ -75,7 +75,7 @@ export function RecommendationCards({ recommendation, activePreview, onPreviewCh
           ? `검색 결과 ${recommendation.items.length}곡을 찾았어요.`
           : '이런 곡은 어떠세요?'}
       </p>
-      <p className="sample-notice">AI가 대화 맥락을 반영해 고른 곡입니다.</p>
+      <p className="sample-notice">AI 분석 연동 전의 iTunes 검색 결과입니다.</p>
       <ol className="music-list">
         {recommendation.items.map(({ rank_no, music }) => {
           const key = `${recommendation.recommendation_id}-${rank_no}`;
