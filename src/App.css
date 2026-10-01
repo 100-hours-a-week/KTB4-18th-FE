@@ -1411,6 +1411,40 @@ button {
   opacity: 0.5;
   cursor: not-allowed;
 }
+.music-result-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.music-result-row .music-result {
+  flex: 1;
+  min-width: 0;
+}
+.music-result-row .music-result img,
+.music-result-row .music-cover-placeholder {
+  flex-shrink: 0;
+}
+.music-result-row .music-result span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.music-preview-button {
+  flex-shrink: 0;
+  min-height: 2.75rem;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 0.5rem;
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+}
+.music-preview-button[aria-pressed='true'] {
+  border-color: var(--color-border-interactive-primary);
+  background: var(--color-bg-interactive-primary-light);
+}
+.music-preview-button:disabled {
+  color: var(--color-text-tertiary);
+  cursor: not-allowed;
+}
 .music-result img,
 .record-card img,
 .music-selected-content img {

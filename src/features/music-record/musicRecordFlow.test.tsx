@@ -170,7 +170,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       false,
     );
     fireEvent.change(input, { target: { value: '밤편지' } });
-    const result = await screen.findByRole('button', { name: /밤편지/ });
+    const result = await screen.findByRole('button', { name: /^밤편지아이유$/ });
     const searchUrl = vi
       .mocked(fetch)
       .mock.calls.find(([url]) => String(url).includes('/music/search'))?.[0];
@@ -227,18 +227,18 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     fireEvent.change(screen.getByRole('textbox', { name: '음악 검색' }), {
       target: { value: '곡 제목' },
     });
-    await screen.findByRole('button', { name: /곡 20/ });
+    await screen.findByRole('button', { name: /^곡 20아이유$/ });
     const firstSentinel = screen.getByTestId('music-page-sentinel');
     expect(firstSentinel.parentElement).toContainElement(
-      screen.getByRole('button', { name: /곡 10/ }),
+      screen.getByRole('button', { name: /^곡 10아이유$/ }),
     );
     onIntersect(
       [{ isIntersecting: true } as IntersectionObserverEntry],
       {} as IntersectionObserver,
     );
-    await screen.findByRole('button', { name: /곡 40/ });
+    await screen.findByRole('button', { name: /^곡 40아이유$/ });
     expect(screen.getByTestId('music-page-sentinel').parentElement).toContainElement(
-      screen.getByRole('button', { name: /곡 30/ }),
+      screen.getByRole('button', { name: /^곡 30아이유$/ }),
     );
     expect(
       vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/music/search')),
@@ -265,7 +265,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     ).toHaveLength(2);
     vi.stubGlobal('scrollY', 100);
     fireEvent.scroll(window);
-    await screen.findByRole('button', { name: /곡 60/ });
+    await screen.findByRole('button', { name: /^곡 60아이유$/ });
     expect(
       vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/music/search')),
     ).toHaveLength(3);
@@ -322,7 +322,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     fireEvent.change(screen.getByRole('textbox', { name: '음악 검색' }), {
       target: { value: '음악' },
     });
-    await screen.findByRole('button', { name: /곡 19/ });
+    await screen.findByRole('button', { name: /^곡 19아이유$/ });
     const initialObserver = onIntersect;
     onIntersect(
       [{ isIntersecting: true } as IntersectionObserverEntry],
@@ -335,7 +335,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       [{ isIntersecting: true } as IntersectionObserverEntry],
       {} as IntersectionObserver,
     );
-    expect(await screen.findByRole('button', { name: /다음 곡/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /^다음 곡아이유$/ })).toBeInTheDocument();
     expect(firstPageCount).toBe(2);
   });
 
@@ -356,7 +356,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     expect(screen.queryByText('검색 중…')).not.toBeInTheDocument();
     completeSearch(Response.json({ data: { items: [music], next_cursor: null, has_next: false } }));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(screen.queryByRole('button', { name: /밤편지/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^밤편지아이유$/ })).not.toBeInTheDocument();
   });
 
   it('상세 화면에서 변경 전에는 저장할 수 없고 메모만 PATCH한다', async () => {
