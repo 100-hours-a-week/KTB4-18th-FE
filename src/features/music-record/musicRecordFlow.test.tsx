@@ -323,11 +323,13 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '음악' },
     });
     await screen.findByRole('button', { name: /^곡 19아이유$/ });
+    const initialObserver = onIntersect;
     onIntersect(
       [{ isIntersecting: true } as IntersectionObserverEntry],
       {} as IntersectionObserver,
     );
     await waitFor(() => expect(firstPageCount).toBe(2));
+    await waitFor(() => expect(onIntersect).not.toBe(initialObserver));
     vi.stubGlobal('scrollY', 100);
     onIntersect(
       [{ isIntersecting: true } as IntersectionObserverEntry],
