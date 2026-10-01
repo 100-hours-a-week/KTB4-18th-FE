@@ -162,3 +162,17 @@ export async function deleteMusicRecord(recordId: number, signal?: AbortSignal):
   }
   invalidateMapDotsCache();
 }
+
+export async function deleteMusicRecords(recordIds: number[], signal?: AbortSignal): Promise<void> {
+  const response = await fetchProtectedResponse('/music-records', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ record_ids: recordIds }),
+    signal,
+  });
+  if (response.status !== 204) {
+    await parseResponse<never>(response);
+    throw new MusicApiError(response.status, '음악 기록 삭제 응답을 확인하지 못했습니다.');
+  }
+  invalidateMapDotsCache();
+}
