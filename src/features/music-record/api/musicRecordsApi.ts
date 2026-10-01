@@ -61,18 +61,6 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return body.data as T;
 }
 
-async function fetchPublicData<T>(path: string): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`${baseUrl}/api/v1${path}`, {
-      credentials: 'include',
-    });
-  } catch {
-    throw new MusicApiError(null, '서버에 연결하지 못했습니다. 다시 시도해 주세요.');
-  }
-  return parseResponse<T>(response);
-}
-
 async function fetchProtectedData<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   let response: Response;
@@ -100,7 +88,7 @@ async function fetchProtectedData<T>(path: string, options: RequestInit = {}): P
 export const searchMusic = (query: string, cursor?: string | null) => {
   const params = new URLSearchParams({ query, provider: 'ITUNES', size: '20' });
   if (cursor) params.set('cursor', cursor);
-  return fetchPublicData<Page<Music>>(`/music/search?${params}`);
+  return fetchProtectedData<Page<Music>>(`/music/search?${params}`);
 };
 export const resolveLocation = (latitude: number, longitude: number, accuracy_meters: number) =>
   fetchProtectedData<Location>('/locations/resolve', {
