@@ -1,4 +1,5 @@
 import { AuthRequestError, authenticatedFetch } from '../../auth-login/api/authSession';
+import { invalidateMapDotsCache } from '../../mainMap/mapApi';
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
@@ -60,7 +61,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return body.data as T;
 }
 
-async function fetchProtectedData<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function fetchProtectedResponse(path: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers);
   let response: Response;
   try {
@@ -70,6 +71,7 @@ async function fetchProtectedData<T>(path: string, options: RequestInit = {}): P
       headers,
     });
   } catch (caught) {
+    if (options.signal?.aborted) throw options.signal.reason;
     if (caught instanceof AuthRequestError) {
       const status = caught.status;
       throw new MusicApiError(
@@ -81,7 +83,11 @@ async function fetchProtectedData<T>(path: string, options: RequestInit = {}): P
     }
     throw new MusicApiError(null, '서버에 연결하지 못했습니다. 다시 시도해 주세요.');
   }
-  return parseResponse<T>(response);
+  return response;
+}
+
+async function fetchProtectedData<T>(path: string, options: RequestInit = {}): Promise<T> {
+  return parseResponse<T>(await fetchProtectedResponse(path, options));
 }
 
 export const searchMusic = (query: string, cursor?: string | null) => {
@@ -144,3 +150,15 @@ export const updateMusicRecord = (
     body: JSON.stringify(changes),
     signal,
   });
+
+export async function deleteMusicRecord(recordId: number, signal?: AbortSignal): Promise<void> {
+  const response = await fetchProtectedResponse(`/music-records/${recordId}`, {
+    method: 'DELETE',
+    signal,
+  });
+  if (response.status !== 204) {
+    await parseResponse<never>(response);
+    throw new MusicApiError(response.status, '음악 기록 삭제 응답을 확인하지 못했습니다.');
+  }
+  invalidateMapDotsCache();
+}

@@ -12,6 +12,13 @@ interface MapGridResponse {
 let cachedMapDots: MapDotsData | null = null;
 let cachedEtag: string | null = null;
 let cachedMapGrid: MapGridDot[] | null = null;
+let mapDotsGeneration = 0;
+
+export function invalidateMapDotsCache() {
+  mapDotsGeneration += 1;
+  cachedMapDots = null;
+  cachedEtag = null;
+}
 
 function getApiUrl(path: string) {
   const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? '';
@@ -19,6 +26,7 @@ function getApiUrl(path: string) {
 }
 
 export async function fetchMapDots(signal: AbortSignal): Promise<MapDotsData> {
+  const generation = mapDotsGeneration;
   const headers = new Headers();
   if (cachedEtag) {
     headers.set('If-None-Match', cachedEtag);
@@ -29,8 +37,9 @@ export async function fetchMapDots(signal: AbortSignal): Promise<MapDotsData> {
     signal,
   });
 
-  if (response.status === 304 && cachedMapDots) {
-    return cachedMapDots;
+  if (response.status === 304) {
+    if (generation !== mapDotsGeneration) return fetchMapDots(signal);
+    if (cachedMapDots) return cachedMapDots;
   }
   if (!response.ok) {
     throw new Error(`Map dots request failed with ${response.status}`);
@@ -41,9 +50,11 @@ export async function fetchMapDots(signal: AbortSignal): Promise<MapDotsData> {
     throw new Error('Map dots response is invalid');
   }
 
-  cachedMapDots = payload.data;
-  cachedEtag = response.headers.get('ETag');
-  return cachedMapDots;
+  if (generation === mapDotsGeneration) {
+    cachedMapDots = payload.data;
+    cachedEtag = response.headers.get('ETag');
+  }
+  return payload.data;
 }
 
 export async function fetchMapGrid(signal: AbortSignal): Promise<MapGridDot[]> {
