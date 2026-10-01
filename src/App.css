@@ -1356,9 +1356,23 @@ button {
   border-radius: 0.9rem;
   background: var(--color-bg-primary);
 }
-.music-result.selected {
+.music-result.selected,
+.record-card.selected {
   border-color: var(--color-border-interactive-primary);
   background: var(--color-bg-interactive-primary-light);
+}
+.record-delete-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.record-selected-mark {
+  margin-left: auto;
+  align-self: center;
+  flex-shrink: 0;
+  color: var(--color-text-interactive-primary);
 }
 .music-delete-button {
   min-height: 2.75rem;
