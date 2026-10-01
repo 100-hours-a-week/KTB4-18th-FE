@@ -1,3 +1,4 @@
+import { useId, useState } from 'react';
 import type { MapDot, MapGridDot } from './mapTypes';
 
 type ZoneMapCanvasProps = {
@@ -26,6 +27,8 @@ function getGridBounds(gridDots: MapGridDot[]) {
 export function ZoneMapCanvas({ gridDots = [], items = [], isFallback }: ZoneMapCanvasProps) {
   const grid = getGridBounds(gridDots);
   const mapDotByCode = new Map(items.map((item) => [item.code, item]));
+  const instanceId = useId().replace(/:/g, '');
+  const [failedImages, setFailedImages] = useState<Set<string>>(() => new Set());
 
   return (
     <section className="zone-map" aria-label="대한민국 도트 지도">
@@ -37,6 +40,13 @@ export function ZoneMapCanvas({ gridDots = [], items = [], isFallback }: ZoneMap
       >
         {gridDots.map((dot) => {
           const mapDot = mapDotByCode.get(dot.code);
+          const coverUrl = mapDot?.album_cover_url;
+          const imageKey = `${dot.code}:${coverUrl ?? ''}`;
+          const showCover = Boolean(coverUrl) && !failedImages.has(imageKey);
+          const centerX = dot.gridColumn + 0.5;
+          const centerY = dot.gridRow + 0.5;
+          const clipId = `zone-cover-${instanceId}-${dot.code}`;
+
           return (
             <g
               key={dot.code}
@@ -44,12 +54,28 @@ export function ZoneMapCanvas({ gridDots = [], items = [], isFallback }: ZoneMap
               data-map-dot-id={mapDot?.map_dot_id}
               className="zone-map__zone"
             >
-              <circle
-                className="zone-map__dot"
-                cx={dot.gridColumn + 0.5}
-                cy={dot.gridRow + 0.5}
-                r="0.32"
-              />
+              <circle className="zone-map__dot" cx={centerX} cy={centerY} r="0.32" />
+              {showCover && (
+                <>
+                  <defs>
+                    <clipPath id={clipId}>
+                      <circle cx={centerX} cy={centerY} r="0.32" />
+                    </clipPath>
+                  </defs>
+                  <image
+                    href={coverUrl!}
+                    x={centerX - 0.32}
+                    y={centerY - 0.32}
+                    width="0.64"
+                    height="0.64"
+                    preserveAspectRatio="xMidYMid slice"
+                    clipPath={`url(#${clipId})`}
+                    onError={() => {
+                      setFailedImages((previous) => new Set(previous).add(imageKey));
+                    }}
+                  />
+                </>
+              )}
             </g>
           );
         })}

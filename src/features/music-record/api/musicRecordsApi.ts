@@ -1,3 +1,4 @@
+import { invalidateMapDotsCache } from '../../mainMap/mapApi';
 import { AuthRequestError, authenticatedFetch } from '../../auth-login/api/authSession';
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
@@ -107,13 +108,13 @@ export const resolveLocation = (latitude: number, longitude: number, accuracy_me
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ latitude, longitude, accuracy_meters }),
   });
-export const createMusicRecord = (
+export const createMusicRecord = async (
   music: Music,
   locationResolutionToken: string,
   customPlaceName: string,
   emotionMemo: string,
-) =>
-  fetchProtectedData<CreatedRecord>('/music-records', {
+) => {
+  const created = await fetchProtectedData<CreatedRecord>('/music-records', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -123,6 +124,9 @@ export const createMusicRecord = (
       emotion_memo: emotionMemo.trim() || null,
     }),
   });
+  invalidateMapDotsCache();
+  return created;
+};
 export const getMusicRecords = (cursor?: string | null) =>
   fetchProtectedData<Page<MusicRecord>>(
     `/users/me/music-records${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
