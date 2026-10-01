@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 
 type MusicRecordDeleteDialogProps = {
   title: string;
+  count?: number;
   isDeleting: boolean;
   error: string;
   onCancel: () => void;
@@ -10,6 +11,7 @@ type MusicRecordDeleteDialogProps = {
 
 export function MusicRecordDeleteDialog({
   title,
+  count,
   isDeleting,
   error,
   onCancel,
@@ -40,7 +42,10 @@ export function MusicRecordDeleteDialog({
       }}
     >
       <h2 id="music-delete-title">음악 기록을 삭제할까요?</h2>
-      <p id="music-delete-description">{title} 기록이 삭제되며 복구할 수 없어요.</p>
+      <p id="music-delete-description">
+        {count === undefined ? `${title} 기록` : `선택한 ${count}개의 기록`}이 삭제되며 복구할 수
+        없어요.
+      </p>
       {error && (
         <p role="alert" className="music-error">
           {error}
