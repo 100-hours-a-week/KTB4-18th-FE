@@ -10,6 +10,7 @@ import {
   type MusicRecord,
 } from '../api/musicRecordsApi';
 import { useLocation } from '../hooks/useLocation';
+import { useMusicPreview } from '../hooks/useMusicPreview';
 import { formatMusicRecordTime } from '../model/formatMusicRecordTime';
 
 const regionName = (record: MusicRecord) =>
@@ -118,6 +119,8 @@ export function MusicRecordListPage() {
 }
 
 export function MusicRecordCreatePage() {
+  const preview = useMusicPreview();
+  const stopPreview = preview.stop;
   const [step, setStep] = useState<'search' | 'form'>('search');
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<Music[]>([]);
@@ -178,6 +181,7 @@ export function MusicRecordCreatePage() {
   }, [query]);
 
   const handleQueryChange = (value: string) => {
+    stopPreview();
     searchRequestId.current += 1;
     usedCursors.current.clear();
     hasRecoveredCursor.current = false;
@@ -229,6 +233,7 @@ export function MusicRecordCreatePage() {
         }
         hasRecoveredCursor.current = true;
         usedCursors.current.clear();
+        stopPreview();
         setItems([]);
         setCursor(null);
         setHasNext(false);
@@ -251,7 +256,7 @@ export function MusicRecordCreatePage() {
         setIsSearching(false);
       }
     }
-  }, [cursor, hasNext, query]);
+  }, [cursor, hasNext, query, stopPreview]);
 
   useEffect(() => {
     if (
@@ -364,35 +369,71 @@ export function MusicRecordCreatePage() {
           <section className="search-results" aria-label="음악 검색 결과">
             {items.map((music, index) => (
               <div key={`${music.provider}-${music.external_music_id}`}>
-                <button
-                  type="button"
-                  aria-pressed={selected?.external_music_id === music.external_music_id}
-                  className={
-                    selected?.external_music_id === music.external_music_id
-                      ? 'music-result selected'
-                      : 'music-result'
-                  }
-                  onClick={() => {
-                    setSelected(music);
-                    setError('');
-                  }}
-                >
-                  {music.album_cover_url ? (
-                    <img src={music.album_cover_url} alt="" />
-                  ) : (
-                    <span className="music-cover-placeholder" aria-hidden="true" />
-                  )}
-                  <span>
-                    <strong>{music.title}</strong>
-                    <small>{music.artist_name}</small>
-                  </span>
-                </button>
+                <div className="music-result-row">
+                  <button
+                    type="button"
+                    aria-pressed={selected?.external_music_id === music.external_music_id}
+                    className={
+                      selected?.external_music_id === music.external_music_id
+                        ? 'music-result selected'
+                        : 'music-result'
+                    }
+                    onClick={() => {
+                      setSelected(music);
+                      setError('');
+                    }}
+                  >
+                    {music.album_cover_url ? (
+                      <img src={music.album_cover_url} alt="" />
+                    ) : (
+                      <span className="music-cover-placeholder" aria-hidden="true" />
+                    )}
+                    <span>
+                      <strong>{music.title}</strong>
+                      <small>{music.artist_name}</small>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="music-preview-button"
+                    disabled={!music.preview_url}
+                    aria-label={`${music.title} ${music.artist_name} ${
+                      !music.preview_url
+                        ? '미리 듣기 불가'
+                        : preview.activeTrack === music.external_music_id &&
+                            (preview.isPlaying || preview.isLoading)
+                          ? '미리 듣기 일시정지'
+                          : '미리 듣기 재생'
+                    }`}
+                    aria-pressed={
+                      preview.activeTrack === music.external_music_id && preview.isPlaying
+                    }
+                    onClick={() => {
+                      if (music.preview_url)
+                        void preview.toggle(music.external_music_id, music.preview_url);
+                    }}
+                  >
+                    {!music.preview_url
+                      ? '미리 듣기 불가'
+                      : preview.activeTrack === music.external_music_id && preview.isLoading
+                        ? '로딩 취소'
+                        : preview.activeTrack === music.external_music_id && preview.isPlaying
+                          ? '일시정지'
+                          : '미리 듣기'}
+                  </button>
+                </div>
                 {hasNext && index === sentinelIndex && (
                   <div ref={sentinel} data-testid="music-page-sentinel" />
                 )}
               </div>
             ))}
           </section>
+          {preview.error && (
+            <p role="alert" className="music-error">
+              {preview.error}
+            </p>
+          )}
+          {preview.isLoading && <p role="status">미리 듣기 음원을 불러오는 중…</p>}
           {isSearching && (
             <p role="status" className="music-search-count">
               검색 중…
@@ -403,7 +444,10 @@ export function MusicRecordCreatePage() {
               type="button"
               className="music-primary-button"
               disabled={!selected}
-              onClick={() => setStep('form')}
+              onClick={() => {
+                stopPreview();
+                setStep('form');
+              }}
             >
               다음
             </button>
