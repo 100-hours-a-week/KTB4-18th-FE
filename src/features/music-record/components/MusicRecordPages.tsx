@@ -26,6 +26,13 @@ export function MusicRecordListPage() {
     sessionStorage.removeItem('music_record_updated');
     return updated;
   });
+  const [deleteNotice] = useState(() => {
+    const deleted = sessionStorage.getItem('music_record_deleted') === '1';
+    const missing = sessionStorage.getItem('music_record_missing') === '1';
+    sessionStorage.removeItem('music_record_deleted');
+    sessionStorage.removeItem('music_record_missing');
+    return deleted ? '기록이 삭제되었어요' : missing ? '이미 삭제되었거나 없는 기록이에요' : '';
+  });
 
   const load = useCallback(async (next?: string | null) => {
     setIsLoading(true);
@@ -72,6 +79,11 @@ export function MusicRecordListPage() {
       {isUpdated && (
         <p role="status" className="music-success">
           기록이 수정되었어요
+        </p>
+      )}
+      {deleteNotice && (
+        <p role="status" className="music-success">
+          {deleteNotice}
         </p>
       )}
       {error && (
