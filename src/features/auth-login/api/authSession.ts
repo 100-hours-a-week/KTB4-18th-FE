@@ -1,6 +1,6 @@
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 const ACCESS_TOKEN_KEY = 'access_token';
-const REFRESH_EARLY_MS = 10 * 60 * 1000;
+export const ACCESS_TOKEN_REFRESH_EARLY_MS = 10 * 60 * 1000;
 const AUTH_LOCK_NAME = 'meomuneum:auth-transition';
 const AUTH_CHANNEL_NAME = 'meomuneum:auth-state';
 const AUTH_EPOCH_KEY = 'meomuneum:auth-epoch';
@@ -10,6 +10,7 @@ type AuthBroadcastMessage = { type: 'auth-changed' };
 export type AuthStatus =
   'restoring' | 'authenticated' | 'guest' | 'retryable-error' | 'logging-in' | 'logging-out';
 export const AUTH_EXPIRED_EVENT = 'meomuneum:auth-expired';
+export const ACCESS_TOKEN_CHANGED_EVENT = 'meomuneum:access-token-changed';
 
 export class AuthRequestError extends Error {
   readonly status: number | null;
@@ -29,6 +30,15 @@ let accessTokenInMemory: string | null = null;
 let storageUnavailable = false;
 let storageNeedsClear = false;
 let authTransitionActionDepth = 0;
+let lastAccessTokenRefreshAt = 0;
+
+export function getLastAccessTokenRefreshAt(): number {
+  return lastAccessTokenRefreshAt;
+}
+
+function announceAccessTokenChange(): void {
+  window.dispatchEvent(new Event(ACCESS_TOKEN_CHANGED_EVENT));
+}
 
 function sharedAuthEpoch(): string {
   try {
@@ -122,7 +132,9 @@ export function getAccessTokenExpiresAt(): number | null {
     const encodedPayload = token.split('.')[1];
     if (!encodedPayload) return null;
     const payload = JSON.parse(window.atob(encodedPayload.replace(/-/g, '+').replace(/_/g, '/')));
-    return Number.isFinite(payload.exp) ? payload.exp * 1000 : null;
+    if (!Number.isFinite(payload.exp)) return null;
+    const expiresAt = payload.exp * 1000;
+    return Number.isFinite(expiresAt) ? expiresAt : null;
   } catch {
     return null;
   }
@@ -130,10 +142,10 @@ export function getAccessTokenExpiresAt(): number | null {
 
 export function shouldRefreshAccessToken(now = Date.now()): boolean {
   const expiresAt = getAccessTokenExpiresAt();
-  return expiresAt === null || expiresAt - now <= REFRESH_EARLY_MS;
+  return expiresAt === null || expiresAt - now <= ACCESS_TOKEN_REFRESH_EARLY_MS;
 }
 
-function persistAccessToken(token: string, invalidateRequests: boolean): void {
+function persistAccessToken(token: string, invalidateRequests: boolean, refreshed = false): void {
   const storage = sessionTokenStorage();
   if (!storage) {
     accessTokenInMemory = null;
@@ -158,10 +170,13 @@ function persistAccessToken(token: string, invalidateRequests: boolean): void {
   const changed = accessTokenInMemory !== token;
   accessTokenInMemory = token;
   if (changed && invalidateRequests) generation += 1;
+  if (refreshed) lastAccessTokenRefreshAt = Date.now();
+  announceAccessTokenChange();
 }
 
 export function setAccessToken(token: string): void {
   if (!token) throw new AuthRequestError(null);
+  lastAccessTokenRefreshAt = 0;
   persistAccessToken(token, true);
 }
 
@@ -187,7 +202,9 @@ export function clearAccessToken(): void {
     storageNeedsClear = true;
   }
   accessTokenInMemory = null;
+  lastAccessTokenRefreshAt = 0;
   if (previousToken !== null) generation += 1;
+  announceAccessTokenChange();
 }
 
 export function announceAuthChange(): void {
@@ -309,7 +326,7 @@ export async function refreshAccessToken(
     ) {
       throw new AuthRequestError(null);
     }
-    persistAccessToken(token, false);
+    persistAccessToken(token, false, true);
     return token;
   }).catch((caught: unknown) => {
     if (
@@ -528,6 +545,7 @@ export function resetAuthSessionForTests(): void {
   storageUnavailable = false;
   storageNeedsClear = false;
   authTransitionActionDepth = 0;
+  lastAccessTokenRefreshAt = 0;
   try {
     window.localStorage.removeItem(AUTH_EPOCH_KEY);
   } catch {
