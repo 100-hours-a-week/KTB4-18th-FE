@@ -599,7 +599,8 @@ describe('로그인과 회원가입 화면 연결', () => {
     window.history.replaceState(null, '', '/login');
     render(<App />);
 
-    expect(screen.getByRole('link', { name: '회원가입' })).toHaveAttribute('href', '/signup');
+    expect(screen.getByRole('link', { name: '회원가입 하기' })).toHaveAttribute('href', '/signup');
+    expect(screen.getByRole('button', { name: '로그인' })).not.toHaveClass('visually-hidden');
   });
 
   it('회원가입 경로에서 회원가입 화면을 렌더링한다', () => {
@@ -614,10 +615,9 @@ describe('로그인과 회원가입 화면 연결', () => {
     window.history.replaceState(null, '', '/signup');
     render(<App />);
 
-    await user.type(screen.getByLabelText('닉네임'), '가입테스트');
-    await user.type(screen.getByLabelText('이메일 아이디'), 'signup.test');
-    await user.type(screen.getByLabelText('이메일 도메인'), 'example.com');
-    await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
+    await user.type(screen.getByLabelText(/닉네임/), '가입테스트');
+    await user.type(screen.getByLabelText(/이메일/), 'signup.test@example.com');
+    await user.type(screen.getByLabelText('비밀번호 *'), 'Testpass1!');
     await user.click(await screen.findByRole('checkbox', { name: '[필수] 서비스 이용약관' }));
     await user.click(
       screen.getByRole('checkbox', { name: '[필수] AI 맞춤 음악 추천 정보 이용 동의' }),
@@ -625,9 +625,92 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.click(screen.getByRole('button', { name: '회원가입' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '다시 만나서 반가워요' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '머문음' })).toBeInTheDocument();
     });
     expect(vi.mocked(signup)).toHaveBeenCalledWith(expect.objectContaining({ terms_ids: [1, 7] }));
+  });
+
+  it('이메일을 소문자로 정규화하고 40자로 제한한다', async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(null, '', '/signup');
+    render(<App />);
+
+    const emailInput = screen.getByLabelText('이메일 *');
+    await user.type(emailInput, 'Signup.Test@Example.COM');
+    expect(emailInput).toHaveValue('signup.test@example.com');
+
+    const tooLongEmail = `${'A'.repeat(36)}@example.com`;
+    fireEvent.change(emailInput, { target: { value: tooLongEmail } });
+    expect(emailInput).toHaveValue(tooLongEmail.toLowerCase().slice(0, 40));
+    expect(emailInput).toHaveAttribute('maxLength', '40');
+    expect(screen.getByText('최대 입력 길이인 40자를 넘겼습니다.')).toBeInTheDocument();
+  });
+
+  it('성별을 하나만 선택하거나 취소하고 입력한 선택 정보를 payload에 포함한다', async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(null, '', '/signup');
+    render(<App />);
+
+    const female = screen.getByRole('checkbox', { name: '여성' });
+    const male = screen.getByRole('checkbox', { name: '남성' });
+    await user.click(female);
+    expect(female).toBeChecked();
+    expect(male).not.toBeChecked();
+    await user.click(male);
+    expect(female).not.toBeChecked();
+    expect(male).toBeChecked();
+    await user.click(male);
+    expect(male).not.toBeChecked();
+    await user.click(female);
+
+    await user.type(screen.getByLabelText(/닉네임/), '가입테스트');
+    await user.type(screen.getByLabelText('이메일 *'), 'signup.test@example.com');
+    await user.type(screen.getByLabelText('비밀번호 *'), 'Testpass1!');
+    await user.type(screen.getByPlaceholderText('출생연도를 입력해주세요'), '1998');
+    await user.click(await screen.findByRole('checkbox', { name: '[필수] 서비스 이용약관' }));
+    await user.click(
+      screen.getByRole('checkbox', { name: '[필수] AI 맞춤 음악 추천 정보 이용 동의' }),
+    );
+    await user.click(screen.getByRole('button', { name: '회원가입' }));
+
+    await waitFor(() => expect(vi.mocked(signup)).toHaveBeenCalled());
+    expect(vi.mocked(signup)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ birth_year: 1998, gender: 'FEMALE' }),
+    );
+  });
+
+  it('출생연도와 성별을 입력하지 않으면 회원가입 payload에서 생략한다', async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(null, '', '/signup');
+    render(<App />);
+
+    await user.type(screen.getByLabelText(/닉네임/), '가입테스트');
+    await user.type(screen.getByLabelText('이메일 *'), 'signup.test@example.com');
+    await user.type(screen.getByLabelText('비밀번호 *'), 'Testpass1!');
+    await user.click(await screen.findByRole('checkbox', { name: '[필수] 서비스 이용약관' }));
+    await user.click(
+      screen.getByRole('checkbox', { name: '[필수] AI 맞춤 음악 추천 정보 이용 동의' }),
+    );
+    await user.click(screen.getByRole('button', { name: '회원가입' }));
+
+    await waitFor(() => expect(vi.mocked(signup)).toHaveBeenCalled());
+    const payload = vi.mocked(signup).mock.lastCall?.[0];
+    expect(payload).not.toHaveProperty('birth_year');
+    expect(payload).not.toHaveProperty('gender');
+  });
+
+  it('약관 조회 실패 시 가입을 막고 재시도 성공 후 선택을 허용한다', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getCurrentTerms).mockRejectedValueOnce(new Error('terms unavailable'));
+    window.history.replaceState(null, '', '/signup');
+    render(<App />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '약관을 불러오지 못했어요. 다시 시도해 주세요.',
+    );
+    expect(screen.getByRole('button', { name: '회원가입' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: '다시 시도' }));
+    expect(await screen.findByRole('checkbox', { name: '전체선택' })).toBeEnabled();
   });
 
   it('첫 번째 필수 약관만 동의하면 회원가입할 수 없다', async () => {
@@ -635,10 +718,9 @@ describe('로그인과 회원가입 화면 연결', () => {
     window.history.replaceState(null, '', '/signup');
     render(<App />);
 
-    await user.type(screen.getByLabelText('닉네임'), '가입테스트');
-    await user.type(screen.getByLabelText('이메일 아이디'), 'signup.test');
-    await user.type(screen.getByLabelText('이메일 도메인'), 'example.com');
-    await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
+    await user.type(screen.getByLabelText(/닉네임/), '가입테스트');
+    await user.type(screen.getByLabelText(/이메일/), 'signup.test@example.com');
+    await user.type(screen.getByLabelText('비밀번호 *'), 'Testpass1!');
     await user.click(await screen.findByRole('checkbox', { name: '[필수] 서비스 이용약관' }));
 
     expect(screen.getByRole('button', { name: '회원가입' })).toBeDisabled();
@@ -649,10 +731,9 @@ describe('로그인과 회원가입 화면 연결', () => {
     window.history.replaceState(null, '', '/signup');
     render(<App />);
 
-    await user.type(screen.getByLabelText('닉네임'), '가입테스트');
-    await user.type(screen.getByLabelText('이메일 아이디'), 'signup.test');
-    await user.type(screen.getByLabelText('이메일 도메인'), 'example.com');
-    await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
+    await user.type(screen.getByLabelText(/닉네임/), '가입테스트');
+    await user.type(screen.getByLabelText(/이메일/), 'signup.test@example.com');
+    await user.type(screen.getByLabelText('비밀번호 *'), 'Testpass1!');
     await user.click(await screen.findByRole('checkbox', { name: '[필수] 서비스 이용약관' }));
     await user.click(
       screen.getByRole('checkbox', { name: '[필수] AI 맞춤 음악 추천 정보 이용 동의' }),
@@ -671,16 +752,45 @@ describe('로그인과 회원가입 화면 연결', () => {
     window.history.replaceState(null, '', '/signup');
     render(<App />);
 
-    await user.type(screen.getByLabelText('닉네임'), '가입테스트');
-    await user.type(screen.getByLabelText('이메일 아이디'), 'signup.test');
-    await user.type(screen.getByLabelText('이메일 도메인'), 'example.com');
-    await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
-    await waitFor(() => expect(screen.getByRole('checkbox', { name: '전체 동의' })).toBeEnabled());
-    await user.click(screen.getByRole('checkbox', { name: '전체 동의' }));
+    await user.type(screen.getByLabelText(/닉네임/), '가입테스트');
+    await user.type(screen.getByLabelText(/이메일/), 'signup.test@example.com');
+    await user.type(screen.getByLabelText('비밀번호 *'), 'Testpass1!');
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: '전체선택' })).toBeEnabled());
+    await user.click(screen.getByRole('checkbox', { name: '전체선택' }));
     await user.click(screen.getByRole('button', { name: '회원가입' }));
 
     await waitFor(() => expect(vi.mocked(signup)).toHaveBeenCalled());
     expect(vi.mocked(signup).mock.lastCall?.[0].terms_ids.toSorted()).toEqual([1, 3, 4, 5, 6, 7]);
+  });
+
+  it('전체선택은 개별 약관과 부분 동의 상태를 함께 반영한다', async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(null, '', '/signup');
+    render(<App />);
+
+    const selectAll = await screen.findByRole('checkbox', { name: '전체선택' });
+    const termLabels = [
+      '[필수] 서비스 이용약관',
+      '[필수] AI 맞춤 음악 추천 정보 이용 동의',
+      '[선택] 출생연도·성별의 맞춤 추천 이용 동의',
+      '[선택] 개인위치정보 수집·이용 동의',
+      '[선택] 개인정보 처리방침',
+      '[선택] 위치기반서비스 이용약관',
+    ];
+    const termCheckboxes = termLabels.map((label) => screen.getByRole('checkbox', { name: label }));
+
+    expect(selectAll).toBeEnabled();
+    await user.click(selectAll);
+    expect(termCheckboxes.every((checkbox) => (checkbox as HTMLInputElement).checked)).toBe(true);
+
+    await user.click(termCheckboxes[0]);
+    expect((selectAll as HTMLInputElement).checked).toBe(false);
+    expect((selectAll as HTMLInputElement).indeterminate).toBe(true);
+
+    await user.click(selectAll);
+    expect(termCheckboxes.every((checkbox) => (checkbox as HTMLInputElement).checked)).toBe(true);
+    await user.click(selectAll);
+    expect(termCheckboxes.every((checkbox) => (checkbox as HTMLInputElement).checked)).toBe(false);
   });
 
   it('전체 동의를 해제하면 가입 버튼이 다시 비활성화된다', async () => {
@@ -688,15 +798,14 @@ describe('로그인과 회원가입 화면 연결', () => {
     window.history.replaceState(null, '', '/signup');
     render(<App />);
 
-    await user.type(screen.getByLabelText('닉네임'), '가입테스트');
-    await user.type(screen.getByLabelText('이메일 아이디'), 'signup.test');
-    await user.type(screen.getByLabelText('이메일 도메인'), 'example.com');
-    await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
-    await waitFor(() => expect(screen.getByRole('checkbox', { name: '전체 동의' })).toBeEnabled());
-    await user.click(screen.getByRole('checkbox', { name: '전체 동의' }));
+    await user.type(screen.getByLabelText(/닉네임/), '가입테스트');
+    await user.type(screen.getByLabelText(/이메일/), 'signup.test@example.com');
+    await user.type(screen.getByLabelText('비밀번호 *'), 'Testpass1!');
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: '전체선택' })).toBeEnabled());
+    await user.click(screen.getByRole('checkbox', { name: '전체선택' }));
     expect(screen.getByRole('button', { name: '회원가입' })).toBeEnabled();
 
-    await user.click(screen.getByRole('checkbox', { name: '전체 동의' }));
+    await user.click(screen.getByRole('checkbox', { name: '전체선택' }));
     expect(screen.getByRole('button', { name: '회원가입' })).toBeDisabled();
   });
 
@@ -728,7 +837,7 @@ describe('로그인과 회원가입 화면 연결', () => {
 
     await waitFor(() => {
       expect(logout).toHaveBeenCalledOnce();
-      expect(screen.getByRole('heading', { name: '다시 만나서 반가워요' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '머문음' })).toBeInTheDocument();
     });
   });
 
