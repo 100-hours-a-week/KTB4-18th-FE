@@ -171,6 +171,16 @@ body:has(.signup-page)::-webkit-scrollbar {
   opacity: 1;
 }
 
+.signup-input:autofill,
+.signup-input:-webkit-autofill,
+.signup-input:-webkit-autofill:hover,
+.signup-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #171717;
+  caret-color: #171717;
+  -webkit-box-shadow: 0 0 0 1000px #fefeff inset;
+  box-shadow: 0 0 0 1000px #fefeff inset;
+}
+
 .signup-password-wrap .signup-input {
   padding-right: 56px;
 }
