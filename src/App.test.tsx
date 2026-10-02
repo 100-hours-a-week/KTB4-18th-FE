@@ -917,11 +917,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     '외부 returnTo %s로 로그인해도 메인 출처에 머문다',
     async (returnTo) => {
       const user = userEvent.setup();
-      window.history.replaceState(
-        null,
-        '',
-        `/login?returnTo=${encodeURIComponent(returnTo)}`,
-      );
+      window.history.replaceState(null, '', `/login?returnTo=${encodeURIComponent(returnTo)}`);
       render(<App />);
 
       await user.type(screen.getByLabelText('이메일'), 'login.test@example.com');
