@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../auth-login/api/authSession', () => ({
+  getAccessToken: vi.fn(() => 'session-a'),
+  authenticatedFetch: vi.fn((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init)),
+}));
+import { authenticatedFetch, getAccessToken } from '../auth-login/api/authSession';
+
 type MapData = {
   items: Array<{
     map_dot_id: number;
@@ -29,6 +35,7 @@ const deferred = <T>() => {
 describe('map dot conditional cache', () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.mocked(getAccessToken).mockReturnValue('session-a');
     vi.stubGlobal('fetch', vi.fn());
   });
 
@@ -130,6 +137,7 @@ describe('기록 삭제 후 지도 캐시', () => {
   let invalidateMapDotsCache: typeof import('./mapApi').invalidateMapDotsCache;
   beforeEach(async () => {
     vi.resetModules();
+    vi.mocked(getAccessToken).mockReturnValue('session-a');
     ({ fetchMapDots, invalidateMapDotsCache } = await import('./mapApi'));
     invalidateMapDotsCache();
   });
@@ -200,5 +208,71 @@ describe('기록 삭제 후 지도 캐시', () => {
     expect(new Headers(vi.mocked(fetch).mock.calls[2][1]?.headers).has('If-None-Match')).toBe(
       false,
     );
+  });
+});
+
+describe('personal map authentication and session cache', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.mocked(getAccessToken).mockReturnValue('session-a');
+    vi.mocked(authenticatedFetch).mockClear();
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('uses the shared authenticated client and allows only its unauthorized-refresh anonymous fallback', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response('own')));
+    const { fetchMapDots } = await import('./mapApi');
+    await fetchMapDots(new AbortController().signal);
+    expect(authenticatedFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/v1/map-dots'),
+      expect.objectContaining({ credentials: 'include' }),
+      { allowAnonymousOnRefreshUnauthorized: true },
+    );
+  });
+
+  it('drops the previous account ETag and cached body when the session changes', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(response('a')).mockResolvedValueOnce(response('b')),
+    );
+    const { fetchMapDots } = await import('./mapApi');
+    const signal = new AbortController().signal;
+    await fetchMapDots(signal);
+    vi.mocked(getAccessToken).mockReturnValue('session-b');
+    expect(await fetchMapDots(signal)).toEqual(data('b'));
+    expect(new Headers(vi.mocked(fetch).mock.calls[1][1]?.headers).has('If-None-Match')).toBe(
+      false,
+    );
+  });
+
+  it('retries a 304 without a client body instead of using another session body', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response(null, { status: 304 }))
+        .mockResolvedValueOnce(response('own')),
+    );
+    const { fetchMapDots } = await import('./mapApi');
+    expect(await fetchMapDots(new AbortController().signal)).toEqual(data('own'));
+    expect(new Headers(vi.mocked(fetch).mock.calls[1][1]?.headers).has('If-None-Match')).toBe(
+      false,
+    );
+  });
+
+  it('does not reuse a previous account delayed response after logout', async () => {
+    const pendingResponse = deferred<Response>();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockReturnValueOnce(pendingResponse.promise)
+        .mockResolvedValueOnce(Response.json(envelope(null))),
+    );
+    const { fetchMapDots } = await import('./mapApi');
+    const pending = fetchMapDots(new AbortController().signal);
+    vi.mocked(getAccessToken).mockReturnValue(null);
+    pendingResponse.resolve(response('previous-account'));
+    expect((await pending).items[0].album_cover_url).toBeNull();
   });
 });

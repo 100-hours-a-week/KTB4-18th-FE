@@ -1,3 +1,4 @@
+import { authenticatedFetch, getAccessToken } from '../auth-login/api/authSession';
 import type { MapDotsData, MapGridDot } from './mapTypes';
 
 interface MapDotsEnvelope {
@@ -12,6 +13,7 @@ interface MapGridResponse {
 let cachedMapDots: MapDotsData | null = null;
 let cachedEtag: string | null = null;
 let mapDotsGeneration = 0;
+let cacheOwnerToken: string | null | undefined;
 let cachedMapGrid: MapGridDot[] | null = null;
 
 function throwIfAborted(signal: AbortSignal) {
@@ -33,6 +35,11 @@ export function invalidateMapDotsCache() {
 }
 
 export async function fetchMapDots(signal: AbortSignal): Promise<MapDotsData> {
+  const token = getAccessToken();
+  if (cacheOwnerToken !== token) {
+    invalidateMapDotsCache();
+    cacheOwnerToken = token;
+  }
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const requestGeneration = mapDotsGeneration;
     const headers = new Headers();
@@ -40,10 +47,16 @@ export async function fetchMapDots(signal: AbortSignal): Promise<MapDotsData> {
       headers.set('If-None-Match', cachedEtag);
     }
 
-    const response = await fetch(getApiUrl('/api/v1/map-dots'), {
-      headers,
-      signal,
-    });
+    const response = await authenticatedFetch(
+      getApiUrl('/api/v1/map-dots'),
+      { headers, signal, credentials: 'include' },
+      { allowAnonymousOnRefreshUnauthorized: true },
+    );
+    const responseToken = getAccessToken();
+    if (responseToken !== cacheOwnerToken) {
+      invalidateMapDotsCache();
+      cacheOwnerToken = responseToken;
+    }
 
     if (requestGeneration !== mapDotsGeneration) {
       throwIfAborted(signal);
