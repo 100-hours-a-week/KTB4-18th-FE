@@ -34,6 +34,7 @@ import {
   installSpaLinkHandler,
   navigate,
   readRouteLocation,
+  replaceRoute,
   ROUTE_CHANGE_EVENT,
 } from './shared/navigation';
 
@@ -67,8 +68,21 @@ function App() {
   const pathname = routeLocation.pathname;
   const [authStatus, setAuthStatus] = useState<AuthStatus>('restoring');
   const authIntent = useRef(0);
+  const [authIntentVersion, setAuthIntentVersion] = useState(0);
   const isLoggingOutRef = useRef(false);
   const [logoutError, setLogoutError] = useState('');
+  const advanceAuthIntent = () => {
+    authIntent.current += 1;
+    setAuthIntentVersion(authIntent.current);
+  };
+  const isProtectedRoute =
+    pathname === CHATBOT_PATH ||
+    pathname === CHAT_PATH ||
+    pathname === MY_PATH ||
+    pathname === MUSIC_RECORDS_PATH ||
+    pathname === MUSIC_RECORD_CREATE_PATH ||
+    /^\/music-records\/([1-9]\d*)$/.test(pathname);
+
 
   useEffect(() => {
     const updateLocation = () => setRouteLocation(readRouteLocation());
@@ -116,6 +130,19 @@ function App() {
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
   }, []);
+
+  useEffect(() => {
+    if (!isProtectedRoute || authStatus !== 'guest') return;
+    if (
+      authIntentVersion !== authIntent.current ||
+      window.location.pathname !== routeLocation.pathname ||
+      window.location.search !== routeLocation.search ||
+      window.location.hash !== routeLocation.hash
+    ) {
+      return;
+    }
+    replaceRoute(loginHref(routeLocation));
+  }, [authIntentVersion, authStatus, isProtectedRoute, routeLocation]);
 
   useEffect(() => {
     if (authStatus !== 'authenticated') return;
@@ -231,7 +258,7 @@ function App() {
   }, [authStatus]);
 
   const handleLoginSuccess = () => {
-    authIntent.current += 1;
+    advanceAuthIntent();
     setAuthStatus('authenticated');
     setLogoutError('');
     navigate(getSafeReturnTo(window.location.search));
@@ -243,7 +270,7 @@ function App() {
     }
 
     isLoggingOutRef.current = true;
-    authIntent.current += 1;
+    advanceAuthIntent();
     setAuthStatus('logging-out');
     setLogoutError('');
     try {
@@ -264,7 +291,7 @@ function App() {
   };
 
   const handleWithdrawalComplete = async () => {
-    authIntent.current += 1;
+    advanceAuthIntent();
     setAuthStatus('logging-out');
     setLogoutError('');
     try {
@@ -287,7 +314,7 @@ function App() {
       <LoginPage
         onLoginSuccess={handleLoginSuccess}
         onLoginStart={() => {
-          authIntent.current += 1;
+          advanceAuthIntent();
           setAuthStatus('logging-in');
         }}
         onLoginFailure={() => setAuthStatus(getAccessToken() ? 'authenticated' : 'guest')}
@@ -298,14 +325,6 @@ function App() {
   if (pathname === SIGNUP_PATH) {
     return <SignupPage onSignupSuccess={() => navigate(LOGIN_PATH)} />;
   }
-  const isProtectedRoute =
-    pathname === CHATBOT_PATH ||
-    pathname === CHAT_PATH ||
-    pathname === MY_PATH ||
-    pathname === MUSIC_RECORDS_PATH ||
-    pathname === MUSIC_RECORD_CREATE_PATH ||
-    /^\/music-records\/([1-9]\d*)$/.test(pathname);
-
   if (isProtectedRoute && authStatus === 'restoring') {
     return (
       <main role="status" aria-live="polite">
@@ -326,9 +345,8 @@ function App() {
   }
   if (isProtectedRoute && authStatus === 'guest') {
     return (
-      <main role="alert">
-        <p>로그인이 필요한 페이지입니다.</p>
-        <a href={loginHref(routeLocation)}>로그인하기</a>
+      <main role="status" aria-live="polite">
+        로그인 페이지로 이동하고 있어요.
       </main>
     );
   }

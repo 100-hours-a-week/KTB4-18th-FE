@@ -70,6 +70,21 @@ vi.mock('./features/chat-entry/components/ChatEntryPage', () => ({
 
 beforeEach(() => {
   cleanup();
+  if (!window.matchMedia) {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn((media: string) => ({
+        matches: false,
+        media,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+  }
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -601,6 +616,58 @@ describe('로그인과 회원가입 화면 연결', () => {
     expect(screen.getByRole('link', { name: '회원가입' })).toHaveAttribute('href', '/signup');
   });
 
+  it('guest가 보호 경로에 직접 접근하면 returnTo를 보존해 로그인으로 보내고 뒤로 가기도 허용한다', async () => {
+    resetAuthSessionForTests();
+    sessionStorage.clear();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith('/token/csrf')) {
+          return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+        }
+        if (url.endsWith('/token/refresh')) {
+          return Promise.resolve(
+            Response.json({ message: 'unauthorized', data: null }, { status: 401 }),
+          );
+        }
+        return Promise.resolve(Response.json({ data: null }));
+      }),
+    );
+    window.history.replaceState(null, '', '/login');
+    window.history.pushState(null, '', '/music-records?sort=recent#top');
+
+    render(<App />);
+
+    await screen.findByRole('heading', { name: '다시 만나서 반가워요' });
+    expect(window.location.pathname).toBe('/login');
+    expect(new URLSearchParams(window.location.search).get('returnTo')).toBe(
+      '/music-records?sort=recent#top',
+    );
+
+    const returned = new Promise<void>((resolve) => {
+      window.addEventListener('popstate', () => resolve(), { once: true });
+    });
+    window.history.back();
+    await returned;
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/login');
+      expect(window.location.search).toBe('');
+    });
+  });
+
+  it('인증된 사용자는 보호 경로에서 로그인 화면으로 이동하지 않는다', async () => {
+    resetAuthSessionForTests();
+    sessionStorage.clear();
+    setAccessToken(accessTokenWithExpiration(Date.now() + 60 * 60 * 1000));
+    window.history.replaceState(null, '', '/chat');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: '우리 지역 채팅방' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/chat');
+  });
+
   it('회원가입 경로에서 회원가입 화면을 렌더링한다', () => {
     window.history.replaceState(null, '', '/signup');
     render(<App />);
@@ -714,6 +781,47 @@ describe('로그인과 회원가입 화면 연결', () => {
 
     expect(screen.getByRole('button', { name: '로그아웃' })).toBeInTheDocument();
   });
+
+  it('로그인 성공 후 returnTo에 지정된 보호 페이지로 돌아간다', async () => {
+    const user = userEvent.setup();
+    resetAuthSessionForTests();
+    sessionStorage.clear();
+    window.history.replaceState(
+      null,
+      '',
+      `/login?returnTo=${encodeURIComponent('/chat?room=music#latest')}`,
+    );
+    render(<App />);
+
+    await user.type(screen.getByLabelText('이메일'), 'login.test@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    expect(await screen.findByRole('heading', { name: '우리 지역 채팅방' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/chat');
+    expect(window.location.search).toBe('?room=music');
+    expect(window.location.hash).toBe('#latest');
+  });
+
+  it.each(['//evil.example/path', 'https://evil.example/path', '/\\\\evil.example/path'])(
+    '외부 returnTo %s로 로그인해도 메인 출처에 머문다',
+    async (returnTo) => {
+      const user = userEvent.setup();
+      window.history.replaceState(
+        null,
+        '',
+        `/login?returnTo=${encodeURIComponent(returnTo)}`,
+      );
+      render(<App />);
+
+      await user.type(screen.getByLabelText('이메일'), 'login.test@example.com');
+      await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
+      await user.click(screen.getByRole('button', { name: '로그인' }));
+
+      await waitFor(() => expect(window.location.pathname).toBe('/'));
+      expect(window.location.origin).toBe('http://localhost:3000');
+    },
+  );
 
   it('로그아웃 성공 후 로그인 화면으로 이동한다', async () => {
     const user = userEvent.setup();
