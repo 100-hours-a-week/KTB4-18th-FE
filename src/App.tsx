@@ -367,6 +367,7 @@ function App() {
     return (
       <MyPage
         onLogin={() => navigate(LOGIN_PATH)}
+        onBack={() => navigate('/')}
         onLogout={handleLogout}
         onWithdrawn={handleWithdrawalComplete}
       />
