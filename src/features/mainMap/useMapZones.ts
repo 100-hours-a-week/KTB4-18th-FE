@@ -1,16 +1,28 @@
-import { useEffect, useState } from 'react';
-import { fetchMapDots, fetchMapGrid } from './mapApi';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { ACCESS_TOKEN_CHANGED_EVENT, getAccessToken } from '../auth-login/api/authSession';
+import { fetchMapDots, fetchMapGrid, invalidateMapDotsCache } from './mapApi';
 import type { MapLoadState } from './mapTypes';
 
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
+function subscribeToSession(onChange: () => void) {
+  window.addEventListener(ACCESS_TOKEN_CHANGED_EVENT, onChange);
+  return () => window.removeEventListener(ACCESS_TOKEN_CHANGED_EVENT, onChange);
+}
+
 export function useMapZones() {
-  const [state, setState] = useState<MapLoadState>({ status: 'loading', attempt: 1 });
+  const token = useSyncExternalStore(subscribeToSession, getAccessToken, () => null);
+  const [ownedState, setOwnedState] = useState<{ token: string | null; state: MapLoadState }>({
+    token,
+    state: { status: 'loading', attempt: 1 },
+  });
 
   useEffect(() => {
     const controller = new AbortController();
+    invalidateMapDotsCache();
+    const setState = (state: MapLoadState) => setOwnedState({ token, state });
 
     async function loadMapZones() {
       setState({ status: 'loading', attempt: 1 });
@@ -55,7 +67,9 @@ export function useMapZones() {
 
     void loadMapZones();
     return () => controller.abort();
-  }, []);
+  }, [token]);
 
-  return state;
+  return ownedState.token === token
+    ? ownedState.state
+    : ({ status: 'loading', attempt: 1 } as MapLoadState);
 }
