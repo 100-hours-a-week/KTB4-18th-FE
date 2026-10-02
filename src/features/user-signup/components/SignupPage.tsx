@@ -188,11 +188,13 @@ function normalizeEmailPart(value: string) {
 
 function getInputError(field: InputField, value: string) {
   if (field === 'nickname') {
-    if (value.trim() === '') return '닉네임을 입력해 주세요.';
-    if (value.length < 2 || value.length > maxLengthByField.nickname) {
+    const normalizedNickname = value.trim();
+    if (normalizedNickname === '') return '닉네임을 입력해 주세요.';
+    if (normalizedNickname.length < 2 || normalizedNickname.length > maxLengthByField.nickname) {
       return '닉네임은 2자 이상 12자 이하로 입력해 주세요.';
     }
-    if (!nicknameCharacterPattern.test(value)) return '한글, 영문, 숫자만 사용할 수 있어요.';
+    if (!nicknameCharacterPattern.test(normalizedNickname))
+      return '한글, 영문, 숫자만 사용할 수 있어요.';
     return undefined;
   }
 
@@ -357,32 +359,19 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
     setValue: (nextValue: string) => void,
     isComposing = false,
   ) {
-    const maxLength = maxLengthByField[field];
-    const isNickname = field === 'nickname';
-    const shouldConvertHangulToKeyboardInput = field === 'password';
-    const valueWithEnglishKeyboardInput = shouldConvertHangulToKeyboardInput
-      ? convertHangulToKeyboardInput(value)
-      : value;
-    const hasUnavailableNicknameCharacter =
-      isNickname && !isComposing && !nicknameCharacterPattern.test(valueWithEnglishKeyboardInput);
-    const valueWithAllowedCharacters =
-      isNickname && !isComposing
-        ? valueWithEnglishKeyboardInput.replace(/[^가-힣A-Za-z0-9]/g, '')
-        : valueWithEnglishKeyboardInput;
-    const exceedsMaxLength = valueWithAllowedCharacters.length > maxLength;
-    const limitedValue = valueWithAllowedCharacters.slice(0, maxLength);
-    const nextValue = isNickname ? limitedValue.toLowerCase() : limitedValue;
+    if (field === 'nickname') {
+      setValue(value);
+      setFieldError('nickname', isComposing ? undefined : getInputError('nickname', value));
+      return;
+    }
 
-    setValue(nextValue);
+    const convertedValue = convertHangulToKeyboardInput(value);
+    const exceedsMaxLength = convertedValue.length > maxLengthByField.password;
+    const limitedValue = convertedValue.slice(0, maxLengthByField.password);
+    setValue(limitedValue);
     setFieldError(
-      field,
-      exceedsMaxLength
-        ? getMaxLengthError(field)
-        : hasUnavailableNicknameCharacter
-          ? '한글, 영문, 숫자만 사용할 수 있어요.'
-          : field === 'password' || touchedFields[field]
-            ? getInputError(field, nextValue)
-            : undefined,
+      'password',
+      exceedsMaxLength ? getMaxLengthError('password') : getInputError('password', limitedValue),
     );
   }
 
@@ -401,15 +390,6 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
       return;
     event.preventDefault();
     setFieldError(field, getMaxLengthError(field));
-  }
-
-  function preventUnavailableNicknameCharacter(event: FormEvent<HTMLInputElement>) {
-    const nativeEvent = event.nativeEvent as InputEvent;
-    if (nativeEvent.isComposing) return;
-    const insertedValue = nativeEvent.data;
-    if (!insertedValue || nicknameCharacterPattern.test(insertedValue)) return;
-    event.preventDefault();
-    setFieldError('nickname', '한글, 영문, 숫자만 사용할 수 있어요.');
   }
 
   function validateOnBlur(field: InputField, value: string) {
@@ -454,6 +434,8 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
             ? '약관이 변경되었어요. 현재 약관을 확인하고 다시 동의해 주세요.'
             : errorMessages[message],
         );
+      } else if (message === 'nickname already exists') {
+        setFieldError('nickname', '이미 사용 중인 닉네임이에요.');
       } else {
         setError(errorMessages[message] ?? errorMessages['internal server error']);
       }
@@ -489,10 +471,6 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
                   id="signup-nickname"
                   className="signup-input"
                   value={nickname}
-                  onBeforeInput={(event) => {
-                    preventUnavailableNicknameCharacter(event);
-                    preventOverLengthInput(event, 'nickname', nickname);
-                  }}
                   onChange={(event) =>
                     updateTextField(
                       'nickname',
@@ -504,7 +482,11 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
                   onCompositionEnd={(event) =>
                     updateTextField('nickname', event.currentTarget.value, setNickname)
                   }
-                  onBlur={() => validateOnBlur('nickname', nickname)}
+                  onBlur={() => {
+                    const normalizedNickname = nickname.trim();
+                    setNickname(normalizedNickname);
+                    validateOnBlur('nickname', normalizedNickname);
+                  }}
                   placeholder="닉네임을 입력해주세요"
                   autoComplete="nickname"
                   aria-invalid={Boolean(fieldErrors.nickname)}
