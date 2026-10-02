@@ -1,6 +1,7 @@
 # Environment variables
 .env
 .env.*
+!.env.production
 !.env.example
 
 # Local design and test documents are not part of feature commits.

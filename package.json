@@ -15,11 +15,13 @@
   "dependencies": {
     "@karrotmarket/react-monochrome-icon": "^1.27.0",
     "@seed-design/react": "^2.5.0",
+    "@sentry/react": "^11.2.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@sentry/vite-plugin": "^5.4.0",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
