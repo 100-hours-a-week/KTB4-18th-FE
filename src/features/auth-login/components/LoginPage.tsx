@@ -17,6 +17,7 @@ type LoginPageProps = {
 };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const INVALID_EMAIL_CHARACTER_PATTERN = /[^A-Za-z0-9._+@-]/g;
 
 function validate(email: string, password: string): FieldErrors {
   const errors: FieldErrors = {};
@@ -109,7 +110,13 @@ export function LoginPage({ onLoginSuccess, onLoginStart, onLoginFailure }: Logi
                     autoComplete="email"
                     placeholder="이메일을 입력해주세요"
                     value={email}
-                    onChange={(event) => setEmail(event.target.value.toLowerCase())}
+                    onChange={(event) =>
+                      setEmail(
+                        event.target.value
+                          .replace(INVALID_EMAIL_CHARACTER_PATTERN, '')
+                          .toLowerCase(),
+                      )
+                    }
                     aria-invalid={Boolean(fieldErrors.email)}
                     aria-describedby={fieldErrors.email ? 'email-error' : undefined}
                     disabled={isSubmitting}
