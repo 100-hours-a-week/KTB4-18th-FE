@@ -63,7 +63,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return body.data as T;
 }
 
-async function fetchProtectedData<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function fetchProtectedResponse(path: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers);
   let response: Response;
   try {
@@ -73,6 +73,7 @@ async function fetchProtectedData<T>(path: string, options: RequestInit = {}): P
       headers,
     });
   } catch (caught) {
+    if (options.signal?.aborted) throw options.signal.reason;
     if (caught instanceof AuthRequestError) {
       const status = caught.status;
       throw new MusicApiError(
@@ -85,29 +86,11 @@ async function fetchProtectedData<T>(path: string, options: RequestInit = {}): P
     }
     throw new MusicApiError(null, '서버에 연결하지 못했습니다. 다시 시도해 주세요.', true);
   }
-  return parseResponse<T>(response);
+  return response;
 }
 
-async function fetchProtectedResponse(path: string, options: RequestInit = {}): Promise<Response> {
-  const headers = new Headers(options.headers);
-  try {
-    return await authenticatedFetch(`${baseUrl}/api/v1${path}`, {
-      ...options,
-      credentials: 'include',
-      headers,
-    });
-  } catch (caught) {
-    if (options.signal?.aborted) throw options.signal.reason;
-    if (caught instanceof AuthRequestError) {
-      throw new MusicApiError(
-        caught.status,
-        caught.status === 401
-          ? '로그인이 만료되었습니다. 다시 로그인해 주세요.'
-          : '인증을 확인하지 못했습니다. 다시 시도해 주세요.',
-      );
-    }
-    throw new MusicApiError(null, '서버에 연결하지 못했습니다. 다시 시도해 주세요.');
-  }
+async function fetchProtectedData<T>(path: string, options: RequestInit = {}): Promise<T> {
+  return parseResponse<T>(await fetchProtectedResponse(path, options));
 }
 
 function getHighResolutionArtworkUrl(url: string | null): string | null {
@@ -181,6 +164,18 @@ export const updateMusicRecord = (
     body: JSON.stringify(changes),
     signal,
   });
+
+export async function deleteMusicRecord(recordId: number, signal?: AbortSignal): Promise<void> {
+  const response = await fetchProtectedResponse(`/music-records/${recordId}`, {
+    method: 'DELETE',
+    signal,
+  });
+  if (response.status !== 204) {
+    await parseResponse<never>(response);
+    throw new MusicApiError(response.status, '음악 기록 삭제 응답을 확인하지 못했습니다.');
+  }
+  invalidateMapDotsCache();
+}
 
 export async function deleteMusicRecords(recordIds: number[], signal?: AbortSignal): Promise<void> {
   const response = await fetchProtectedResponse('/music-records', {

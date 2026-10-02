@@ -427,11 +427,13 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '음악' },
     });
     await screen.findByRole('button', { name: /^곡 19아이유$/ });
+    const initialObserver = onIntersect;
     onIntersect(
       [{ isIntersecting: true } as IntersectionObserverEntry],
       {} as IntersectionObserver,
     );
     await waitFor(() => expect(firstPageCount).toBe(2));
+    await waitFor(() => expect(onIntersect).not.toBe(initialObserver));
     vi.stubGlobal('scrollY', 100);
     onIntersect(
       [{ isIntersecting: true } as IntersectionObserverEntry],
@@ -498,7 +500,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     ).toBe(false);
   });
 
-  it('생성과 상세 메모는 199·200·201자 입력을 200자로 제한하고 카운터를 갱신한다', async () => {
+  it('생성과 상세 메모는 499·500·501자 입력을 500자로 제한하고 카운터를 갱신한다', async () => {
     render(<MusicRecordCreatePage />);
     fireEvent.change(screen.getByRole('textbox', { name: '음악 검색' }), {
       target: { value: '밤편지' },
@@ -506,21 +508,25 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
     fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
     const createMemo = await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' });
-    for (const length of [199, 200, 201]) {
+    for (const length of [499, 500, 501]) {
       fireEvent.change(createMemo, { target: { value: '가'.repeat(length) } });
-      const expectedLength = Math.min(length, 200);
+      const expectedLength = Math.min(length, 500);
       expect(createMemo).toHaveValue('가'.repeat(expectedLength));
-      expect(screen.getByText(`${expectedLength}/200`)).toBeInTheDocument();
+      expect(document.querySelector('#create-memo-count')).toHaveTextContent(
+        `${expectedLength}/500`,
+      );
     }
 
     cleanup();
     render(<MusicRecordDetailPage recordId={1} />);
     const detailMemo = await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' });
-    for (const length of [199, 200, 201]) {
+    for (const length of [499, 500, 501]) {
       fireEvent.change(detailMemo, { target: { value: '나'.repeat(length) } });
-      const expectedLength = Math.min(length, 200);
+      const expectedLength = Math.min(length, 500);
       expect(detailMemo).toHaveValue('나'.repeat(expectedLength));
-      expect(screen.getByText(`${expectedLength}/200`)).toBeInTheDocument();
+      expect(document.querySelector('#detail-memo-count')).toHaveTextContent(
+        `${expectedLength}/500`,
+      );
     }
   });
 

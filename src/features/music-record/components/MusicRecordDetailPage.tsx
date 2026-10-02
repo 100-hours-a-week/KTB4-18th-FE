@@ -2,12 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 
 import { navigate } from '../../../shared/navigation';
 import {
+  deleteMusicRecord,
   getMusicRecord,
+  MusicApiError,
   updateMusicRecord,
   type MusicRecordChanges,
   type MusicRecordDetail,
 } from '../api/musicRecordsApi';
 import { formatMusicRecordDate } from '../model/formatMusicRecordDate';
+import { invalidateMapDotsCache } from '../../mainMap/mapApi';
+import { MusicRecordDeleteDialog } from './MusicRecordDeleteDialog';
 import { UnsavedChangesDialog } from './UnsavedChangesDialog';
 
 type MusicRecordDetailPageProps = { recordId: number };
@@ -18,10 +22,16 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
   const [memo, setMemo] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [showExitWarning, setShowExitWarning] = useState(false);
   const backButton = useRef<HTMLButtonElement>(null);
+  const isMutationPending = useRef(false);
+  const activeRecordId = useRef<number | null>(recordId);
 
   useEffect(() => {
+    activeRecordId.current = recordId;
     let active = true;
     void getMusicRecord(recordId)
       .then((detail) => {
@@ -36,6 +46,7 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
       });
     return () => {
       active = false;
+      activeRecordId.current = null;
     };
   }, [recordId]);
 
@@ -49,7 +60,8 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
   if (record && memo !== (record.emotion_memo ?? '')) changes.emotion_memo = memo.trim() || null;
 
   const save = async () => {
-    if (!record || !hasChanges || isSaving) return;
+    if (!record || !hasChanges || isMutationPending.current || isDeleteOpen) return;
+    isMutationPending.current = true;
     setIsSaving(true);
     setError('');
     try {
@@ -63,7 +75,44 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
           : '저장하지 못했어요. 다시 시도해 주세요.',
       );
     } finally {
+      isMutationPending.current = false;
       setIsSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!record || record.record_id !== recordId || isMutationPending.current) return;
+    isMutationPending.current = true;
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await deleteMusicRecord(recordId, AbortSignal.timeout(10_000));
+      if (activeRecordId.current !== recordId) return;
+      sessionStorage.setItem('music_record_deleted', '1');
+      setIsDeleteOpen(false);
+      navigate('/music-records');
+    } catch (caught) {
+      if (activeRecordId.current !== recordId) return;
+      if (caught instanceof MusicApiError && caught.status === 404) {
+        invalidateMapDotsCache();
+        sessionStorage.setItem('music_record_missing', '1');
+        setIsDeleteOpen(false);
+        navigate('/music-records');
+        return;
+      }
+      setDeleteError(
+        caught instanceof MusicApiError && caught.status === 401
+          ? '로그인이 만료되었어요. 다시 로그인해 주세요.'
+          : caught instanceof MusicApiError && caught.status === 403
+            ? '본인이 작성한 기록만 삭제할 수 있어요.'
+            : (caught instanceof Error || caught instanceof DOMException) &&
+                caught.name === 'TimeoutError'
+              ? '삭제 응답 시간이 초과됐어요. 다시 시도해 주세요.'
+              : '기록을 삭제하지 못했어요. 다시 시도해 주세요.',
+      );
+    } finally {
+      isMutationPending.current = false;
+      if (activeRecordId.current === recordId) setIsDeleting(false);
     }
   };
 
@@ -76,9 +125,11 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
           className="music-back"
           aria-label="음악 기록 목록으로 돌아가기"
           onClick={() => {
+            if (isDeleting) return;
             if (hasChanges) setShowExitWarning(true);
             else navigate('/music-records');
           }}
+          aria-disabled={isDeleting}
         >
           <img src="/icons/chatbot/Arrow-reft.svg" alt="" aria-hidden="true" />
         </button>
@@ -137,6 +188,7 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
             장소 이름
             <input
               value={place}
+              disabled={isSaving || isDeleting}
               maxLength={100}
               onChange={(event) => setPlace(event.target.value)}
               placeholder="장소 이름 (선택)"
@@ -148,22 +200,43 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
               aria-label="지금 느끼는 것 기록"
               aria-describedby="detail-memo-count"
               value={memo}
-              maxLength={200}
-              onChange={(event) => setMemo(event.target.value.slice(0, 200))}
+              disabled={isSaving || isDeleting}
+              maxLength={500}
+              onChange={(event) => setMemo(event.target.value.slice(0, 500))}
               placeholder="지금의 감정을 기록해 주세요"
             />
             <span id="detail-memo-count" className="music-memo-count" aria-live="polite">
-              {memo.length}/200
+              {memo.length}/500
             </span>
           </label>
           <button
             type="button"
             className="music-primary-button"
-            disabled={!hasChanges || isSaving}
+            disabled={!hasChanges || isSaving || isDeleteOpen || isDeleting}
             onClick={() => void save()}
           >
             {isSaving ? '저장 중…' : '저장'}
           </button>
+          <button
+            type="button"
+            className="music-delete-button"
+            disabled={isSaving || isDeleting || record.record_id !== recordId}
+            onClick={() => {
+              setDeleteError('');
+              setIsDeleteOpen(true);
+            }}
+          >
+            기록 삭제
+          </button>
+          {isDeleteOpen && (
+            <MusicRecordDeleteDialog
+              title={record.music.title}
+              isDeleting={isDeleting}
+              error={deleteError}
+              onCancel={() => setIsDeleteOpen(false)}
+              onConfirm={() => void remove()}
+            />
+          )}
         </section>
       )}
       <UnsavedChangesDialog

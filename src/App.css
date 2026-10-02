@@ -1512,9 +1512,60 @@ button {
   border-radius: 0.9rem;
   background: var(--color-bg-primary);
 }
-.music-result.selected {
+.music-result.selected,
+.record-card.selected {
   border-color: var(--color-border-interactive-primary);
   background: var(--color-bg-interactive-primary-light);
+}
+.record-delete-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.record-selected-mark {
+  margin-left: auto;
+  align-self: center;
+  flex-shrink: 0;
+  color: var(--color-text-interactive-primary);
+}
+.music-delete-button {
+  min-height: 2.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 0.75rem;
+  background: var(--color-bg-primary);
+  color: var(--color-text-error);
+}
+.music-delete-dialog {
+  width: min(24rem, calc(100% - 2rem));
+  padding: 1.5rem;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 1rem;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+.music-delete-dialog::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+.music-delete-dialog h2 {
+  margin-top: 0;
+}
+.music-delete-dialog p {
+  overflow-wrap: anywhere;
+}
+.music-delete-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+.music-delete-actions button {
+  flex: 1;
+}
+.music-delete-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .music-result-row {
   display: flex;

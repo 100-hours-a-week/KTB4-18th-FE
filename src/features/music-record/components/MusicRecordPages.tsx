@@ -36,6 +36,13 @@ export function MusicRecordListPage() {
     sessionStorage.removeItem('music_record_updated');
     return updated;
   });
+  const [deleteNotice, setDeleteNotice] = useState(() => {
+    const deleted = sessionStorage.getItem('music_record_deleted') === '1';
+    const missing = sessionStorage.getItem('music_record_missing') === '1';
+    sessionStorage.removeItem('music_record_deleted');
+    sessionStorage.removeItem('music_record_missing');
+    return deleted ? '기록이 삭제되었어요' : missing ? '이미 삭제되었거나 없는 기록이에요' : '';
+  });
 
   const load = useCallback(async (next?: string | null) => {
     const generation = ++requestGeneration.current;
@@ -75,6 +82,7 @@ export function MusicRecordListPage() {
     try {
       await deleteMusicRecords(idsToDelete, AbortSignal.timeout(10_000));
       if (!active.current) return;
+      setDeleteNotice(`${idsToDelete.length}개의 기록이 삭제되었어요`);
       setIsDeleteOpen(false);
       setIsSelecting(false);
       setItems((old) => old.filter((record) => !idsToDelete.includes(record.record_id)));
@@ -160,6 +168,11 @@ export function MusicRecordListPage() {
             기록이 수정되었어요
           </p>
         )}
+        {deleteNotice && (
+          <p role="status" className="music-success">
+            {deleteNotice}
+          </p>
+        )}
         {error && (
           <p role="alert" className="music-error">
             {error}
@@ -169,6 +182,19 @@ export function MusicRecordListPage() {
           <p className="record-delete-count" role="status">
             삭제할 음악 기록 {selectedIds.length}곡
           </p>
+        )}
+        {isSelecting && deleteError && (
+          <button
+            type="button"
+            className="music-secondary-button"
+            disabled={isLoading || isDeleting}
+            onClick={() => {
+              setDeleteError('');
+              void load();
+            }}
+          >
+            목록 새로고침
+          </button>
         )}
         {!isSelecting && !isLoading && items.length > 0 && (
           <div className="record-list-count">검색 결과 {items.length}곡</div>
@@ -476,11 +502,15 @@ export function MusicRecordCreatePage() {
             ? '위치를 다시 확인해 주세요.'
             : caught instanceof MusicApiError && caught.status === 400
               ? '입력 내용 또는 위치 확인 시간이 유효한지 확인해 주세요.'
-              : caught instanceof MusicApiError && caught.status === 500
-                ? '서버에서 기록을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-                : caught instanceof Error
-                  ? caught.message
-                  : '기록을 저장하지 못했습니다.',
+              : caught instanceof MusicApiError &&
+                  caught.status === 502 &&
+                  caught.message === 'music metadata invalid'
+                ? '선택한 곡의 음악 정보를 저장할 수 없습니다. 다른 곡을 선택해 주세요.'
+                : caught instanceof MusicApiError && caught.status === 500
+                  ? '서버에서 기록을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+                  : caught instanceof Error
+                    ? caught.message
+                    : '기록을 저장하지 못했습니다.',
       );
     } finally {
       setIsSaving(false);
@@ -689,12 +719,12 @@ export function MusicRecordCreatePage() {
               aria-label="지금 느끼는 것 기록"
               aria-describedby="create-memo-count"
               value={memo}
-              maxLength={200}
-              onChange={(event) => setMemo(event.target.value.slice(0, 200))}
+              maxLength={500}
+              onChange={(event) => setMemo(event.target.value.slice(0, 500))}
               placeholder="내용을 입력해 주세요."
             />
             <span className="music-memo-count" id="create-memo-count" aria-live="polite">
-              {memo.length}/200
+              {memo.length}/500
             </span>
           </label>
           {(!location.location || location.isExpired()) && (
