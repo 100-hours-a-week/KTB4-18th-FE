@@ -14,10 +14,12 @@ export const ACCESS_TOKEN_CHANGED_EVENT = 'meomuneum:access-token-changed';
 
 export class AuthRequestError extends Error {
   readonly status: number | null;
-  constructor(status: number | null) {
+  readonly requestWasSent: boolean;
+  constructor(status: number | null, requestWasSent = false) {
     super('Authentication request failed');
     this.name = 'AuthRequestError';
     this.status = status;
+    this.requestWasSent = requestWasSent;
   }
 }
 
@@ -377,7 +379,7 @@ async function sendAnonymousFallback(
 ): Promise<Response> {
   const response = await sendProtectedRequest(input, init, null);
   if (authTransitionGeneration !== transitionGeneration || sharedAuthEpoch() !== requestEpoch) {
-    throw new AuthRequestError(null);
+    throw new AuthRequestError(null, true);
   }
   return response;
 }
@@ -440,11 +442,11 @@ export async function authenticatedFetch(
     sharedAuthEpoch() !== requestSharedAuthEpoch
   ) {
     invalidateForPeerAuthChange();
-    throw new AuthRequestError(null);
+    throw new AuthRequestError(null, true);
   }
   const currentToken = getAccessToken();
   if (response.status !== 401) {
-    if (!isCurrentAuth(requestGeneration, accessToken)) throw new AuthRequestError(null);
+    if (!isCurrentAuth(requestGeneration, accessToken)) throw new AuthRequestError(null, true);
     return response;
   }
   abortIfNeeded(init.signal);
@@ -456,7 +458,7 @@ export async function authenticatedFetch(
       sharedAuthEpoch() !== requestSharedAuthEpoch ||
       !isCurrentAuth(requestGeneration, currentToken)
     ) {
-      throw new AuthRequestError(null);
+      throw new AuthRequestError(null, true);
     }
     if (latestResponse.status === 401 && isCurrentAuth(requestGeneration, currentToken)) {
       clearAccessToken();
@@ -481,7 +483,7 @@ export async function authenticatedFetch(
     sharedAuthEpoch() !== requestSharedAuthEpoch ||
     !isCurrentAuth(requestGeneration, refreshedAccessToken)
   ) {
-    throw new AuthRequestError(null);
+    throw new AuthRequestError(null, true);
   }
   if (retryResponse.status === 401 && isCurrentAuth(requestGeneration, refreshedAccessToken)) {
     clearAccessToken();

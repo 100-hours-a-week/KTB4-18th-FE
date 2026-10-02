@@ -15,6 +15,14 @@ export function navigate(path: string): void {
   window.dispatchEvent(new Event(ROUTE_CHANGE_EVENT));
 }
 
+export function replaceRoute(path: string): void {
+  const destination = new URL(path, window.location.origin);
+  if (destination.origin !== window.location.origin) return;
+  const next = `${destination.pathname}${destination.search}${destination.hash}`;
+  window.history.replaceState(null, '', next);
+  window.dispatchEvent(new Event(ROUTE_CHANGE_EVENT));
+}
+
 export function handleInternalLinkClick(event: MouseEvent): void {
   if (
     event.defaultPrevented ||

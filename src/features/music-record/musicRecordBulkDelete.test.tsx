@@ -73,22 +73,22 @@ describe('음악 기록 다중 선택 삭제', () => {
   const deleteCalls = () =>
     vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'DELETE');
   const enter = async () => {
-    const button = await screen.findByRole('button', { name: '삭제하기' });
+    const button = await screen.findByRole('button', { name: '삭제할 기록 선택' });
     await waitFor(() => expect(button).toBeEnabled());
     fireEvent.click(button);
   };
   const select = (id: number) =>
     fireEvent.click(screen.getByRole('button', { name: `노래 ${id} 기록 선택` }));
   const confirm = () => {
-    fireEvent.click(screen.getByRole('button', { name: '선택한 기록 삭제' }));
-    fireEvent.click(screen.getByRole('button', { name: '삭제 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: '선택한 기록 삭제 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: '확인' }));
   };
 
   it('선택 표시와 해제, 모드 취소를 제공하며 상세로 이동하지 않는다', async () => {
     render(<MusicRecordListPage />);
     await enter();
     expect(screen.queryByText('기록하기')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '선택한 기록 삭제' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '삭제 선택 종료' })).toBeEnabled();
     select(7);
     select(8);
     expect(screen.getByRole('button', { name: '노래 7 기록 선택' })).toHaveAttribute(
@@ -96,14 +96,15 @@ describe('음악 기록 다중 선택 삭제', () => {
       'true',
     );
     expect(screen.getByRole('button', { name: '노래 7 기록 선택' })).toHaveClass('selected');
-    expect(screen.getByText('2개 선택 / 최대 100개')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('삭제할 음악 기록 2곡');
     expect(window.location.pathname).toBe('/music-records');
     select(7);
     expect(screen.getByRole('button', { name: '노래 7 기록 선택' })).toHaveAttribute(
       'aria-pressed',
       'false',
     );
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    select(8);
+    fireEvent.click(screen.getByRole('button', { name: '삭제 선택 종료' }));
     expect(screen.getByRole('link', { name: '노래 7 기록 상세 보기' })).toBeInTheDocument();
     expect(deleteCalls()).toHaveLength(0);
   });
@@ -112,7 +113,7 @@ describe('음악 기록 다중 선택 삭제', () => {
     render(<MusicRecordListPage />);
     await enter();
     select(7);
-    const trigger = screen.getByRole('button', { name: '선택한 기록 삭제' });
+    const trigger = screen.getByRole('button', { name: '선택한 기록 삭제 확인' });
     trigger.focus();
     fireEvent.click(trigger);
     fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }));
@@ -188,7 +189,7 @@ describe('음악 기록 다중 선택 삭제', () => {
     fireEvent.click(screen.getByRole('button', { name: '더 불러오기' }));
     await screen.findByRole('button', { name: '노래 9 기록 선택' });
     select(9);
-    expect(screen.getByText('2개 선택 / 최대 100개')).toBeInTheDocument();
+    expect(screen.getByText('삭제할 음악 기록 2곡')).toBeInTheDocument();
   });
 
   it('최대 100개 이후 새 선택을 막고 선택 해제는 허용한다', async () => {
@@ -221,7 +222,7 @@ describe('음악 기록 다중 선택 삭제', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('목록을 새로고침해 결과를 확인');
     fireEvent.click(screen.getAllByRole('button', { name: '취소' }).at(-1)!);
     fireEvent.click(screen.getByRole('button', { name: '목록 새로고침' }));
-    await waitFor(() => expect(screen.getByText('0개 선택 / 최대 100개')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('삭제할 음악 기록 0곡')).toBeInTheDocument());
     expect(screen.getByText('노래 7')).toBeInTheDocument();
   });
 

@@ -177,7 +177,7 @@ export function RecommendationCards({ recommendation, activePreview, onPreviewCh
                   src={
                     activePreview === key
                       ? '/icons/chatbot/Play-stop.svg'
-                      : '/icons/chatbot/playbutton.svg'
+                      : '/icons/chatbot/Playbutton.svg'
                   }
                   alt=""
                   aria-hidden="true"

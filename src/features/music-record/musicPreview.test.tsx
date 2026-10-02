@@ -64,10 +64,23 @@ describe('음악 검색 미리 듣기', () => {
   it('미리 듣기와 음악 선택을 분리하고 음원이 없는 곡도 선택할 수 있다', async () => {
     render(<MusicRecordCreatePage />);
     await search();
-    const next = screen.getByRole('button', { name: '다음' });
-    await act(async () =>
-      fireEvent.click(screen.getByRole('button', { name: '밤편지 아이유 미리 듣기 재생' })),
+    const next = screen.getByRole('button', { name: '선택하기' });
+    const searchInput = screen.getByRole('textbox', { name: '음악 검색' });
+    expect(searchInput).toHaveAttribute('autocomplete', 'off');
+    const selectButton = screen.getByRole('button', { name: '밤편지아이유' });
+    const previewButton = screen.getByRole('button', { name: '밤편지 아이유 미리 듣기 재생' });
+    const resultCard = selectButton.closest('.music-result');
+    expect(resultCard).toContainElement(selectButton);
+    expect(resultCard).toContainElement(previewButton);
+    expect(resultCard).toHaveClass('music-result');
+    expect(previewButton.querySelector('img')).toHaveAttribute(
+      'src',
+      '/icons/chatbot/Playbutton.svg',
     );
+    await act(async () => fireEvent.click(previewButton));
+    expect(
+      screen.getByRole('button', { name: '밤편지 아이유 미리 듣기 일시정지' }).querySelector('img'),
+    ).toHaveAttribute('src', '/icons/chatbot/Play-stop.svg');
     expect(next).toBeDisabled();
     expect(screen.getByRole('button', { name: '팔레트 아이유 미리 듣기 불가' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '팔레트아이유' }));
@@ -108,7 +121,7 @@ describe('음악 검색 미리 듣기', () => {
       fireEvent.click(screen.getByRole('button', { name: '밤편지 아이유 미리 듣기 재생' })),
     );
     fireEvent.click(screen.getByRole('button', { name: '밤편지아이유' }));
-    fireEvent.click(screen.getByRole('button', { name: '다음' }));
+    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
     expect(PreviewAudio.instances[1].pause).toHaveBeenCalled();
     expect(screen.getByRole('region', { name: '음악 기록 입력' })).toBeInTheDocument();
   });
