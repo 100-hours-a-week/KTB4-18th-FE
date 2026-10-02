@@ -70,7 +70,7 @@ function App() {
   const authIntent = useRef(0);
   const [authIntentVersion, setAuthIntentVersion] = useState(0);
   const isLoggingOutRef = useRef(false);
-  const [logoutError, setLogoutError] = useState('');
+  const [, setLogoutError] = useState('');
   const advanceAuthIntent = () => {
     authIntent.current += 1;
     setAuthIntentVersion(authIntent.current);
@@ -82,7 +82,6 @@ function App() {
     pathname === MUSIC_RECORDS_PATH ||
     pathname === MUSIC_RECORD_CREATE_PATH ||
     /^\/music-records\/([1-9]\d*)$/.test(pathname);
-
 
   useEffect(() => {
     const updateLocation = () => setRouteLocation(readRouteLocation());
@@ -383,22 +382,7 @@ function App() {
     );
   }
 
-  return (
-    <MainPage
-      isAuthenticated={
-        authStatus === 'authenticated' ||
-        (authStatus === 'retryable-error' && Boolean(getAccessToken()))
-      }
-      isLoggingOut={authStatus === 'logging-out'}
-      isRestoring={authStatus === 'restoring'}
-      isRetryableError={authStatus === 'retryable-error'}
-      onRetryAuth={() => void restore()}
-      logoutError={logoutError}
-      onLogin={() => navigate(LOGIN_PATH)}
-      onLogout={handleLogout}
-      onChat={() => navigate(CHAT_PATH)}
-    />
-  );
+  return <MainPage onChat={() => navigate(CHAT_PATH)} />;
 }
 
 function getSafeReturnTo(search: string): string {
