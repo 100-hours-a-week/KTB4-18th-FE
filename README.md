@@ -137,3 +137,28 @@ BE #101의 `DELETE /api/v1/music-records`에 `{ "record_ids": [7, 8] }`를 보�
 `npm test -- --run src/features/music-record/musicRecordBulkDelete.test.tsx`에서
 다중 선택, 취소, 요청 ID·인증, 성공·오류, 중복 차단, 페이지 추가와 선택 개수 제한을
 검증합니다. BE 선배포, 실제 브라우저 검증, 지도 작업 의존성과 롤백 기준은 위와 같습니다.
+
+## 긴 아티스트명 및 저장 실패 안내 (#80)
+
+음악 검색과 선택 화면은 아티스트명 원문을 유지합니다. 정상 저장 요청은
+`music.provider`와 `music.external_music_id`를 보내며 아티스트명은 백엔드에서 조회합니다.
+100자를 넘는다는 이유로 곡 선택을 차단하거나 이름을 잘라 전송하지 않습니다.
+
+백엔드가 HTTP 502와 `{ "message": "music metadata invalid", "data": null }`을 반환하면
+"선택한 곡의 음악 정보를 저장할 수 없습니다. 다른 곡을 선택해 주세요."를 표시합니다.
+뒤로가기에서 다른 곡을 선택할 수 있으며 장소명과 메모는 보존됩니다.
+일반적인 500 응답에는 기존 서버 오류 및 재시도 안내를 유지합니다.
+저장 중 버튼은 비활성화하고 실패 후 다시 활성화합니다.
+
+`musicRecordMetadata.test.tsx`는 제보된 긴 아티스트명을 사용해 검색·선택,
+실패 후 입력 보존과 버튼 복구, 진행 중 중복 클릭 방지, 재시도 성공,
+비정상 메타데이터 안내를 검증합니다. API와 위치 조회는 테스트 대역입니다.
+실제 백엔드 연동과 운영·스테이징 화면 검증은 배포 전에 별도로 수행해야 합니다.
+
+```sh
+npm run test -- src/features/music-record/musicRecordMetadata.test.tsx
+```
+
+배포는 백엔드의 아티스트명 컬럼 확대 및 새 오류 응답 적용 후 진행합니다.
+안내에 문제가 있으면 이전 프론트엔드 배포로 복구할 수 있습니다.
+관련 백엔드 이슈: https://github.com/100-hours-a-week/KTB4-18th-BE/issues/103
