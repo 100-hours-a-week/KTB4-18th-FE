@@ -151,11 +151,11 @@ body:has(.signup-page)::-webkit-scrollbar {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  height: 39px;
+  height: 38px;
   flex: none;
   border: 0;
   border-radius: inherit;
-  padding: 4px 16px 11px;
+  padding: 4px 16px 10px;
   color: #171717;
   background: transparent;
   font-family: var(--font-sans);
