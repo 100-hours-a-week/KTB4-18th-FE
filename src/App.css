@@ -1236,116 +1236,6 @@ button {
   font-size: var(--text-body3-normal);
 }
 
-.login-screen {
-  display: flex;
-  min-height: 100dvh;
-  justify-content: center;
-  background: var(--color-bg-secondary);
-}
-.login-content {
-  display: flex;
-  width: min(100%, 30rem);
-  flex-direction: column;
-  padding: max(3.5rem, env(safe-area-inset-top)) 1.5rem max(2rem, env(safe-area-inset-bottom));
-  background: var(--color-bg-primary);
-}
-.login-heading {
-  margin: 0;
-  color: var(--color-text-primary);
-}
-.login-description {
-  margin: 0.75rem 0 3rem;
-  color: var(--color-text-secondary);
-}
-.login-form {
-  display: grid;
-  gap: 1.25rem;
-}
-.login-field {
-  display: grid;
-  gap: 0.5rem;
-}
-.login-label {
-  color: var(--color-text-primary);
-}
-.login-input-wrap {
-  display: flex;
-  align-items: center;
-  border: 1px solid var(--color-border-tertiary);
-  border-radius: 0.75rem;
-  background: var(--color-bg-primary);
-}
-.login-input-wrap:focus-within {
-  border-color: var(--color-border-interactive-primary);
-  box-shadow: 0 0 0 3px var(--color-bg-interactive-primary-light);
-}
-.login-input-wrap.has-error {
-  border-color: var(--color-border-error);
-}
-.login-input {
-  width: 100%;
-  min-width: 0;
-  border: 0;
-  border-radius: inherit;
-  padding: 1rem;
-  color: var(--color-text-primary);
-  background: transparent;
-  outline: none;
-}
-.login-input::placeholder {
-  color: var(--color-text-tertiary);
-}
-.password-toggle {
-  flex: none;
-  margin-right: 0.5rem;
-  border: 0;
-  padding: 0.5rem;
-  color: var(--color-text-interactive-secondary);
-  background: transparent;
-  cursor: pointer;
-}
-.password-toggle:focus-visible,
-.login-link:focus-visible {
-  outline: 3px solid var(--color-border-interactive-primary);
-  outline-offset: 2px;
-}
-.login-error {
-  margin: 0;
-  color: var(--color-text-error);
-}
-.login-notice,
-.login-success {
-  margin: 0;
-  padding: 0.75rem 1rem;
-  border-radius: 0.75rem;
-}
-.login-notice {
-  color: var(--color-text-error);
-  background: var(--color-bg-error);
-}
-.login-success {
-  color: var(--color-text-success);
-  background: var(--color-bg-success);
-}
-.login-submit {
-  width: 100%;
-  margin-top: 0.5rem;
-}
-.login-links {
-  display: flex;
-  justify-content: center;
-  gap: 1rem;
-  margin-top: 1.75rem;
-}
-.login-link {
-  color: var(--color-text-interactive-primary);
-  text-decoration: none;
-}
-.login-link + .login-link {
-  border-left: 1px solid var(--color-border-tertiary);
-  padding-left: 1rem;
-}
-
 .music-page {
   min-height: 100dvh;
   max-width: 40rem;
@@ -1650,17 +1540,6 @@ button {
   text-align: center;
   color: var(--color-text-tertiary);
   padding: 4rem 0;
-}
-
-@media (min-width: 30rem) {
-  .login-screen {
-    align-items: center;
-  }
-  .login-content {
-    min-height: 42rem;
-    border: 1px solid var(--color-border-tertiary);
-    border-radius: 1.5rem;
-  }
 }
 
 @media (min-width: 451px) {
