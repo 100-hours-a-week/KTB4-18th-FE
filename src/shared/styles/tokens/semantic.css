@@ -8,10 +8,10 @@
   --color-text-success: var(--color-green-500);
   --color-text-warning: var(--color-yellow-500);
 
-  --color-text-interactive-primary: var(--color-orange-500);
-  --color-text-interactive-primary-hover: var(--color-orange-600);
-  --color-text-interactive-primary-press: var(--color-orange-700);
-  --color-text-interactive-primary-select: var(--color-orange-500);
+  --color-text-interactive-primary: var(--color-neutral-500);
+  --color-text-interactive-primary-hover: var(--color-neutral-600);
+  --color-text-interactive-primary-press: var(--color-neutral-900);
+  --color-text-interactive-primary-select: var(--color-neutral-500);
   --color-text-interactive-secondary: var(--color-neutral-700);
   --color-text-interactive-inverse: var(--color-white);
 
@@ -23,10 +23,10 @@
   --color-icon-info: var(--color-blue-500);
   --color-icon-success: var(--color-green-500);
   --color-icon-warning: var(--color-yellow-500);
-  --color-icon-interactive-primary: var(--color-orange-500);
-  --color-icon-interactive-primary-hover: var(--color-orange-600);
-  --color-icon-interactive-primary-press: var(--color-orange-700);
-  --color-icon-interactive-primary-select: var(--color-orange-500);
+  --color-icon-interactive-primary: var(--color-neutral-500);
+  --color-icon-interactive-primary-hover: var(--color-neutral-600);
+  --color-icon-interactive-primary-press: var(--color-neutral-900);
+  --color-icon-interactive-primary-select: var(--color-neutral-500);
   --color-icon-interactive-secondary: var(--color-neutral-700);
   --color-icon-interactive-inverse: var(--color-white);
 
@@ -39,11 +39,11 @@
   --color-bg-success: var(--color-green-50);
   --color-bg-warning: var(--color-yellow-50);
   --color-bg-forty: var(--color-neutral-200);
-  --color-bg-interactive-primary: var(--color-orange-500);
-  --color-bg-interactive-primary-hover: var(--color-orange-600);
-  --color-bg-interactive-primary-press: var(--color-orange-700);
-  --color-bg-interactive-primary-select: var(--color-orange-500);
-  --color-bg-interactive-primary-light: var(--color-orange-50);
+  --color-bg-interactive-primary: var(--color-neutral-500);
+  --color-bg-interactive-primary-hover: var(--color-neutral-600);
+  --color-bg-interactive-primary-press: var(--color-neutral-900);
+  --color-bg-interactive-primary-select: var(--color-neutral-500);
+  --color-bg-interactive-primary-light: var(--color-neutral-50);
   --color-bg-interactive-secondary: var(--color-neutral-200);
   --color-bg-interactive-inverse: var(--color-neutral-900);
 
@@ -56,10 +56,10 @@
   --color-border-info: var(--color-blue-500);
   --color-border-success: var(--color-green-500);
   --color-border-warning: var(--color-yellow-500);
-  --color-border-interactive-primary: var(--color-orange-500);
-  --color-border-interactive-primary-hover: var(--color-orange-600);
-  --color-border-interactive-primary-press: var(--color-orange-700);
-  --color-border-interactive-primary-select: var(--color-orange-500);
+  --color-border-interactive-primary: var(--color-neutral-500);
+  --color-border-interactive-primary-hover: var(--color-neutral-600);
+  --color-border-interactive-primary-press: var(--color-neutral-900);
+  --color-border-interactive-primary-select: var(--color-neutral-500);
   --color-border-interactive-secondary: var(--color-neutral-700);
   --color-border-interactive-inverse: var(--color-white);
 
