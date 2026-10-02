@@ -1,4 +1,4 @@
-import { ActionButton, BottomSheet, Menu, ResponsiveDialog } from '@seed-design/react';
+import { ActionButton, BottomSheet, ContentDialog, Menu } from '@seed-design/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 
@@ -26,6 +26,7 @@ import { validateProfileFields } from '../model/profileValidation';
 
 type MyPageProps = {
   onLogin: () => void;
+  onBack: () => void;
   onLogout: () => void;
   onWithdrawn: () => void | Promise<void>;
 };
@@ -44,17 +45,206 @@ function message(error: unknown, fallback: string) {
   return fallback;
 }
 
+const INLINE_MARKDOWN_PATTERN =
+  /(\*\*.+?\*\*|__.+?__|~~.+?~~|`[^`]+`|\*[^*]+\*|_[^_]+_|\[[^\]]+\]\(https?:\/\/[^\s)]+\))/g;
+
+function renderInlineMarkdown(value: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let previous = 0;
+  let key = 0;
+  for (const match of value.matchAll(INLINE_MARKDOWN_PATTERN)) {
+    const token = match[0];
+    const start = match.index ?? 0;
+    if (start > previous) nodes.push(value.slice(previous, start));
+    if (token.startsWith('**') || token.startsWith('__')) {
+      nodes.push(<strong key={key++}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith('~~')) {
+      nodes.push(<del key={key++}>{token.slice(2, -2)}</del>);
+    } else if (token.startsWith('`')) {
+      nodes.push(<code key={key++}>{token.slice(1, -1)}</code>);
+    } else if (token.startsWith('*') || token.startsWith('_')) {
+      nodes.push(<em key={key++}>{token.slice(1, -1)}</em>);
+    } else {
+      const link = token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
+      if (link) {
+        nodes.push(
+          <a key={key++} href={link[2]} target="_blank" rel="noreferrer">
+            {link[1]}
+          </a>,
+        );
+      } else {
+        nodes.push(token);
+      }
+    }
+    previous = start + token.length;
+  }
+  if (previous < value.length) nodes.push(value.slice(previous));
+  return nodes;
+}
+
+function splitMarkdownTableRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split(/(?<!\\)\|/)
+    .map((cell) => cell.replace(/\\\|/g, '|').trim());
+}
+
+function isMarkdownTableSeparator(line: string): boolean {
+  const cells = splitMarkdownTableRow(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
+function isMarkdownBlockStart(lines: string[], index: number): boolean {
+  const line = lines[index]?.trim() ?? '';
+  return (
+    /^#{1,6}\s/.test(line) ||
+    /^```/.test(line) ||
+    /^>/.test(line) ||
+    /^[-*+]\s+/.test(line) ||
+    /^\d+[.)]\s+/.test(line) ||
+    /^(?:---+|___+|\*\*\*+)$/.test(line) ||
+    (line.includes('|') && isMarkdownTableSeparator(lines[index + 1] ?? ''))
+  );
+}
+
+function TermsMarkdown({ content }: { content: string }) {
+  const lines = content.replace(/\r\n?/g, '\n').split('\n');
+  const blocks: ReactNode[] = [];
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index].trim();
+    if (!line) {
+      index += 1;
+      continue;
+    }
+    if (/^```/.test(line)) {
+      const code: string[] = [];
+      index += 1;
+      while (index < lines.length && !/^\s*```/.test(lines[index])) code.push(lines[index++]);
+      if (index < lines.length) index += 1;
+      blocks.push(
+        <pre key={`code-${index}`}>
+          <code>{code.join('\n')}</code>
+        </pre>,
+      );
+      continue;
+    }
+    if (/^#{1,6}\s/.test(line)) {
+      const heading = line.match(/^(#{1,6})\s+(.*)$/);
+      const level = Math.min(6, heading?.[1].length ?? 2);
+      const headingTags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const;
+      const Tag = headingTags[level - 1];
+      blocks.push(<Tag key={`heading-${index}`}>{renderInlineMarkdown(heading?.[2] ?? '')}</Tag>);
+      index += 1;
+      continue;
+    }
+    if (line.includes('|') && isMarkdownTableSeparator(lines[index + 1] ?? '')) {
+      const headers = splitMarkdownTableRow(line);
+      const separators = splitMarkdownTableRow(lines[index + 1]);
+      const alignments = separators.map((cell) =>
+        cell.startsWith(':') && cell.endsWith(':')
+          ? 'center'
+          : cell.endsWith(':')
+            ? 'right'
+            : 'left',
+      );
+      const rows: string[][] = [];
+      index += 2;
+      while (index < lines.length && lines[index].trim().includes('|')) {
+        rows.push(splitMarkdownTableRow(lines[index++]));
+      }
+      blocks.push(
+        <div className="mypage-terms-table-scroll" key={`table-${index}`}>
+          <table className="mypage-terms-table">
+            <thead>
+              <tr>
+                {headers.map((cell, column) => (
+                  <th
+                    key={`heading-${column}`}
+                    style={{ textAlign: alignments[column] as 'left' | 'center' | 'right' }}
+                  >
+                    {renderInlineMarkdown(cell)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, rowIndex) => (
+                <tr key={`row-${rowIndex}`}>
+                  {headers.map((_, column) => (
+                    <td
+                      key={`cell-${column}`}
+                      style={{ textAlign: alignments[column] as 'left' | 'center' | 'right' }}
+                    >
+                      {renderInlineMarkdown(row[column] ?? '')}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+      continue;
+    }
+    if (/^[-*+]\s+/.test(line) || /^\d+[.)]\s+/.test(line)) {
+      const ordered = /^\d+[.)]\s+/.test(line);
+      const listItems: ReactNode[] = [];
+      const pattern = ordered ? /^\d+[.)]\s+(.*)$/ : /^[-*+]\s+(.*)$/;
+      while (index < lines.length && pattern.test(lines[index].trim())) {
+        const item = lines[index].trim().replace(pattern, '$1');
+        listItems.push(<li key={index}>{renderInlineMarkdown(item)}</li>);
+        index += 1;
+      }
+      blocks.push(
+        ordered ? (
+          <ol key={`list-${index}`}>{listItems}</ol>
+        ) : (
+          <ul key={`list-${index}`}>{listItems}</ul>
+        ),
+      );
+      continue;
+    }
+    if (/^>/.test(line)) {
+      const quote: string[] = [];
+      while (index < lines.length && /^\s*>/.test(lines[index])) {
+        quote.push(lines[index++].replace(/^\s*>\s?/, '').trim());
+      }
+      blocks.push(
+        <blockquote key={`quote-${index}`}>{renderInlineMarkdown(quote.join(' '))}</blockquote>,
+      );
+      continue;
+    }
+    if (/^(?:---+|___+|\*\*\*+)$/.test(line)) {
+      blocks.push(<hr key={`rule-${index}`} />);
+      index += 1;
+      continue;
+    }
+    const paragraph = [line];
+    index += 1;
+    while (index < lines.length && lines[index].trim() && !isMarkdownBlockStart(lines, index)) {
+      paragraph.push(lines[index++].trim());
+    }
+    blocks.push(<p key={`paragraph-${index}`}>{renderInlineMarkdown(paragraph.join(' '))}</p>);
+  }
+  return <div className="mypage-terms-markdown">{blocks}</div>;
+}
+
 function Header({
   title,
   onBack,
   children,
+  className,
 }: {
   title: string;
   onBack?: () => void;
   children?: ReactNode;
+  className?: string;
 }) {
   return (
-    <header className="mypage-header">
+    <header className={`mypage-header ${className ?? ''}`}>
       {onBack ? (
         <button
           className="mypage-icon-button"
@@ -62,12 +252,10 @@ function Header({
           onClick={onBack}
           aria-label="마이페이지로 돌아가기"
         >
-          ‹
+          <img src="/icons/mypage/arrow-back.svg" alt="" />
         </button>
       ) : (
-        <a href="/" aria-label="홈으로">
-          ‹
-        </a>
+        <span className="mypage-header-spacer" aria-hidden="true" />
       )}
       <h1>{title}</h1>
       <div className="mypage-header-action">{children}</div>
@@ -102,7 +290,7 @@ function ProfilePage({
       await updateMyProfile({
         nickname: nickname.trim(),
         ...(birthYear ? { birth_year: Number(birthYear) } : {}),
-        ...(gender ? { gender } : {}),
+        gender: gender || null,
       });
       setNotice('프로필을 저장했어요.');
       reload();
@@ -114,12 +302,28 @@ function ProfilePage({
   }
   return (
     <>
-      <Header title="프로필 수정" onBack={back} />
-      <section className="mypage-card">
-        <h2>프로필 정보</h2>
+      <Header title="프로필 수정" onBack={back}>
+        <Menu.Root>
+          <Menu.Trigger className="mypage-icon-button" aria-label="더보기">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <circle cx="5" cy="12" r="1.5" />
+              <circle cx="12" cy="12" r="1.5" />
+              <circle cx="19" cy="12" r="1.5" />
+            </svg>
+          </Menu.Trigger>
+          <Menu.Positioner>
+            <Menu.Content>
+              <Menu.Item onClick={back}>마이페이지로 돌아가기</Menu.Item>
+            </Menu.Content>
+          </Menu.Positioner>
+        </Menu.Root>
+      </Header>
+      <section className="mypage-page-content mypage-profile-page">
         <form className="mypage-form" onSubmit={submit}>
           <label>
-            닉네임
+            <span>
+              닉네임 <b aria-hidden="true">*</b>
+            </span>
             <input
               value={nickname}
               maxLength={12}
@@ -137,9 +341,18 @@ function ProfilePage({
             )}
           </label>
           <label>
-            출생 연도
+            <span>
+              이메일 <b aria-hidden="true">*</b>
+            </span>
+            <input value={profile.email} readOnly aria-readonly="true" />
+          </label>
+          <label>
+            <span>
+              출생연도 <span className="mypage-optional-label">(선택)</span>
+            </span>
             <input
               value={birthYear}
+              aria-label="출생 연도 (선택)"
               inputMode="numeric"
               maxLength={4}
               onChange={(event) => {
@@ -155,28 +368,56 @@ function ProfilePage({
               </span>
             )}
           </label>
-          <label>
-            성별
-            <select value={gender} onChange={(event) => setGender(event.target.value)}>
-              <option value="">변경하지 않음</option>
-              <option value="MALE">남성</option>
-              <option value="FEMALE">여성</option>
-            </select>
-          </label>
+          <div className="mypage-gender-field" role="group" aria-labelledby="mypage-gender-label">
+            <span id="mypage-gender-label" className="mypage-gender-title">
+              성별 <span className="mypage-optional-label">(선택)</span>
+            </span>
+            <div className="mypage-gender-options">
+              <label>
+                <input
+                  type="checkbox"
+                  name="mypage-gender"
+                  value="FEMALE"
+                  checked={gender === 'FEMALE'}
+                  onChange={(event) => setGender(event.target.checked ? 'FEMALE' : '')}
+                />
+                <span className="mypage-gender-check" aria-hidden="true" />
+                <span>여성</span>
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  name="mypage-gender"
+                  value="MALE"
+                  checked={gender === 'MALE'}
+                  onChange={(event) => setGender(event.target.checked ? 'MALE' : '')}
+                />
+                <span className="mypage-gender-check" aria-hidden="true" />
+                <span>남성</span>
+              </label>
+            </div>
+          </div>
+          <aside className="mypage-personalization-note">
+            더 잘 맞는 음악을 추천받고 싶다면 알려주세요.
+            <br />
+            출생연도와 성별 정보는 AI 음악 추천 개인화에만 활용됩니다.
+          </aside>
           {notice && (
             <p className="mypage-notice" role="status">
               {notice}
             </p>
           )}
-          <ActionButton
-            type="submit"
-            variant="brandSolid"
-            size="medium"
-            loading={saving}
-            disabled={saving}
-          >
-            저장
-          </ActionButton>
+          <div className="mypage-action-dock">
+            <ActionButton
+              type="submit"
+              variant="brandSolid"
+              size="medium"
+              loading={saving}
+              disabled={saving}
+            >
+              저장
+            </ActionButton>
+          </div>
         </form>
       </section>
     </>
@@ -209,7 +450,7 @@ function SettingsPage({
   return (
     <>
       <Header title="설정" onBack={back} />
-      <section className="mypage-card">
+      <section className="mypage-page-content">
         <h2>개인 설정</h2>
         <label className="mypage-switch-row">
           <span>
@@ -254,6 +495,9 @@ function PasswordPage({ back }: { back: () => void }) {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirmation, setConfirmation] = useState('');
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNext, setShowNext] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -280,50 +524,96 @@ function PasswordPage({ back }: { back: () => void }) {
   return (
     <>
       <Header title="비밀번호 재설정" onBack={back} />
-      <section className="mypage-card">
-        <h2>비밀번호 변경</h2>
+      <section className="mypage-page-content mypage-password-page">
         <form className="mypage-form" onSubmit={submit}>
           <label>
-            현재 비밀번호
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={current}
-              onChange={(event) => setCurrent(event.target.value)}
-            />
+            <span>
+              비밀번호 <b aria-hidden="true">*</b>
+            </span>
+            <div className="mypage-password-input-wrap">
+              <input
+                aria-label="현재 비밀번호"
+                type={showCurrent ? 'text' : 'password'}
+                placeholder="8자 이상 입력해주세요"
+                autoComplete="current-password"
+                value={current}
+                onChange={(event) => setCurrent(event.target.value)}
+              />
+              <button
+                className="mypage-password-visibility"
+                type="button"
+                aria-label={showCurrent ? '현재 비밀번호 숨기기' : '현재 비밀번호 표시'}
+                aria-pressed={showCurrent}
+                onClick={() => setShowCurrent((visible) => !visible)}
+              >
+                <img src={`/icons/mypage/view-${showCurrent ? 'on' : 'off'}.svg`} alt="" />
+              </button>
+            </div>
           </label>
           <label>
-            새 비밀번호
-            <input
-              type="password"
-              autoComplete="new-password"
-              value={next}
-              onChange={(event) => setNext(event.target.value)}
-            />
+            <span>
+              비밀번호 <b aria-hidden="true">*</b>
+            </span>
+            <div className="mypage-password-input-wrap">
+              <input
+                aria-label="새 비밀번호"
+                type={showNext ? 'text' : 'password'}
+                placeholder="8자 이상 입력해주세요"
+                autoComplete="new-password"
+                value={next}
+                onChange={(event) => setNext(event.target.value)}
+              />
+              <button
+                className="mypage-password-visibility"
+                type="button"
+                aria-label={showNext ? '새 비밀번호 숨기기' : '새 비밀번호 표시'}
+                aria-pressed={showNext}
+                onClick={() => setShowNext((visible) => !visible)}
+              >
+                <img src={`/icons/mypage/view-${showNext ? 'on' : 'off'}.svg`} alt="" />
+              </button>
+            </div>
           </label>
           <label>
-            새 비밀번호 확인
-            <input
-              type="password"
-              autoComplete="new-password"
-              value={confirmation}
-              onChange={(event) => setConfirmation(event.target.value)}
-            />
+            <span>
+              비밀번호 <b aria-hidden="true">*</b>
+            </span>
+            <div className="mypage-password-input-wrap">
+              <input
+                aria-label="새 비밀번호 확인"
+                type={showConfirmation ? 'text' : 'password'}
+                placeholder="8자 이상 입력해주세요"
+                autoComplete="new-password"
+                value={confirmation}
+                onChange={(event) => setConfirmation(event.target.value)}
+              />
+              <button
+                className="mypage-password-visibility"
+                type="button"
+                aria-label={showConfirmation ? '비밀번호 확인 숨기기' : '비밀번호 확인 표시'}
+                aria-pressed={showConfirmation}
+                onClick={() => setShowConfirmation((visible) => !visible)}
+              >
+                <img src={`/icons/mypage/view-${showConfirmation ? 'on' : 'off'}.svg`} alt="" />
+              </button>
+            </div>
           </label>
           {notice && (
             <p className="mypage-notice" role="alert">
               {notice}
             </p>
           )}
-          <ActionButton
-            type="submit"
-            variant="brandSolid"
-            size="medium"
-            loading={saving}
-            disabled={!current || !next || !confirmation}
-          >
-            변경
-          </ActionButton>
+          <div className="mypage-action-dock">
+            <ActionButton
+              type="submit"
+              variant="brandSolid"
+              size="medium"
+              loading={saving}
+              disabled={!current || !next || !confirmation}
+            >
+              변경하기
+            </ActionButton>
+          </div>
         </form>
       </section>
     </>
@@ -332,7 +622,10 @@ function PasswordPage({ back }: { back: () => void }) {
 
 function TermsPage({ back }: { back: () => void }) {
   const [terms, setTerms] = useState<CurrentTerm[]>([]);
-  const [selected, setSelected] = useState<TermDetail | null>(null);
+  const [selected, setSelected] = useState<Pick<
+    TermDetail,
+    'title' | 'version' | 'content'
+  > | null>(null);
   const [error, setError] = useState('');
   const load = useCallback(async () => {
     setError('');
@@ -358,8 +651,7 @@ function TermsPage({ back }: { back: () => void }) {
   return (
     <>
       <Header title="약관 및 정책" onBack={back} />
-      <section className="mypage-card">
-        <h2>약관 및 정책</h2>
+      <section className="mypage-page-content mypage-terms-page">
         {error && (
           <p className="mypage-notice" role="alert">
             {error}{' '}
@@ -368,17 +660,41 @@ function TermsPage({ back }: { back: () => void }) {
             </button>
           </p>
         )}
-        {terms.map((term) => (
+        <div className="mypage-terms-list">
+          {terms.map((term) => (
+            <button
+              className="mypage-navigation-row"
+              type="button"
+              key={term.terms_id}
+              onClick={() => void open(term)}
+            >
+              <span>{term.title}</span>
+              <img src="/icons/mypage/arrow-right.svg" alt="" />
+            </button>
+          ))}
           <button
             className="mypage-navigation-row"
             type="button"
-            key={term.terms_id}
-            onClick={() => void open(term)}
+            onClick={() =>
+              setSelected({
+                title: '오픈소스 라이선스',
+                version: '',
+                content: [
+                  '| 오픈소스 | 라이선스 |',
+                  '| --- | --- |',
+                  '| React | MIT |',
+                  '| React DOM | MIT |',
+                  '| @seed-design/react | Apache-2.0 |',
+                  '| @karrotmarket/react-monochrome-icon | Apache-2.0 |',
+                ].join('\n'),
+              })
+            }
           >
-            <span>{term.title}</span>
-            <span aria-hidden="true">›</span>
+            <span>오픈소스 라이선스</span>
+            <img src="/icons/mypage/arrow-right.svg" alt="" />
           </button>
-        ))}
+        </div>
+        <p className="mypage-app-version">앱 버전 1.0.0 (Build 24)</p>
       </section>
       <BottomSheet.Root
         open={selected !== null}
@@ -393,7 +709,7 @@ function TermsPage({ back }: { back: () => void }) {
               <BottomSheet.CloseButton aria-label="약관 상세 닫기">닫기</BottomSheet.CloseButton>
             </BottomSheet.Header>
             <BottomSheet.Body className="mypage-term-sheet-body">
-              <p className="text-body3-reading-regular">{selected?.content}</p>
+              {selected && <TermsMarkdown content={selected.content} />}
             </BottomSheet.Body>
           </BottomSheet.Content>
         </BottomSheet.Positioner>
@@ -467,20 +783,24 @@ function RecommendationPage({ back }: { back: () => void }) {
     <>
       <Header title="챗봇 추천" onBack={back} />
       <section
-        className="mypage-card mypage-recommendations"
+        className="mypage-page-content mypage-recommendations"
         aria-labelledby="recommendations-title"
       >
-        <h2 id="recommendations-title">추천 받은 곡</h2>
+        <h2 id="recommendations-title">챗봇 추천</h2>
+        <p className="mypage-recommendations-caption">추천 받은 곡 {songs.length}곡</p>
         {songs.map((song, index) => (
           <article
             className="mypage-recommendation-item"
             key={`${song.music_id}-${song.date}-${index}`}
           >
+            <img className="mypage-recommendation-cover" src="/album-placeholder.svg" alt="" />
             <div>
               <strong>{song.title}</strong>
               <span>{song.artist_name}</span>
-              <small>{song.date}</small>
             </div>
+            <span className="mypage-recommendation-play" aria-hidden="true">
+              <img src="/icons/mypage/play.svg" alt="" />
+            </span>
             {index === preloadIndex && hasNext && <div ref={sentinelRef} aria-hidden="true" />}
           </article>
         ))}
@@ -523,15 +843,19 @@ function WithdrawalDialog({
   setOpen: (open: boolean) => void;
   onWithdrawn: () => void | Promise<void>;
 }) {
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [password, setPassword] = useState('');
   const [notice, setNotice] = useState('');
   const [submitting, setSubmitting] = useState(false);
   function change(opened: boolean) {
+    setOpen(opened);
+  }
+  function changePasswordDialog(opened: boolean) {
+    setPasswordDialogOpen(opened);
     if (!opened) {
       setPassword('');
       setNotice('');
     }
-    setOpen(opened);
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -541,6 +865,7 @@ function WithdrawalDialog({
     try {
       await withdrawMyAccount(password);
       setPassword('');
+      setPasswordDialogOpen(false);
       await onWithdrawn();
     } catch (error) {
       setNotice(message(error, '회원 탈퇴를 처리하지 못했어요.'));
@@ -550,22 +875,81 @@ function WithdrawalDialog({
     }
   }
   return (
-    <ResponsiveDialog.Root open={open} onOpenChange={change}>
-      <ResponsiveDialog.Backdrop />
-      <ResponsiveDialog.Positioner>
-        <ResponsiveDialog.Content>
-          <ResponsiveDialog.Header>
-            <ResponsiveDialog.Title>정말 탈퇴할까요?</ResponsiveDialog.Title>
-            <ResponsiveDialog.Description>
-              본인 확인을 위해 현재 비밀번호를 입력해 주세요.
-            </ResponsiveDialog.Description>
-            <ResponsiveDialog.CloseButton aria-label="회원 탈퇴 닫기">
-              닫기
-            </ResponsiveDialog.CloseButton>
-          </ResponsiveDialog.Header>
-          <ResponsiveDialog.Body>
-            <form className="mypage-form" onSubmit={submit}>
-              <label>
+    <>
+      <ContentDialog.Root open={open} onOpenChange={change}>
+        <ContentDialog.Backdrop className="mypage-withdrawal-backdrop" />
+        <ContentDialog.Positioner>
+          <ContentDialog.Content className="mypage-withdrawal-dialog">
+            <div className="mypage-withdrawal-warning-content">
+              <div className="mypage-withdrawal-icon" aria-hidden="true">
+                <svg viewBox="0 0 100 100" focusable="false">
+                  <circle cx="50" cy="50" r="42" />
+                  <circle className="mypage-info-dot" cx="50" cy="31" r="4" />
+                  <path d="M50 44v24" />
+                </svg>
+              </div>
+              <ContentDialog.Header className="mypage-withdrawal-header">
+                <ContentDialog.Title className="mypage-withdrawal-title">
+                  회원 탈퇴하시겠습니까?
+                </ContentDialog.Title>
+                <ContentDialog.Description className="mypage-withdrawal-description">
+                  지도에 남긴 기록과 추천이 모두 삭제되며 복구할 수 없습니다.
+                </ContentDialog.Description>
+                <ContentDialog.CloseButton
+                  className="mypage-visually-hidden"
+                  aria-label="회원 탈퇴 닫기"
+                >
+                  닫기
+                </ContentDialog.CloseButton>
+              </ContentDialog.Header>
+            </div>
+            <ContentDialog.Footer className="mypage-withdrawal-actions">
+              <button
+                className="mypage-withdrawal-cancel"
+                type="button"
+                onClick={() => change(false)}
+              >
+                취소
+              </button>
+              <ActionButton
+                className="mypage-withdrawal-confirm"
+                type="button"
+                variant="brandSolid"
+                size="medium"
+                onClick={() => {
+                  setPassword('');
+                  setNotice('');
+                  change(false);
+                  setPasswordDialogOpen(true);
+                }}
+              >
+                탈퇴
+              </ActionButton>
+            </ContentDialog.Footer>
+          </ContentDialog.Content>
+        </ContentDialog.Positioner>
+      </ContentDialog.Root>
+
+      <ContentDialog.Root open={passwordDialogOpen} onOpenChange={changePasswordDialog}>
+        <ContentDialog.Backdrop className="mypage-withdrawal-backdrop" />
+        <ContentDialog.Positioner>
+          <ContentDialog.Content className="mypage-withdrawal-dialog mypage-withdrawal-password-dialog">
+            <ContentDialog.Header className="mypage-withdrawal-header">
+              <ContentDialog.Title className="mypage-withdrawal-title">
+                현재 비밀번호를 입력해주세요
+              </ContentDialog.Title>
+              <ContentDialog.Description className="mypage-withdrawal-description">
+                본인 확인을 위해 현재 비밀번호가 필요합니다.
+              </ContentDialog.Description>
+              <ContentDialog.CloseButton
+                className="mypage-visually-hidden"
+                aria-label="비밀번호 입력 닫기"
+              >
+                닫기
+              </ContentDialog.CloseButton>
+            </ContentDialog.Header>
+            <form className="mypage-withdrawal-password-form" onSubmit={submit}>
+              <label className="mypage-withdrawal-password-label">
                 현재 비밀번호
                 <input
                   type="password"
@@ -580,29 +964,34 @@ function WithdrawalDialog({
                   {notice}
                 </p>
               )}
-              <ResponsiveDialog.Footer>
-                <ResponsiveDialog.Action onClick={() => change(false)}>
+              <ContentDialog.Footer className="mypage-withdrawal-actions">
+                <button
+                  className="mypage-withdrawal-cancel"
+                  type="button"
+                  onClick={() => changePasswordDialog(false)}
+                >
                   취소
-                </ResponsiveDialog.Action>
+                </button>
                 <ActionButton
+                  className="mypage-withdrawal-confirm"
                   type="submit"
                   variant="brandSolid"
                   size="medium"
                   loading={submitting}
                   disabled={!password}
                 >
-                  탈퇴
+                  탈퇴하기
                 </ActionButton>
-              </ResponsiveDialog.Footer>
+              </ContentDialog.Footer>
             </form>
-          </ResponsiveDialog.Body>
-        </ResponsiveDialog.Content>
-      </ResponsiveDialog.Positioner>
-    </ResponsiveDialog.Root>
+          </ContentDialog.Content>
+        </ContentDialog.Positioner>
+      </ContentDialog.Root>
+    </>
   );
 }
 
-export function MyPage({ onLogin, onLogout, onWithdrawn }: MyPageProps) {
+export function MyPage({ onLogin, onBack, onLogout, onWithdrawn }: MyPageProps) {
   const [view, setView] = useState<View>('overview');
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [settings, setSettings] = useState<UserSettings>(INITIAL_SETTINGS);
@@ -697,10 +1086,14 @@ export function MyPage({ onLogin, onLogout, onWithdrawn }: MyPageProps) {
   else
     content = (
       <>
-        <Header title="마이페이지">
+        <Header title="마이페이지" onBack={onBack} className="mypage-overview-header">
           <Menu.Root>
             <Menu.Trigger className="mypage-icon-button" aria-label="더보기">
-              ⋮
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <circle cx="5" cy="12" r="1.5" />
+                <circle cx="12" cy="12" r="1.5" />
+                <circle cx="19" cy="12" r="1.5" />
+              </svg>
             </Menu.Trigger>
             <Menu.Positioner>
               <Menu.Content>
@@ -730,14 +1123,14 @@ export function MyPage({ onLogin, onLogout, onWithdrawn }: MyPageProps) {
                   <img src={profile.profile_image_url} alt="프로필" />
                 ) : (
                   <span className="mypage-avatar-placeholder" aria-label="기본 프로필 이미지">
-                    👤
+                    <img src="/icons/mypage/profile.svg" alt="" />
                   </span>
                 )}
               </div>
               <div>
                 <strong>{profile.nickname}</strong>
-                <span>{profile.email}</span>
-                <small>{joinedDate} 가입</small>
+                <span className="mypage-summary-email">{profile.email}</span>
+                <small className="mypage-summary-joined-date">{joinedDate} 가입</small>
               </div>
               <div className="mypage-song-count">
                 <strong>{savedSongCount ?? '—'}</strong>
@@ -765,7 +1158,7 @@ export function MyPage({ onLogin, onLogout, onWithdrawn }: MyPageProps) {
                 onClick={() => setView('recommendations')}
               >
                 <span>챗봇 추천</span>
-                <span aria-hidden="true">›</span>
+                <img src="/icons/mypage/arrow-right.svg" alt="" />
               </button>
               <button
                 className="mypage-navigation-row"
@@ -773,15 +1166,7 @@ export function MyPage({ onLogin, onLogout, onWithdrawn }: MyPageProps) {
                 onClick={() => setView('password')}
               >
                 <span>비밀번호 재설정</span>
-                <span aria-hidden="true">›</span>
-              </button>
-              <button
-                className="mypage-navigation-row"
-                type="button"
-                onClick={() => setView('settings')}
-              >
-                <span>설정</span>
-                <span aria-hidden="true">›</span>
+                <img src="/icons/mypage/arrow-right.svg" alt="" />
               </button>
               <button
                 className="mypage-navigation-row"
@@ -789,7 +1174,7 @@ export function MyPage({ onLogin, onLogout, onWithdrawn }: MyPageProps) {
                 onClick={() => setView('terms')}
               >
                 <span>약관 및 정책</span>
-                <span aria-hidden="true">›</span>
+                <img src="/icons/mypage/arrow-right.svg" alt="" />
               </button>
             </nav>
             <button className="mypage-logout-button" type="button" onClick={() => void onLogout()}>

@@ -2,7 +2,13 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getMyProfile, getMySettings, MyPageRequestError, updateMyProfile } from '../api/mypageApi';
+import {
+  getMyProfile,
+  getMySettings,
+  MyPageRequestError,
+  updateMyProfile,
+  withdrawMyAccount,
+} from '../api/mypageApi';
 import { MyPage } from './MyPage';
 
 vi.mock('../api/mypageApi', async (importOriginal) => ({
@@ -15,10 +21,33 @@ vi.mock('../api/mypageApi', async (importOriginal) => ({
     has_next: false,
   }),
   updateMyProfile: vi.fn(),
+  withdrawMyAccount: vi.fn(),
 }));
 
 vi.mock('../../music-record/api/musicRecordsApi', () => ({
   getAllMusicRecords: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('../../user-signup/api/termsApi', () => ({
+  getCurrentTerms: vi.fn().mockResolvedValue([
+    {
+      terms_id: 1,
+      type: 'SERVICE',
+      version: '1.0.0',
+      title: '서비스 이용약관',
+      is_required: true,
+      effective_at: '2026-01-01T00:00:00Z',
+    },
+  ]),
+  getTermDetail: vi.fn().mockResolvedValue({
+    terms_id: 1,
+    type: 'SERVICE',
+    version: '1.0.0',
+    title: '서비스 이용약관',
+    is_required: true,
+    effective_at: '2026-01-01T00:00:00Z',
+    content: '| 항목 | 내용 |\n| --- | --- |\n| 서비스 | 음악 추천 |',
+  }),
 }));
 
 const profile = {
@@ -60,7 +89,7 @@ describe('MyPage profile validation', () => {
 
   async function openProfileEditor() {
     const user = userEvent.setup();
-    render(<MyPage onLogin={vi.fn()} onLogout={vi.fn()} onWithdrawn={vi.fn()} />);
+    render(<MyPage onLogin={vi.fn()} onBack={vi.fn()} onLogout={vi.fn()} onWithdrawn={vi.fn()} />);
     await screen.findByText('기존닉');
     await user.click(screen.getByRole('button', { name: '더보기' }));
     await user.click(screen.getByText('프로필 수정'));
@@ -98,5 +127,86 @@ describe('MyPage profile validation', () => {
     expect(screen.getByRole('textbox', { name: /닉네임/ })).toHaveValue('중복닉네임');
     expect(screen.getByRole('heading', { name: '프로필 수정' })).toBeTruthy();
     expect(updateMyProfile).toHaveBeenCalledOnce();
+  });
+
+  it('allows changing and clearing an optional gender selection', async () => {
+    const user = await openProfileEditor();
+    const selectedGender = screen.getByRole('checkbox', { name: '여성' });
+    const otherGender = screen.getByRole('checkbox', { name: '남성' });
+
+    expect(selectedGender).toBeChecked();
+    await user.click(otherGender);
+    expect(selectedGender).not.toBeChecked();
+    expect(otherGender).toBeChecked();
+
+    await user.click(otherGender);
+    expect(otherGender).not.toBeChecked();
+
+    await user.click(screen.getByRole('button', { name: '저장' }));
+
+    expect(updateMyProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gender: null,
+      }),
+    );
+  });
+
+  it('hides settings from the MyPage more menu', async () => {
+    const user = userEvent.setup();
+    render(<MyPage onLogin={vi.fn()} onBack={vi.fn()} onLogout={vi.fn()} onWithdrawn={vi.fn()} />);
+    await screen.findByText('기존닉');
+
+    await user.click(screen.getByRole('button', { name: '더보기' }));
+
+    expect(screen.queryByRole('menuitem', { name: '설정' })).toBeNull();
+    expect(screen.getByRole('menuitem', { name: '프로필 수정' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: '회원 탈퇴' })).toBeTruthy();
+  });
+
+  it('shows the overview back button and returns to the main page when clicked', async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    render(<MyPage onLogin={vi.fn()} onBack={onBack} onLogout={vi.fn()} onWithdrawn={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: '마이페이지로 돌아가기' }));
+
+    expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  it('shows the Figma withdrawal warning first and preserves password confirmation before deletion', async () => {
+    const user = await openProfileEditor();
+    await user.click(screen.getByRole('button', { name: '더보기' }));
+    await user.click(screen.getByText('마이페이지로 돌아가기'));
+    await user.click(screen.getByRole('button', { name: '더보기' }));
+    await user.click(screen.getByText('회원 탈퇴'));
+
+    expect(await screen.findByRole('heading', { name: '회원 탈퇴하시겠습니까?' })).toBeTruthy();
+    expect(screen.queryByLabelText('현재 비밀번호')).toBeNull();
+    expect(withdrawMyAccount).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: '탈퇴' }));
+    expect(screen.queryByRole('heading', { name: '회원 탈퇴하시겠습니까?' })).toBeNull();
+    expect(
+      await screen.findByRole('heading', { name: '현재 비밀번호를 입력해주세요' }),
+    ).toBeTruthy();
+    await user.type(screen.getByLabelText('현재 비밀번호'), 'valid-password');
+    await user.click(screen.getByRole('button', { name: '탈퇴하기' }));
+
+    expect(withdrawMyAccount).toHaveBeenCalledWith('valid-password');
+  });
+
+  it('shows the Figma app version and opens open-source licenses in the terms bottom sheet', async () => {
+    const user = await openProfileEditor();
+    await user.click(screen.getByRole('button', { name: '더보기' }));
+    await user.click(screen.getByText('마이페이지로 돌아가기'));
+    await user.click(screen.getByText('약관 및 정책'));
+
+    expect(await screen.findByText('서비스 이용약관')).toBeTruthy();
+    expect(screen.getByText('오픈소스 라이선스')).toBeTruthy();
+    expect(screen.getByText('앱 버전 1.0.0 (Build 24)')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '오픈소스 라이선스' }));
+
+    expect(await screen.findByRole('table')).toBeTruthy();
+    expect(screen.getByText('@seed-design/react')).toBeTruthy();
   });
 });
