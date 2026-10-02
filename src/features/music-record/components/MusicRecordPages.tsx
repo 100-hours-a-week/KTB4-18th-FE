@@ -452,11 +452,15 @@ export function MusicRecordCreatePage() {
             ? '위치를 다시 확인해 주세요.'
             : caught instanceof MusicApiError && caught.status === 400
               ? '입력 내용 또는 위치 확인 시간이 유효한지 확인해 주세요.'
-              : caught instanceof MusicApiError && caught.status === 500
-                ? '서버에서 기록을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-                : caught instanceof Error
-                  ? caught.message
-                  : '기록을 저장하지 못했습니다.',
+              : caught instanceof MusicApiError &&
+                  caught.status === 502 &&
+                  caught.message === 'music metadata invalid'
+                ? '선택한 곡의 음악 정보를 저장할 수 없습니다. 다른 곡을 선택해 주세요.'
+                : caught instanceof MusicApiError && caught.status === 500
+                  ? '서버에서 기록을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+                  : caught instanceof Error
+                    ? caught.message
+                    : '기록을 저장하지 못했습니다.',
       );
     } finally {
       setIsSaving(false);
