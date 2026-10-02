@@ -34,6 +34,7 @@ import {
   installSpaLinkHandler,
   navigate,
   readRouteLocation,
+  replaceRoute,
   ROUTE_CHANGE_EVENT,
 } from './shared/navigation';
 
@@ -67,8 +68,20 @@ function App() {
   const pathname = routeLocation.pathname;
   const [authStatus, setAuthStatus] = useState<AuthStatus>('restoring');
   const authIntent = useRef(0);
+  const [authIntentVersion, setAuthIntentVersion] = useState(0);
   const isLoggingOutRef = useRef(false);
-  const [logoutError, setLogoutError] = useState('');
+  const [, setLogoutError] = useState('');
+  const advanceAuthIntent = () => {
+    authIntent.current += 1;
+    setAuthIntentVersion(authIntent.current);
+  };
+  const isProtectedRoute =
+    pathname === CHATBOT_PATH ||
+    pathname === CHAT_PATH ||
+    pathname === MY_PATH ||
+    pathname === MUSIC_RECORDS_PATH ||
+    pathname === MUSIC_RECORD_CREATE_PATH ||
+    /^\/music-records\/([1-9]\d*)$/.test(pathname);
 
   useEffect(() => {
     const updateLocation = () => setRouteLocation(readRouteLocation());
@@ -116,6 +129,19 @@ function App() {
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
   }, []);
+
+  useEffect(() => {
+    if (!isProtectedRoute || authStatus !== 'guest') return;
+    if (
+      authIntentVersion !== authIntent.current ||
+      window.location.pathname !== routeLocation.pathname ||
+      window.location.search !== routeLocation.search ||
+      window.location.hash !== routeLocation.hash
+    ) {
+      return;
+    }
+    replaceRoute(loginHref(routeLocation));
+  }, [authIntentVersion, authStatus, isProtectedRoute, routeLocation]);
 
   useEffect(() => {
     if (authStatus !== 'authenticated') return;
@@ -231,7 +257,7 @@ function App() {
   }, [authStatus]);
 
   const handleLoginSuccess = () => {
-    authIntent.current += 1;
+    advanceAuthIntent();
     setAuthStatus('authenticated');
     setLogoutError('');
     navigate(getSafeReturnTo(window.location.search));
@@ -243,7 +269,7 @@ function App() {
     }
 
     isLoggingOutRef.current = true;
-    authIntent.current += 1;
+    advanceAuthIntent();
     setAuthStatus('logging-out');
     setLogoutError('');
     try {
@@ -264,7 +290,7 @@ function App() {
   };
 
   const handleWithdrawalComplete = async () => {
-    authIntent.current += 1;
+    advanceAuthIntent();
     setAuthStatus('logging-out');
     setLogoutError('');
     try {
@@ -287,7 +313,7 @@ function App() {
       <LoginPage
         onLoginSuccess={handleLoginSuccess}
         onLoginStart={() => {
-          authIntent.current += 1;
+          advanceAuthIntent();
           setAuthStatus('logging-in');
         }}
         onLoginFailure={() => setAuthStatus(getAccessToken() ? 'authenticated' : 'guest')}
@@ -298,14 +324,6 @@ function App() {
   if (pathname === SIGNUP_PATH) {
     return <SignupPage onSignupSuccess={() => navigate(LOGIN_PATH)} />;
   }
-  const isProtectedRoute =
-    pathname === CHATBOT_PATH ||
-    pathname === CHAT_PATH ||
-    pathname === MY_PATH ||
-    pathname === MUSIC_RECORDS_PATH ||
-    pathname === MUSIC_RECORD_CREATE_PATH ||
-    /^\/music-records\/([1-9]\d*)$/.test(pathname);
-
   if (isProtectedRoute && authStatus === 'restoring') {
     return (
       <main role="status" aria-live="polite">
@@ -326,9 +344,8 @@ function App() {
   }
   if (isProtectedRoute && authStatus === 'guest') {
     return (
-      <main role="alert">
-        <p>로그인이 필요한 페이지입니다.</p>
-        <a href={loginHref(routeLocation)}>로그인하기</a>
+      <main role="status" aria-live="polite">
+        로그인 페이지로 이동하고 있어요.
       </main>
     );
   }
@@ -350,6 +367,7 @@ function App() {
     return (
       <MyPage
         onLogin={() => navigate(LOGIN_PATH)}
+        onBack={() => navigate('/')}
         onLogout={handleLogout}
         onWithdrawn={handleWithdrawalComplete}
       />
@@ -364,22 +382,7 @@ function App() {
     );
   }
 
-  return (
-    <MainPage
-      isAuthenticated={
-        authStatus === 'authenticated' ||
-        (authStatus === 'retryable-error' && Boolean(getAccessToken()))
-      }
-      isLoggingOut={authStatus === 'logging-out'}
-      isRestoring={authStatus === 'restoring'}
-      isRetryableError={authStatus === 'retryable-error'}
-      onRetryAuth={() => void restore()}
-      logoutError={logoutError}
-      onLogin={() => navigate(LOGIN_PATH)}
-      onLogout={handleLogout}
-      onChat={() => navigate(CHAT_PATH)}
-    />
-  );
+  return <MainPage onChat={() => navigate(CHAT_PATH)} />;
 }
 
 function getSafeReturnTo(search: string): string {
@@ -411,6 +414,7 @@ function ChatbotPage() {
   const requestRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const chatAppRef = useRef<HTMLElement>(null);
 
   const handleTranscript = useCallback((transcript: string) => {
     setPrompt(transcript);
@@ -427,6 +431,27 @@ function ChatbotPage() {
   }, [resetVoiceForTextInput]);
 
   useEffect(() => () => requestRef.current?.abort(), []);
+  useEffect(() => {
+    const chatApp = chatAppRef.current;
+    const visualViewport = window.visualViewport;
+    if (!chatApp || !visualViewport) return;
+
+    const updateKeyboardInset = () => {
+      const appBottom = chatApp.getBoundingClientRect().bottom;
+      const visualViewportBottom = visualViewport.offsetTop + visualViewport.height;
+      const inset = Math.max(0, appBottom - visualViewportBottom);
+      chatApp.style.setProperty('--chat-keyboard-inset', `${inset}px`);
+    };
+
+    updateKeyboardInset();
+    visualViewport.addEventListener('resize', updateKeyboardInset);
+    visualViewport.addEventListener('scroll', updateKeyboardInset);
+    return () => {
+      visualViewport.removeEventListener('resize', updateKeyboardInset);
+      visualViewport.removeEventListener('scroll', updateKeyboardInset);
+      chatApp.style.removeProperty('--chat-keyboard-inset');
+    };
+  }, []);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading, error]);
@@ -546,9 +571,13 @@ function ChatbotPage() {
   }
 
   return (
-    <main className="chat-app">
+    <main className="chat-app" ref={chatAppRef}>
       <header className="chat-header">
+        <a className="chat-header-back" href="/" aria-label="도트 지도 메인 페이지로 이동">
+          <img src="/icons/chatbot/Arrow-reft.svg" alt="" aria-hidden="true" />
+        </a>
         <h1>음악 추천 챗봇</h1>
+        <span className="chat-header-spacer" aria-hidden="true" />
       </header>
       <div className="chat-content" role="log" aria-label="음악 추천 대화" aria-live="polite">
         <p className="date-label">
@@ -560,47 +589,49 @@ function ChatbotPage() {
           })}
         </p>
         <div className="message-row assistant-row">
-          <div className="welcome-bubble">
-            <p>지금의 순간에 음악을 더해볼까요?</p>
-            <p>느껴지는 분위기나 장소, 날씨를 편하게 들려주세요.</p>
-            <p>이 순간에 어울리는 음악을 골라드릴게요.</p>
-            <p className="sample-notice">
-              현재는 입력 문장으로 iTunes에서 음악을 검색합니다. 입력 문장은 연속 추천을 위해
-              대화별로 저장합니다.
-            </p>
+          <div className="message-group assistant-group">
+            <div className="welcome-bubble">
+              <p>지금의 순간에 음악을 더해볼까요?</p>
+              <p>느껴지는 분위기나 장소, 날씨를 편하게 들려주세요.</p>
+              <p>이 순간에 어울리는 음악을 골라드릴게요.</p>
+            </div>
+            <time>{formatTime(openedAt)}</time>
           </div>
-          <time>{formatTime(openedAt)}</time>
         </div>
         {messages.map((message) => (
           <div
             key={message.id}
             className={`message-row ${message.role === 'user' ? 'user-row' : 'assistant-row'}`}
           >
-            {message.role === 'user' ? (
-              <p className="user-bubble">{message.text}</p>
-            ) : (
-              <div className="assistant-content">
-                {message.text && <p className="assistant-text-bubble">{message.text}</p>}
-                {message.streamStatus === 'PROCESSING' && (
-                  <p className="assistant-text-bubble" role="status">
-                    추천 결과를 받고 있어요…
-                  </p>
-                )}
-                {message.failureMessage && (
-                  <p role="alert" className="assistant-text-bubble error-message">
-                    {message.failureMessage}
-                  </p>
-                )}
-                {(message.streamStatus === 'COMPLETED' || message.result.items.length > 0) && (
-                  <RecommendationCards
-                    recommendation={message.result}
-                    activePreview={activePreview}
-                    onPreviewChange={setActivePreview}
-                  />
-                )}
-              </div>
-            )}
-            <time dateTime={message.sentAt.toISOString()}>{formatTime(message.sentAt)}</time>
+            <div
+              className={`message-group ${message.role === 'user' ? 'user-group' : 'assistant-group'}`}
+            >
+              {message.role === 'user' ? (
+                <p className="user-bubble">{message.text}</p>
+              ) : (
+                <div className="assistant-content">
+                  {message.text && <p className="assistant-text-bubble">{message.text}</p>}
+                  {message.streamStatus === 'PROCESSING' && (
+                    <p className="assistant-text-bubble" role="status">
+                      추천 결과를 받고 있어요…
+                    </p>
+                  )}
+                  {message.failureMessage && (
+                    <p role="alert" className="assistant-text-bubble error-message">
+                      {message.failureMessage}
+                    </p>
+                  )}
+                  {(message.streamStatus === 'COMPLETED' || message.result.items.length > 0) && (
+                    <RecommendationCards
+                      recommendation={message.result}
+                      activePreview={activePreview}
+                      onPreviewChange={setActivePreview}
+                    />
+                  )}
+                </div>
+              )}
+              <time dateTime={message.sentAt.toISOString()}>{formatTime(message.sentAt)}</time>
+            </div>
           </div>
         ))}
         {loading && (
@@ -670,7 +701,13 @@ function ChatbotPage() {
               }
             }}
           >
-            {voice.isRecording ? '■' : '🎙'}
+            <img
+              src="/icons/chatbot/Microphone.svg"
+              alt=""
+              aria-hidden="true"
+              width="20"
+              height="20"
+            />
           </button>
           <label className="sr-only" htmlFor="prompt">
             추천받고 싶은 상황
@@ -697,7 +734,13 @@ function ChatbotPage() {
             disabled={loading || voice.isRecording || voice.isTranscribing || !prompt.trim()}
             aria-label="추천 요청 보내기"
           >
-            ↑
+            <img
+              src="/icons/chatbot/Arrow-up.svg"
+              alt=""
+              aria-hidden="true"
+              width="20"
+              height="20"
+            />
           </button>
         </form>
       </div>

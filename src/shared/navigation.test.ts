@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { installSpaLinkHandler, navigate, ROUTE_CHANGE_EVENT } from './navigation';
+import { installSpaLinkHandler, navigate, replaceRoute, ROUTE_CHANGE_EVENT } from './navigation';
 
 let removeHandler: (() => void) | undefined;
 
@@ -85,5 +85,17 @@ describe('delegated SPA navigation', () => {
     await returned;
 
     expect(window.location.pathname).toBe('/music-records');
+  });
+
+  it('replaces the current history entry and notifies the SPA router', () => {
+    const changed = vi.fn();
+    window.addEventListener(ROUTE_CHANGE_EVENT, changed, { once: true });
+    window.history.pushState(null, '', '/music-records');
+
+    replaceRoute('/login?returnTo=%2Fmusic-records');
+
+    expect(window.location.pathname).toBe('/login');
+    expect(window.location.search).toBe('?returnTo=%2Fmusic-records');
+    expect(changed).toHaveBeenCalledOnce();
   });
 });

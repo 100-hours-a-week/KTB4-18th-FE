@@ -1,5 +1,70 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { Recommendation } from '../types/recommendation';
+
+function MarqueeText({ text, className }: { text: string; className: string }) {
+  const viewportRef = useRef<HTMLSpanElement | null>(null);
+  const trackRef = useRef<HTMLSpanElement | null>(null);
+  const [overflowDistance, setOverflowDistance] = useState(0);
+  const [startedKey, setStartedKey] = useState('');
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const track = trackRef.current;
+    if (!viewport || !track) return;
+
+    let disposed = false;
+    const measure = () => {
+      if (disposed) return;
+      setOverflowDistance(Math.max(0, track.scrollWidth - viewport.clientWidth));
+    };
+
+    measure();
+
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    resizeObserver?.observe(viewport);
+    resizeObserver?.observe(track);
+
+    const fonts = document.fonts;
+    const onFontsLoaded = () => measure();
+    fonts?.addEventListener('loadingdone', onFontsLoaded);
+    void fonts?.ready.then(measure);
+
+    return () => {
+      disposed = true;
+      resizeObserver?.disconnect();
+      fonts?.removeEventListener('loadingdone', onFontsLoaded);
+    };
+  }, [text]);
+
+  const measurementKey = `${text}\u0000${overflowDistance}`;
+  const isMoving = startedKey === measurementKey;
+
+  useEffect(() => {
+    if (overflowDistance <= 0) return;
+
+    const timer = window.setTimeout(() => setStartedKey(measurementKey), 900);
+    return () => window.clearTimeout(timer);
+  }, [measurementKey, overflowDistance]);
+
+  const duration = Math.max(5, overflowDistance / 30 + 2);
+  const style = {
+    '--marquee-distance': `${overflowDistance}px`,
+    '--marquee-duration': `${duration}s`,
+  } as CSSProperties;
+
+  return (
+    <span
+      ref={viewportRef}
+      className={`music-text-viewport ${className}${overflowDistance > 0 ? ' has-overflow' : ''}${isMoving ? ' is-moving' : ''}`}
+      aria-label={text}
+    >
+      <span ref={trackRef} className="music-text-track" style={style}>
+        {text}
+      </span>
+    </span>
+  );
+}
 
 interface Props {
   recommendation: Recommendation;
@@ -72,10 +137,9 @@ export function RecommendationCards({ recommendation, activePreview, onPreviewCh
     >
       <p className="recommendation-intro">
         {recommendation.items.length < 5
-          ? `검색 결과 ${recommendation.items.length}곡을 찾았어요.`
+          ? `추천곡 ${recommendation.items.length}곡을 준비했어요.`
           : '이런 곡은 어떠세요?'}
       </p>
-      <p className="sample-notice">AI 분석 연동 전의 iTunes 검색 결과입니다.</p>
       <ol className="music-list">
         {recommendation.items.map(({ rank_no, music }) => {
           const key = `${recommendation.recommendation_id}-${rank_no}`;
@@ -90,9 +154,13 @@ export function RecommendationCards({ recommendation, activePreview, onPreviewCh
                     event.currentTarget.src = '/album-placeholder.svg';
                   }}
                 />
-                <div>
-                  <h2>{music.title}</h2>
-                  <p>{music.artist_name}</p>
+                <div className="music-copy">
+                  <h2>
+                    <MarqueeText text={music.title} className="music-title-text" />
+                  </h2>
+                  <p>
+                    <MarqueeText text={music.artist_name} className="music-artist-text" />
+                  </p>
                 </div>
               </div>
               <button
@@ -105,11 +173,17 @@ export function RecommendationCards({ recommendation, activePreview, onPreviewCh
                   if (music.preview_url) void play(key, music.preview_url);
                 }}
               >
-                {!music.preview_url
-                  ? '미리 듣기 없음'
-                  : activePreview === key
-                    ? '중지'
-                    : '30초 미리 듣기'}
+                <img
+                  src={
+                    activePreview === key
+                      ? '/icons/chatbot/Play-stop.svg'
+                      : '/icons/chatbot/Playbutton.svg'
+                  }
+                  alt=""
+                  aria-hidden="true"
+                  width="16"
+                  height="16"
+                />
               </button>
             </li>
           );

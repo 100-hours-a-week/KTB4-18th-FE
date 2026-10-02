@@ -47,6 +47,7 @@ export async function fetchMapDots(signal: AbortSignal): Promise<MapDotsData> {
 
     if (requestGeneration !== mapDotsGeneration) {
       throwIfAborted(signal);
+      if (cachedMapDots) return cachedMapDots;
       if (attempt === 0) continue;
       throw new Error('Map dots changed while the request was in flight');
     }
@@ -63,6 +64,7 @@ export async function fetchMapDots(signal: AbortSignal): Promise<MapDotsData> {
     const payload = (await response.json()) as MapDotsEnvelope;
     if (requestGeneration !== mapDotsGeneration) {
       throwIfAborted(signal);
+      if (cachedMapDots) return cachedMapDots;
       if (attempt === 0) continue;
       throw new Error('Map dots changed while the response was being parsed');
     }

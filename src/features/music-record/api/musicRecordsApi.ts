@@ -1,5 +1,5 @@
-import { invalidateMapDotsCache } from '../../mainMap/mapApi';
 import { AuthRequestError, authenticatedFetch } from '../../auth-login/api/authSession';
+import { invalidateMapDotsCache } from '../../mainMap/mapApi';
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
@@ -47,9 +47,11 @@ export type Page<T> = { items: T[]; next_cursor: string | null; has_next: boolea
 
 export class MusicApiError extends Error {
   readonly status: number | null;
-  constructor(status: number | null, message: string) {
+  readonly requestWasSent: boolean;
+  constructor(status: number | null, message: string, requestWasSent = false) {
     super(message);
     this.status = status;
+    this.requestWasSent = requestWasSent;
   }
 }
 
@@ -61,7 +63,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return body.data as T;
 }
 
-async function fetchProtectedData<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function fetchProtectedResponse(path: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers);
   let response: Response;
   try {
@@ -71,6 +73,7 @@ async function fetchProtectedData<T>(path: string, options: RequestInit = {}): P
       headers,
     });
   } catch (caught) {
+    if (options.signal?.aborted) throw options.signal.reason;
     if (caught instanceof AuthRequestError) {
       const status = caught.status;
       throw new MusicApiError(
@@ -78,17 +81,33 @@ async function fetchProtectedData<T>(path: string, options: RequestInit = {}): P
         status === 401
           ? '로그인이 만료되었습니다. 다시 로그인해 주세요.'
           : '인증을 확인하지 못했습니다. 다시 시도해 주세요.',
+        caught.requestWasSent,
       );
     }
-    throw new MusicApiError(null, '서버에 연결하지 못했습니다. 다시 시도해 주세요.');
+    throw new MusicApiError(null, '서버에 연결하지 못했습니다. 다시 시도해 주세요.', true);
   }
-  return parseResponse<T>(response);
+  return response;
 }
 
-export const searchMusic = (query: string, cursor?: string | null) => {
+async function fetchProtectedData<T>(path: string, options: RequestInit = {}): Promise<T> {
+  return parseResponse<T>(await fetchProtectedResponse(path, options));
+}
+
+function getHighResolutionArtworkUrl(url: string | null): string | null {
+  return url?.replace(/\/\d+x\d+bb(?=[./?-]|$)/i, '/680x680bb') ?? null;
+}
+
+export const searchMusic = async (query: string, cursor?: string | null) => {
   const params = new URLSearchParams({ query, provider: 'ITUNES', size: '20' });
   if (cursor) params.set('cursor', cursor);
-  return fetchProtectedData<Page<Music>>(`/music/search?${params}`);
+  const page = await fetchProtectedData<Page<Music>>(`/music/search?${params}`);
+  return {
+    ...page,
+    items: page.items.map((music) => ({
+      ...music,
+      album_cover_url: getHighResolutionArtworkUrl(music.album_cover_url),
+    })),
+  };
 };
 export const resolveLocation = (latitude: number, longitude: number, accuracy_meters: number) =>
   fetchProtectedData<Location>('/locations/resolve', {
@@ -148,3 +167,29 @@ export const updateMusicRecord = (
     body: JSON.stringify(changes),
     signal,
   });
+
+export async function deleteMusicRecord(recordId: number, signal?: AbortSignal): Promise<void> {
+  const response = await fetchProtectedResponse(`/music-records/${recordId}`, {
+    method: 'DELETE',
+    signal,
+  });
+  if (response.status !== 204) {
+    await parseResponse<never>(response);
+    throw new MusicApiError(response.status, '음악 기록 삭제 응답을 확인하지 못했습니다.');
+  }
+  invalidateMapDotsCache();
+}
+
+export async function deleteMusicRecords(recordIds: number[], signal?: AbortSignal): Promise<void> {
+  const response = await fetchProtectedResponse('/music-records', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ record_ids: recordIds }),
+    signal,
+  });
+  if (response.status !== 204) {
+    await parseResponse<never>(response);
+    throw new MusicApiError(response.status, '음악 기록 삭제 응답을 확인하지 못했습니다.');
+  }
+  invalidateMapDotsCache();
+}
