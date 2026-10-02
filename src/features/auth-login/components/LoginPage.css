@@ -181,6 +181,22 @@
   opacity: 1;
 }
 
+.login-input:autofill {
+  -webkit-text-fill-color: #171717;
+  caret-color: #171717;
+  -webkit-box-shadow: 0 0 0 1000px #fefeff inset;
+  box-shadow: 0 0 0 1000px #fefeff inset;
+}
+
+.login-input:-webkit-autofill,
+.login-input:-webkit-autofill:hover,
+.login-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #171717;
+  caret-color: #171717;
+  -webkit-box-shadow: 0 0 0 1000px #fefeff inset;
+  box-shadow: 0 0 0 1000px #fefeff inset;
+}
+
 .password-toggle {
   position: absolute;
   right: 12px;
