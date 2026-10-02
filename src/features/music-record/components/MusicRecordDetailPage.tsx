@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { navigate } from '../../../shared/navigation';
 import {
@@ -7,7 +7,8 @@ import {
   type MusicRecordChanges,
   type MusicRecordDetail,
 } from '../api/musicRecordsApi';
-import { formatMusicRecordTime } from '../model/formatMusicRecordTime';
+import { formatMusicRecordDate } from '../model/formatMusicRecordDate';
+import { UnsavedChangesDialog } from './UnsavedChangesDialog';
 
 type MusicRecordDetailPageProps = { recordId: number };
 
@@ -17,6 +18,8 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
   const [memo, setMemo] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
+  const [showExitWarning, setShowExitWarning] = useState(false);
+  const backButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -36,16 +39,14 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
     };
   }, [recordId]);
 
+  const hasChanges =
+    !!record &&
+    (place !== (record.custom_place_name ?? '') || memo !== (record.emotion_memo ?? ''));
+
   const changes: MusicRecordChanges = {};
-  if (record) {
-    if ((place.trim() || null) !== record.custom_place_name) {
-      changes.custom_place_name = place.trim() || null;
-    }
-    if ((memo.trim() || null) !== record.emotion_memo) {
-      changes.emotion_memo = memo.trim() || null;
-    }
-  }
-  const hasChanges = Object.keys(changes).length > 0;
+  if (record && place !== (record.custom_place_name ?? ''))
+    changes.custom_place_name = place.trim() || null;
+  if (record && memo !== (record.emotion_memo ?? '')) changes.emotion_memo = memo.trim() || null;
 
   const save = async () => {
     if (!record || !hasChanges || isSaving) return;
@@ -69,17 +70,19 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
   return (
     <main className="music-page music-detail-page">
       <header className="music-page-header">
-        <a
-          href="/music-records"
+        <button
+          ref={backButton}
+          type="button"
+          className="music-back"
           aria-label="음악 기록 목록으로 돌아가기"
-          onClick={(event) => {
-            event.preventDefault();
-            navigate('/music-records');
+          onClick={() => {
+            if (hasChanges) setShowExitWarning(true);
+            else navigate('/music-records');
           }}
         >
-          ‹
-        </a>
-        <h1 className="text-title2-bold">기록 상세</h1>
+          <img src="/icons/chatbot/Arrow-reft.svg" alt="" aria-hidden="true" />
+        </button>
+        <h1 className="text-title2-bold">음악 기록</h1>
         <span aria-hidden="true" />
       </header>
       {error && (
@@ -95,9 +98,6 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
         )
       ) : (
         <section className="music-form" aria-label="음악 기록 상세 및 수정">
-          <div className="music-detail-label-row">
-            <span>곡</span>
-          </div>
           <article className="music-selected-content">
             {record.music.album_cover_url ? (
               <img src={record.music.album_cover_url} alt="" />
@@ -108,11 +108,27 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
               <strong>{record.music.title}</strong>
               <span>{record.music.artist_name}</span>
             </div>
+            <button
+              type="button"
+              className="music-change-button"
+              disabled
+              title="현재 음악 변경은 지원하지 않습니다"
+            >
+              음악 변경
+            </button>
           </article>
+          <label>
+            저장 날짜
+            <input value={formatMusicRecordDate(record.created_at)} readOnly aria-readonly="true" />
+          </label>
           <label>
             저장 장소
             <input
-              value={`${record.region.sido.name} ${record.region.sigungu.name}`}
+              value={
+                record.region?.sido?.name && record.region?.sigungu?.name
+                  ? `${record.region.sido.name} ${record.region.sigungu.name}`
+                  : '—'
+              }
               readOnly
               aria-readonly="true"
             />
@@ -127,17 +143,18 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
             />
           </label>
           <label>
-            저장 날짜
-            <input value={formatMusicRecordTime(record.created_at)} readOnly aria-readonly="true" />
-          </label>
-          <label>
             지금 느끼는 것 기록
             <textarea
+              aria-label="지금 느끼는 것 기록"
+              aria-describedby="detail-memo-count"
               value={memo}
-              maxLength={500}
-              onChange={(event) => setMemo(event.target.value)}
+              maxLength={200}
+              onChange={(event) => setMemo(event.target.value.slice(0, 200))}
               placeholder="지금의 감정을 기록해 주세요"
             />
+            <span id="detail-memo-count" className="music-memo-count" aria-live="polite">
+              {memo.length}/200
+            </span>
           </label>
           <button
             type="button"
@@ -149,6 +166,14 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
           </button>
         </section>
       )}
+      <UnsavedChangesDialog
+        open={showExitWarning}
+        onCancel={() => {
+          setShowExitWarning(false);
+          requestAnimationFrame(() => backButton.current?.focus());
+        }}
+        onConfirm={() => navigate('/music-records')}
+      />
     </main>
   );
 }
