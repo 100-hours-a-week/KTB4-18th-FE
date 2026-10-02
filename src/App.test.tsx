@@ -16,6 +16,7 @@ import {
 import { signup } from './features/user-signup/api/signupApi';
 import { getCurrentTerms, TermType } from './features/user-signup/api/termsApi';
 import type { VoiceStatus } from './hooks/useVoiceInput';
+import { navigate } from './shared/navigation';
 
 const voiceActions = {
   startRecording: vi.fn(),
@@ -957,5 +958,119 @@ describe('로그인과 회원가입 화면 연결', () => {
 
     expect(await screen.findByRole('heading', { name: '우리 지역 채팅방' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/chat');
+  });
+});
+
+describe('음악 기록 생성·상세 경로 연결', () => {
+  it('비인증 사용자는 음악 기록 생성 화면에 접근할 수 없다', async () => {
+    resetAuthSessionForTests();
+    sessionStorage.clear();
+    window.history.replaceState(null, '', '/music-records/new');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith('/api/v1/auth/token/csrf'))
+          return Promise.resolve(Response.json({ data: { csrf_token: 'test-csrf-token' } }));
+        if (url.endsWith('/api/v1/auth/token/refresh'))
+          return Promise.resolve(Response.json({ data: null }, { status: 401 }));
+        return Promise.resolve(Response.json({ data: null }, { status: 401 }));
+      }),
+    );
+    render(<App />);
+    expect(await screen.findByText('로그인이 필요한 페이지입니다.')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: '음악 검색' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '로그인하기' })).toHaveAttribute(
+      'href',
+      '/login?returnTo=%2Fmusic-records%2Fnew',
+    );
+  });
+
+  it('생성 확인은 메인으로, 수정 상세 확인은 목록으로 이동한다', async () => {
+    resetAuthSessionForTests();
+    sessionStorage.clear();
+    setAccessToken(accessTokenWithExpiration(Date.now() + 60 * 60 * 1000));
+    window.history.replaceState(null, '', '/music-records/new');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL) => {
+        const url = String(input);
+        if (url.includes('/api/v1/music/search')) {
+          return Promise.resolve(
+            Response.json({
+              data: {
+                items: [
+                  {
+                    music_id: null,
+                    provider: 'ITUNES',
+                    external_music_id: '123',
+                    title: '밤편지',
+                    artist_name: '아이유',
+                    album_cover_url: null,
+                    preview_url: null,
+                    youtube_video_id: null,
+                    is_queueable: false,
+                  },
+                ],
+                next_cursor: null,
+                has_next: false,
+              },
+            }),
+          );
+        }
+        if (url.endsWith('/api/v1/music-records/1')) {
+          return Promise.resolve(
+            Response.json({
+              data: {
+                record_id: 1,
+                music: {
+                  music_id: 11,
+                  title: '밤편지',
+                  artist_name: '아이유',
+                  album_cover_url: null,
+                },
+                map_dot_id: 5,
+                region: {
+                  sido: { region_id: 1, code: '11', name: '서울특별시' },
+                  sigungu: { region_id: 2, code: '11440', name: '마포구' },
+                },
+                custom_place_name: '홍대',
+                emotion_memo: '산책 중',
+                created_at: '2026-09-22T06:30:00Z',
+                updated_at: null,
+              },
+            }),
+          );
+        }
+        if (url.endsWith('/api/v1/users/me/music-records')) {
+          return Promise.resolve(
+            Response.json({
+              data: { items: [], next_cursor: null, has_next: false },
+            }),
+          );
+        }
+        return Promise.resolve(Response.json({ data: null }, { status: 404 }));
+      }),
+    );
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(await screen.findByRole('textbox', { name: '음악 검색' }), '밤편지');
+    await user.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
+    await user.click(screen.getByRole('button', { name: '선택하기' }));
+    await user.type(await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' }), '작성 중');
+    await user.click(await screen.findByRole('button', { name: '뒤로가기' }));
+    await user.click(await screen.findByRole('button', { name: '확인' }));
+    expect(await screen.findByRole('heading', { name: '음악 지도' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
+
+    act(() => navigate('/music-records/1'));
+    const memo = await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' });
+    await user.clear(memo);
+    await user.type(memo, '수정한 기록');
+    await user.click(screen.getByRole('button', { name: '음악 기록 목록으로 돌아가기' }));
+    await user.click(screen.getByRole('button', { name: '확인' }));
+    expect(await screen.findByRole('heading', { name: '음악 기록' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/music-records');
   });
 });

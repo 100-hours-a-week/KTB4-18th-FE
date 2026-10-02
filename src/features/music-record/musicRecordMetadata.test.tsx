@@ -89,7 +89,7 @@ describe('긴 아티스트명의 저장 및 오류 복구', () => {
       target: { value: 'Les Nations' },
     });
     fireEvent.click(await screen.findByRole('button', { name: title + artist }));
-    fireEvent.click(screen.getByRole('button', { name: '다음' }));
+    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
     expect(screen.getByText(artist)).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: '장소 이름' }), {
       target: { value: '산책길' },
@@ -106,7 +106,7 @@ describe('긴 아티스트명의 저장 및 오류 복구', () => {
         finish = resolve;
       });
     await openForm();
-    const save = screen.getByRole('button', { name: '음악 기록 저장' });
+    const save = screen.getByRole('button', { name: '저장' });
     fireEvent.click(save);
     await waitFor(() => expect(posts).toHaveLength(1));
     expect(screen.getByRole('button', { name: '저장 중…' })).toBeDisabled();
@@ -136,13 +136,14 @@ describe('긴 아티스트명의 저장 및 오류 복구', () => {
     saveResponse = async () =>
       Response.json({ message: 'music metadata invalid', data: null }, { status: 502 });
     await openForm();
-    fireEvent.click(screen.getByRole('button', { name: '음악 기록 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '저장' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('다른 곡을 선택해 주세요.');
-    expect(screen.getByRole('button', { name: '음악 기록 저장' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '저장' })).toBeEnabled();
     expect(screen.getByRole('textbox', { name: '장소 이름' })).toHaveValue('산책길');
     expect(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' })).toHaveValue('평온한 오후');
     fireEvent.click(screen.getByRole('button', { name: '뒤로가기' }));
-    expect(screen.getByRole('region', { name: '음악 검색 결과' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '확인' }));
+    expect(window.location.pathname).toBe('/');
     expect(posts).toHaveLength(1);
   });
 });
