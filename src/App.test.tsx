@@ -553,6 +553,103 @@ describe('음성 transcript 공통 추천 흐름', () => {
     );
   });
 
+  it.each([199, 200])(
+    '%i자 직접 입력은 글자 수를 표시하고 전체 내용을 전송한다',
+    async (length) => {
+      render(<App />);
+      const input = await screen.findByLabelText('추천받고 싶은 상황');
+      expect(input).toHaveAttribute('maxLength', '200');
+      const prompt = '가'.repeat(length);
+      fireEvent.change(input, { target: { value: prompt } });
+      expect(screen.getByText(`${length} / 200`)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '추천 요청 보내기' }));
+      await waitFor(() =>
+        expect(recommend).toHaveBeenCalledWith(
+          prompt,
+          expect.any(String),
+          expect.any(AbortSignal),
+          'TEXT',
+        ),
+      );
+    },
+  );
+
+  it('붙여넣기는 200자 한도를 지키고 공백 입력은 버튼과 Enter 전송을 차단한다', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const input = await screen.findByLabelText('추천받고 싶은 상황');
+    await user.click(input);
+    await user.paste('가'.repeat(201));
+    expect(input).toHaveValue('가'.repeat(200));
+    expect(screen.getByText('200 / 200')).toBeInTheDocument();
+    await user.clear(input);
+    expect(screen.getByRole('button', { name: '추천 요청 보내기' })).toBeDisabled();
+    await user.type(input, '   ');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getByRole('button', { name: '추천 요청 보내기' })).toBeDisabled();
+    expect(recommend).not.toHaveBeenCalled();
+  });
+
+  it('초과 전사문은 원문을 유지하고 Enter와 버튼을 막으며 수정 후 VOICE 전송을 허용한다', async () => {
+    render(<App />);
+    const input = await screen.findByLabelText('추천받고 싶은 상황');
+    const transcript = '앞' + '가'.repeat(197) + '\n🎵';
+    act(() => transcriptHandler(transcript));
+    expect(input).toHaveValue(transcript);
+    expect(screen.getByText('201 / 200')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('200자 이내로 수정');
+    const send = screen.getByRole('button', { name: '추천 요청 보내기' });
+    expect(send).toBeDisabled();
+    fireEvent.click(send);
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.submit(input.closest('form')!);
+    expect(recommend).not.toHaveBeenCalled();
+
+    const edited = '앞' + '가'.repeat(196) + '\n🎵';
+    fireEvent.change(input, { target: { value: edited } });
+    expect(screen.getByText('200 / 200')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(send).toBeEnabled();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() =>
+      expect(recommend).toHaveBeenCalledWith(
+        edited,
+        expect.any(String),
+        expect.any(AbortSignal),
+        'VOICE',
+      ),
+    );
+  });
+
+  it('한글 조합 중 Enter는 전송하지 않고 초과 입력도 절단 없이 수정을 안내한다', async () => {
+    render(<App />);
+    const input = await screen.findByLabelText('추천받고 싶은 상황');
+    fireEvent.compositionStart(input);
+    fireEvent.change(input, { target: { value: '가'.repeat(200) } });
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+    expect(recommend).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: '가'.repeat(201) } });
+    fireEvent.compositionEnd(input);
+    expect(input).toHaveValue('가'.repeat(201));
+    expect(screen.getByRole('button', { name: '추천 요청 보내기' })).toBeDisabled();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(recommend).not.toHaveBeenCalled();
+  });
+
+  it('백엔드의 200자 검증 오류는 안내를 표시하고 입력을 복구한다', async () => {
+    vi.mocked(recommend).mockRejectedValueOnce(
+      new Error('입력 내용과 요청 형식을 확인해 주세요. (최대 200자)'),
+    );
+    render(<App />);
+    const input = await screen.findByLabelText('추천받고 싶은 상황');
+    fireEvent.change(input, { target: { value: '가'.repeat(200) } });
+    fireEvent.click(screen.getByRole('button', { name: '추천 요청 보내기' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('최대 200자');
+    expect(input).toHaveValue('가'.repeat(200));
+    expect(screen.getByRole('button', { name: '추천 요청 보내기' })).toBeEnabled();
+    expect(streamRecommendation).not.toHaveBeenCalled();
+  });
+
   it('전사 실패 시 재시도·재녹음·텍스트 입력 경로를 제공한다', async () => {
     voiceState = {
       ...voiceState,

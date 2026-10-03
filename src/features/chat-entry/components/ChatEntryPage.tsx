@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 
 import type { ChatRoomMembership, ChatRoomSummary } from '../../../api/chatRooms';
 import { useChatLocation } from '../../../hooks/useChatLocation';
+import { navigateBack } from '../../../shared/navigation';
 
 export interface ActiveChatRoom {
   room: ChatRoomSummary;
@@ -23,6 +24,16 @@ export function ChatEntryPage() {
 
   return (
     <main className="chat-entry-screen">
+      <header className="chat-entry-header">
+        <button
+          type="button"
+          className="chat-header-back chat-entry-back"
+          aria-label="뒤로가기"
+          onClick={navigateBack}
+        >
+          <img src="/icons/chatbot/Arrow-reft.svg" alt="" aria-hidden="true" />
+        </button>
+      </header>
       <section className="chat-entry-card" aria-labelledby="chat-entry-title">
         <span className="chat-entry-icon" aria-hidden="true">
           💬

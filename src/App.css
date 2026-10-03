@@ -1343,11 +1343,28 @@ button {
 }
 
 .chat-entry-screen {
+  position: relative;
   display: grid;
   min-height: 100dvh;
-  padding: max(1.5rem, env(safe-area-inset-top)) 1.25rem max(1.5rem, env(safe-area-inset-bottom));
+  padding: calc(max(1rem, env(safe-area-inset-top)) + 4rem) 1.25rem
+    max(1.5rem, env(safe-area-inset-bottom));
   place-items: center;
   background: var(--color-bg-secondary);
+}
+
+.chat-entry-header {
+  position: absolute;
+  top: max(1rem, env(safe-area-inset-top));
+  left: max(1rem, env(safe-area-inset-left));
+}
+
+.chat-entry-screen .chat-entry-back {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
 }
 
 .chat-entry-card {
@@ -3101,7 +3118,7 @@ button {
   font-size: 0.8125rem;
   line-height: 1.125rem;
 }
-.record-card-copy .record-memo {
+.record-card-copy .record-location {
   color: #333;
   font-size: 0.8125rem;
   line-height: 1.125rem;
@@ -3116,13 +3133,13 @@ button {
   .music-record-list-page .record-card-copy {
     overflow: visible;
   }
-  .music-record-list-page .record-card-copy .record-memo,
+  .music-record-list-page .record-card-copy .record-location,
   .music-record-list-page .record-card-copy .record-card-meta-row {
     position: absolute;
     left: 0.75rem;
     width: calc(100% - 1.5rem);
   }
-  .music-record-list-page .record-card-copy .record-memo {
+  .music-record-list-page .record-card-copy .record-location {
     top: 4.875rem;
   }
   .music-record-list-page .record-card-copy .record-card-meta-row {
@@ -3262,4 +3279,22 @@ button {
     height: auto;
     min-height: 20.625rem;
   }
+}
+
+.prompt-feedback {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  margin: 0.25rem 1rem 0;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.prompt-feedback p {
+  margin: 0;
+}
+
+.prompt-feedback [role='alert'] {
+  color: var(--color-text-error);
 }
