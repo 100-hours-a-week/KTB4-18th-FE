@@ -1,6 +1,7 @@
 import { ActionButton } from '@seed-design/react';
 import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import { convertHangulToKeyboardInput } from '../../../shared/convertHangulToKeyboardInput';
 
 import { login, LoginRequestError, type LoginSuccessResponse } from '../api/loginApi';
 import './LoginPage.css';
@@ -18,6 +19,12 @@ type LoginPageProps = {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const INVALID_EMAIL_CHARACTER_PATTERN = /[^A-Za-z0-9._+@-]/g;
+
+function normalizeEmail(value: string) {
+  return convertHangulToKeyboardInput(value)
+    .replace(INVALID_EMAIL_CHARACTER_PATTERN, '')
+    .toLowerCase();
+}
 
 function validate(email: string, password: string): FieldErrors {
   const errors: FieldErrors = {};
@@ -110,13 +117,11 @@ export function LoginPage({ onLoginSuccess, onLoginStart, onLoginFailure }: Logi
                     autoComplete="email"
                     placeholder="이메일을 입력해주세요"
                     value={email}
-                    onChange={(event) =>
-                      setEmail(
-                        event.target.value
-                          .replace(INVALID_EMAIL_CHARACTER_PATTERN, '')
-                          .toLowerCase(),
-                      )
-                    }
+                    onChange={(event) => setEmail(normalizeEmail(event.target.value))}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    lang="en"
                     aria-invalid={Boolean(fieldErrors.email)}
                     aria-describedby={fieldErrors.email ? 'email-error' : undefined}
                     disabled={isSubmitting}
