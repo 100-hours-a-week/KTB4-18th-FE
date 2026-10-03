@@ -1,13 +1,17 @@
 import { ActionButton, BottomSheet } from '@seed-design/react';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import { convertHangulToKeyboardInput } from '../../../shared/convertHangulToKeyboardInput';
 import { signup } from '../api/signupApi';
+import { checkUserAvailability } from '../api/userAvailabilityApi';
+import type { AvailabilityField } from '../api/userAvailabilityApi';
 import { getCurrentTerms, getTermDetail } from '../api/termsApi';
 import type { CurrentTerm, TermDetail } from '../api/termsApi';
 import './SignupPage.css';
 
 type Gender = '' | 'MALE' | 'FEMALE';
 type InputField = 'nickname' | 'email' | 'password' | 'birthYear';
+type DuplicateField = 'nickname' | 'email';
 
 type SignupPageProps = {
   onSignupSuccess?: () => void;
@@ -27,158 +31,12 @@ const PASSWORD_GUIDANCE = '8~64자 / 사용 가능 특수문자: ! @ # $ % ^ & *
 const PASSWORD_CHARACTER_ERROR = `사용할 수 없는 특수 문자가 포함되어 있어요. ${PASSWORD_GUIDANCE}`;
 const MIN_BIRTH_YEAR = 1900;
 const CURRENT_YEAR = new Date().getFullYear();
-const hangulInitialKeys = [
-  'r',
-  'R',
-  's',
-  'e',
-  'E',
-  'f',
-  'a',
-  'q',
-  'Q',
-  't',
-  'T',
-  'd',
-  'w',
-  'W',
-  'c',
-  'z',
-  'x',
-  'v',
-  'g',
-];
-const hangulMedialKeys = [
-  'k',
-  'o',
-  'i',
-  'O',
-  'j',
-  'p',
-  'u',
-  'P',
-  'h',
-  'hk',
-  'ho',
-  'hl',
-  'y',
-  'n',
-  'nj',
-  'np',
-  'nl',
-  'b',
-  'm',
-  'ml',
-  'l',
-];
-const hangulFinalKeys = [
-  '',
-  'r',
-  'R',
-  'rt',
-  's',
-  'sw',
-  'sg',
-  'e',
-  'f',
-  'fr',
-  'fa',
-  'fq',
-  'ft',
-  'fx',
-  'fv',
-  'fg',
-  'a',
-  'q',
-  'qt',
-  't',
-  'T',
-  'd',
-  'w',
-  'c',
-  'z',
-  'x',
-  'v',
-  'g',
-];
-const hangulJamoKeys: Record<string, string> = {
-  ㄱ: 'r',
-  ㄲ: 'R',
-  ㄳ: 'rt',
-  ㄴ: 's',
-  ㄵ: 'sw',
-  ㄶ: 'sg',
-  ㄷ: 'e',
-  ㄸ: 'E',
-  ㄹ: 'f',
-  ㄺ: 'fr',
-  ㄻ: 'fa',
-  ㄼ: 'fq',
-  ㄽ: 'ft',
-  ㄾ: 'fx',
-  ㄿ: 'fv',
-  ㅀ: 'fg',
-  ㅁ: 'a',
-  ㅂ: 'q',
-  ㅃ: 'Q',
-  ㅄ: 'qt',
-  ㅅ: 't',
-  ㅆ: 'T',
-  ㅇ: 'd',
-  ㅈ: 'w',
-  ㅉ: 'W',
-  ㅊ: 'c',
-  ㅋ: 'z',
-  ㅌ: 'x',
-  ㅍ: 'v',
-  ㅎ: 'g',
-  ㅏ: 'k',
-  ㅐ: 'o',
-  ㅑ: 'i',
-  ㅒ: 'O',
-  ㅓ: 'j',
-  ㅔ: 'p',
-  ㅕ: 'u',
-  ㅖ: 'P',
-  ㅗ: 'h',
-  ㅘ: 'hk',
-  ㅙ: 'ho',
-  ㅚ: 'hl',
-  ㅛ: 'y',
-  ㅜ: 'n',
-  ㅝ: 'nj',
-  ㅞ: 'np',
-  ㅟ: 'nl',
-  ㅠ: 'b',
-  ㅡ: 'm',
-  ㅢ: 'ml',
-  ㅣ: 'l',
-};
 
 const errorMessages: Record<string, string> = {
   'invalid request': '입력 내용을 다시 확인해 주세요.',
   'email already exists': '이미 가입된 이메일이에요.',
   'internal server error': '회원가입을 완료하지 못했어요. 잠시 후 다시 시도해 주세요.',
 };
-
-function convertHangulToKeyboardInput(value: string) {
-  return Array.from(value)
-    .map((character) => {
-      const code = character.codePointAt(0) ?? 0;
-      if (code < 0xac00 || code > 0xd7a3) return hangulJamoKeys[character] ?? character;
-
-      const syllableIndex = code - 0xac00;
-      const initialIndex = Math.floor(syllableIndex / 588);
-      const medialIndex = Math.floor((syllableIndex % 588) / 28);
-      const finalIndex = syllableIndex % 28;
-      return (
-        hangulInitialKeys[initialIndex] +
-        hangulMedialKeys[medialIndex] +
-        hangulFinalKeys[finalIndex]
-      );
-    })
-    .join('');
-}
 
 function normalizeEmailPart(value: string) {
   return convertHangulToKeyboardInput(value)
@@ -241,6 +99,19 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
   const [isTermsLoading, setIsTermsLoading] = useState(true);
   const selectAllTermsRef = useRef<HTMLInputElement>(null);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<InputField, string>>>({});
+  const [duplicateValues, setDuplicateValues] = useState<Partial<Record<DuplicateField, string>>>(
+    {},
+  );
+  const [availabilityDuplicateValues, setAvailabilityDuplicateValues] = useState<
+    Partial<Record<DuplicateField, string>>
+  >({});
+  const [availabilityErrors, setAvailabilityErrors] = useState<
+    Partial<Record<DuplicateField, { value: string; message: string }>>
+  >({});
+  const availabilityRequestGeneration = useRef<Record<DuplicateField, number>>({
+    nickname: 0,
+    email: 0,
+  });
   const [touchedFields, setTouchedFields] = useState<Partial<Record<InputField, boolean>>>({});
   const [selectedTerm, setSelectedTerm] = useState<TermDetail | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -311,9 +182,9 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
   }, [areSomeTermsSelected]);
 
   const formValid =
-    !getInputError('email', email) &&
+    !getFieldValidationError('email', email) &&
     !getInputError('password', password) &&
-    !getInputError('nickname', nickname) &&
+    !getFieldValidationError('nickname', nickname) &&
     !getInputError('birthYear', birthYear) &&
     currentTerms.length === 6 &&
     !termsError &&
@@ -330,6 +201,95 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
     setAgreedTermIds(checked ? currentTerms.map((term) => term.terms_id) : []);
   }
 
+  function normalizeDuplicateValue(field: DuplicateField, value: string) {
+    return field === 'nickname' ? value.trim() : value.trim().toLowerCase();
+  }
+
+  function getFieldValidationError(field: InputField, value: string) {
+    const inputError = getInputError(field, value);
+    if (inputError) return inputError;
+    if (
+      (field === 'nickname' || field === 'email') &&
+      (duplicateValues[field] === normalizeDuplicateValue(field, value) ||
+        availabilityDuplicateValues[field] === normalizeDuplicateValue(field, value))
+    ) {
+      return field === 'nickname' ? '이미 사용 중인 닉네임이에요.' : '이미 가입된 이메일이에요.';
+    }
+    return undefined;
+  }
+
+  function clearChangedDuplicate(field: DuplicateField, value: string) {
+    setDuplicateValues((current) =>
+      current[field] && current[field] !== normalizeDuplicateValue(field, value)
+        ? { ...current, [field]: undefined }
+        : current,
+    );
+  }
+
+  function invalidateAvailabilityRequest(field: DuplicateField) {
+    availabilityRequestGeneration.current[field] += 1;
+    setAvailabilityErrors((current) =>
+      current[field] ? { ...current, [field]: undefined } : current,
+    );
+  }
+
+  function clearChangedAvailabilityDuplicate(field: DuplicateField, value: string) {
+    const normalizedValue = normalizeDuplicateValue(field, value);
+    setAvailabilityDuplicateValues((current) =>
+      current[field] && current[field] !== normalizedValue
+        ? { ...current, [field]: undefined }
+        : current,
+    );
+    setAvailabilityErrors((current) =>
+      current[field] && current[field]?.value !== normalizedValue
+        ? { ...current, [field]: undefined }
+        : current,
+    );
+  }
+
+  async function checkAvailability(field: AvailabilityField, value: string) {
+    if (getInputError(field, value)) return;
+
+    const normalizedValue = normalizeDuplicateValue(field, value);
+    invalidateAvailabilityRequest(field);
+    const generation = availabilityRequestGeneration.current[field];
+    try {
+      const available = await checkUserAvailability(field, normalizedValue);
+      if (availabilityRequestGeneration.current[field] !== generation) return;
+      setAvailabilityErrors((current) => ({ ...current, [field]: undefined }));
+      if (available) {
+        setAvailabilityDuplicateValues((current) => ({ ...current, [field]: undefined }));
+        setFieldError(
+          field,
+          duplicateValues[field] === normalizedValue
+            ? field === 'nickname'
+              ? '이미 사용 중인 닉네임이에요.'
+              : '이미 가입된 이메일이에요.'
+            : getInputError(field, value),
+        );
+        return;
+      }
+
+      setAvailabilityDuplicateValues((current) => ({ ...current, [field]: normalizedValue }));
+      setFieldError(
+        field,
+        field === 'nickname' ? '이미 사용 중인 닉네임이에요.' : '이미 가입된 이메일이에요.',
+      );
+    } catch (error) {
+      if (availabilityRequestGeneration.current[field] !== generation) return;
+      setAvailabilityErrors((current) => ({
+        ...current,
+        [field]: {
+          value: normalizedValue,
+          message:
+            error instanceof Error && error.message === 'too many requests'
+              ? '요청이 많아 잠시 후 다시 확인해 주세요.'
+              : '중복 여부를 확인하지 못했어요. 다시 확인해 주세요.',
+        },
+      }));
+    }
+  }
+
   function setFieldError(field: InputField, message?: string) {
     setFieldErrors((current) => {
       if (current[field] === message) return current;
@@ -343,13 +303,18 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
   }
 
   function updateEmail(value: string) {
+    invalidateAvailabilityRequest('email');
     const normalized = normalizeEmailPart(value);
     const exceedsMaxLength = normalized.length > maxLengthByField.email;
     const limitedValue = normalized.slice(0, maxLengthByField.email);
     setEmail(limitedValue);
+    clearChangedDuplicate('email', limitedValue);
+    clearChangedAvailabilityDuplicate('email', limitedValue);
     setFieldError(
       'email',
-      exceedsMaxLength ? getMaxLengthError('email') : getInputError('email', limitedValue),
+      exceedsMaxLength
+        ? getMaxLengthError('email')
+        : getFieldValidationError('email', limitedValue),
     );
   }
 
@@ -360,8 +325,14 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
     isComposing = false,
   ) {
     if (field === 'nickname') {
+      invalidateAvailabilityRequest('nickname');
       setValue(value);
-      setFieldError('nickname', isComposing ? undefined : getInputError('nickname', value));
+      clearChangedDuplicate('nickname', value);
+      clearChangedAvailabilityDuplicate('nickname', value);
+      setFieldError(
+        'nickname',
+        isComposing ? undefined : getFieldValidationError('nickname', value),
+      );
       return;
     }
 
@@ -394,7 +365,7 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
 
   function validateOnBlur(field: InputField, value: string) {
     setTouchedFields((current) => ({ ...current, [field]: true }));
-    setFieldError(field, getInputError(field, value));
+    setFieldError(field, getFieldValidationError(field, value));
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -434,8 +405,19 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
             ? '약관이 변경되었어요. 현재 약관을 확인하고 다시 동의해 주세요.'
             : errorMessages[message],
         );
-      } else if (message === 'nickname already exists') {
-        setFieldError('nickname', '이미 사용 중인 닉네임이에요.');
+      } else if (message === 'nickname already exists' || message === 'email already exists') {
+        const field = message === 'nickname already exists' ? 'nickname' : 'email';
+        const value = field === 'nickname' ? nickname : email;
+        invalidateAvailabilityRequest(field);
+        setAvailabilityDuplicateValues((current) => ({ ...current, [field]: undefined }));
+        setDuplicateValues((current) => ({
+          ...current,
+          [field]: normalizeDuplicateValue(field, value),
+        }));
+        setFieldError(
+          field,
+          field === 'nickname' ? '이미 사용 중인 닉네임이에요.' : '이미 가입된 이메일이에요.',
+        );
       } else {
         setError(errorMessages[message] ?? errorMessages['internal server error']);
       }
@@ -463,7 +445,17 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
         <form className="signup-form" onSubmit={handleSubmit} noValidate>
           <div className="signup-form-fields">
             <div className="signup-field">
-              <div className={'signup-input-wrap' + (fieldErrors.nickname ? ' has-error' : '')}>
+              <div
+                className={
+                  'signup-input-wrap' +
+                  (fieldErrors.nickname ||
+                  (availabilityErrors.nickname?.value ===
+                    normalizeDuplicateValue('nickname', nickname) &&
+                    !fieldErrors.nickname)
+                    ? ' has-error'
+                    : '')
+                }
+              >
                 <label className="signup-label" htmlFor="signup-nickname">
                   닉네임 <span>*</span>
                 </label>
@@ -486,23 +478,45 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
                     const normalizedNickname = nickname.trim();
                     setNickname(normalizedNickname);
                     validateOnBlur('nickname', normalizedNickname);
+                    void checkAvailability('nickname', normalizedNickname);
                   }}
                   placeholder="닉네임을 입력해주세요"
                   autoComplete="nickname"
-                  aria-invalid={Boolean(fieldErrors.nickname)}
-                  aria-describedby={fieldErrors.nickname ? 'nickname-error' : undefined}
+                  aria-invalid={Boolean(
+                    fieldErrors.nickname ||
+                    availabilityErrors.nickname?.value ===
+                      normalizeDuplicateValue('nickname', nickname),
+                  )}
+                  aria-describedby={
+                    fieldErrors.nickname ||
+                    availabilityErrors.nickname?.value ===
+                      normalizeDuplicateValue('nickname', nickname)
+                      ? 'nickname-error'
+                      : undefined
+                  }
                   disabled={submitting}
                 />
               </div>
-              {fieldErrors.nickname && (
+              {(fieldErrors.nickname ||
+                (availabilityErrors.nickname?.value ===
+                  normalizeDuplicateValue('nickname', nickname) &&
+                  availabilityErrors.nickname.message)) && (
                 <span id="nickname-error" className="signup-field-error">
-                  {fieldErrors.nickname}
+                  {fieldErrors.nickname || availabilityErrors.nickname?.message}
                 </span>
               )}
             </div>
 
             <div className="signup-field">
-              <div className={'signup-input-wrap' + (fieldErrors.email ? ' has-error' : '')}>
+              <div
+                className={
+                  'signup-input-wrap' +
+                  (fieldErrors.email ||
+                  availabilityErrors.email?.value === normalizeDuplicateValue('email', email)
+                    ? ' has-error'
+                    : '')
+                }
+              >
                 <label className="signup-label" htmlFor="signup-email">
                   이메일 <span>*</span>
                 </label>
@@ -514,21 +528,36 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
                   value={email}
                   onBeforeInput={(event) => preventOverLengthInput(event, 'email', email)}
                   onChange={(event) => updateEmail(event.target.value)}
-                  onBlur={() => validateOnBlur('email', email)}
+                  onBlur={() => {
+                    const normalizedEmail = email.trim().toLowerCase();
+                    setEmail(normalizedEmail);
+                    validateOnBlur('email', normalizedEmail);
+                    void checkAvailability('email', normalizedEmail);
+                  }}
                   placeholder="example@example.com"
                   autoComplete="email"
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
                   lang="en"
-                  aria-invalid={Boolean(fieldErrors.email)}
-                  aria-describedby={fieldErrors.email ? 'email-error' : undefined}
+                  aria-invalid={Boolean(
+                    fieldErrors.email ||
+                    availabilityErrors.email?.value === normalizeDuplicateValue('email', email),
+                  )}
+                  aria-describedby={
+                    fieldErrors.email ||
+                    availabilityErrors.email?.value === normalizeDuplicateValue('email', email)
+                      ? 'email-error'
+                      : undefined
+                  }
                   disabled={submitting}
                 />
               </div>
-              {fieldErrors.email && (
+              {(fieldErrors.email ||
+                (availabilityErrors.email?.value === normalizeDuplicateValue('email', email) &&
+                  availabilityErrors.email.message)) && (
                 <span id="email-error" className="signup-field-error">
-                  {fieldErrors.email}
+                  {fieldErrors.email || availabilityErrors.email?.message}
                 </span>
               )}
             </div>
