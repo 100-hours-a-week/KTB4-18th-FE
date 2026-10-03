@@ -206,6 +206,9 @@ export function MusicRecordListPage() {
         >
           {items.map((record) => {
             const selected = selectedIds.includes(record.record_id);
+            const placeName =
+              record.custom_place_name?.trim() ||
+              `${record.region.sido.name} ${record.region.sigungu.name}`;
             const content = (
               <>
                 {record.music.album_cover_url ? (
@@ -216,7 +219,7 @@ export function MusicRecordListPage() {
                 <div className="record-card-copy">
                   <h2>{record.music.title}</h2>
                   <p className="record-artist">{record.music.artist_name}</p>
-                  <p className="record-memo">{record.emotion_memo || '\u00a0'}</p>
+                  <p className="record-location">{placeName}</p>
                   <div className="record-card-meta-row">
                     <time dateTime={record.created_at}>
                       {formatMusicRecordTime(record.created_at)}

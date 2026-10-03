@@ -174,7 +174,38 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       'href',
       '/music-records/1',
     );
-    expect(screen.getByText('산책 중')).toBeInTheDocument();
+    expect(screen.getByText('홍대')).toBeInTheDocument();
+    expect(screen.queryByText('산책 중')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['장소 이름', '집', '집'],
+    ['앞뒤 공백이 있는 장소 이름', '  집  ', '집'],
+    ['null인 장소 이름', null, '서울특별시 마포구'],
+    ['빈 장소 이름', '', '서울특별시 마포구'],
+    ['공백인 장소 이름', ' \t\n ', '서울특별시 마포구'],
+  ])('%s일 때 목록과 삭제 선택 카드에 장소 정보를 표시한다', async (_, place, expected) => {
+    records = [{ ...detail, custom_place_name: place }];
+    render(<MusicRecordListPage />);
+
+    const card = await screen.findByRole('link', { name: '밤편지 기록 상세 보기' });
+    expect(card.querySelector('.record-card-copy')?.textContent).toBe(
+      `밤편지아이유${expected}2026.09.22. 오후 3:30`,
+    );
+    expect(screen.queryByText(detail.emotion_memo!)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '삭제할 기록 선택' }));
+    const selection = screen.getByRole('button', { name: '밤편지 기록 선택' });
+    expect(selection.querySelector('.record-card-copy')?.textContent).toBe(
+      `밤편지아이유${expected}2026.09.22. 오후 3:30`,
+    );
+  });
+
+  it('상세 화면에는 장소 이름과 감정 기록을 계속 표시한다', async () => {
+    render(<MusicRecordDetailPage recordId={1} />);
+
+    expect(await screen.findByRole('textbox', { name: '장소 이름' })).toHaveValue('홍대');
+    expect(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' })).toHaveValue('산책 중');
   });
 
   it('리스트 휴지통은 삭제 선택 상태로 진입하고 확인 후 선택한 기록만 삭제한다', async () => {
