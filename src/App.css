@@ -3115,7 +3115,7 @@ button {
   font-size: 0.8125rem;
   line-height: 1.125rem;
 }
-.record-card-copy .record-memo {
+.record-card-copy .record-location {
   color: #333;
   font-size: 0.8125rem;
   line-height: 1.125rem;
@@ -3130,13 +3130,13 @@ button {
   .music-record-list-page .record-card-copy {
     overflow: visible;
   }
-  .music-record-list-page .record-card-copy .record-memo,
+  .music-record-list-page .record-card-copy .record-location,
   .music-record-list-page .record-card-copy .record-card-meta-row {
     position: absolute;
     left: 0.75rem;
     width: calc(100% - 1.5rem);
   }
-  .music-record-list-page .record-card-copy .record-memo {
+  .music-record-list-page .record-card-copy .record-location {
     top: 4.875rem;
   }
   .music-record-list-page .record-card-copy .record-card-meta-row {
