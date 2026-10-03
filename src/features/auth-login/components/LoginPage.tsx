@@ -117,7 +117,20 @@ export function LoginPage({ onLoginSuccess, onLoginStart, onLoginFailure }: Logi
                     autoComplete="email"
                     placeholder="이메일을 입력해주세요"
                     value={email}
-                    onChange={(event) => setEmail(normalizeEmail(event.target.value))}
+                    onChange={(event) => {
+                      const nextEmail = normalizeEmail(event.target.value);
+                      setEmail(nextEmail);
+                      setFieldErrors((current) => ({
+                        ...current,
+                        email: validate(nextEmail, password).email,
+                      }));
+                    }}
+                    onBlur={() => {
+                      setFieldErrors((current) => ({
+                        ...current,
+                        email: validate(email, password).email,
+                      }));
+                    }}
                     autoCapitalize="none"
                     autoCorrect="off"
                     spellCheck={false}

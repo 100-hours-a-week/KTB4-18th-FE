@@ -82,17 +82,83 @@ describe('LoginPage email input', () => {
     expect(screen.getByRole('button', { name: '로그인' })).toBeEnabled();
   });
 
-  it('provides signup email input hints without introducing its length limit', () => {
+  it('provides signup email input hints without introducing its length limit', async () => {
+    const user = userEvent.setup();
     render(<LoginPage />);
     const emailInput = screen.getByLabelText('이메일');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(emailInput).toHaveAttribute('aria-invalid', 'false');
+    expect(emailInput).not.toHaveAttribute('aria-describedby');
     expect(emailInput).toHaveAttribute('autocapitalize', 'none');
     expect(emailInput).toHaveAttribute('autocorrect', 'off');
     expect(emailInput).toHaveAttribute('spellcheck', 'false');
     expect(emailInput).toHaveAttribute('lang', 'en');
     expect(emailInput).not.toHaveAttribute('maxlength');
+    fireEvent.change(emailInput, { target: { value: 'user@example.com' } });
+    expect(emailInput).toHaveValue('user@example.com');
+    expect(emailInput).toHaveAttribute('aria-invalid', 'false');
+    expect(emailInput).not.toHaveAttribute('aria-describedby');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
     const longEmail = `${'a'.repeat(45)}@Example.com`;
     fireEvent.change(emailInput, { target: { value: ` ${longEmail} ` } });
     expect(emailInput).toHaveValue(longEmail.toLowerCase());
+    expect(emailInput).toHaveAttribute('aria-invalid', 'false');
+    expect(emailInput).not.toHaveAttribute('aria-describedby');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.blur(emailInput);
+    expect(login).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+    expect(login).toHaveBeenCalledExactlyOnceWith({
+      email: longEmail.toLowerCase(),
+      password: 'password',
+    });
+  });
+
+  it('shows format feedback while typing and clears it as soon as the email becomes valid', async () => {
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    const emailInput = screen.getByLabelText('이메일');
+
+    await user.type(emailInput, 'user@invalid');
+    expect(screen.getByRole('alert')).toHaveTextContent('이메일 형식을 확인해 주세요.');
+    expect(emailInput).toHaveAttribute('aria-invalid', 'true');
+    expect(emailInput).toHaveAttribute('aria-describedby', 'email-error');
+
+    await user.type(emailInput, '.com');
+    expect(emailInput).toHaveValue('user@invalid.com');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(emailInput).toHaveAttribute('aria-invalid', 'false');
+    expect(emailInput).not.toHaveAttribute('aria-describedby');
+  });
+
+  it('switches to the required message when an invalid email is cleared', async () => {
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    const emailInput = screen.getByLabelText('이메일');
+    await user.type(emailInput, 'user@invalid');
+    await user.clear(emailInput);
+    expect(screen.getByRole('alert')).toHaveTextContent('이메일을 입력해 주세요.');
+    expect(emailInput).toHaveAttribute('aria-invalid', 'true');
+    expect(emailInput).toHaveAttribute('aria-describedby', 'email-error');
+  });
+
+  it('validates the current empty or malformed email when the field loses focus', () => {
+    render(<LoginPage />);
+    const emailInput = screen.getByLabelText('이메일');
+    fireEvent.focus(emailInput);
+    fireEvent.blur(emailInput);
+    expect(screen.getByRole('alert')).toHaveTextContent('이메일을 입력해 주세요.');
+    expect(emailInput).toHaveAttribute('aria-describedby', 'email-error');
+
+    fireEvent.change(emailInput, { target: { value: 'user@invalid' } });
+    fireEvent.blur(emailInput);
+    expect(screen.getByRole('alert')).toHaveTextContent('이메일 형식을 확인해 주세요.');
+    expect(emailInput).toHaveAttribute('aria-invalid', 'true');
+    expect(emailInput).toHaveAttribute('aria-describedby', 'email-error');
+    expect(login).not.toHaveBeenCalled();
   });
 
   it('handles cancellation to an empty value and allows a subsequent normal input', async () => {
