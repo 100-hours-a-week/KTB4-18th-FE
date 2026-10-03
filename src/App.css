@@ -1343,11 +1343,28 @@ button {
 }
 
 .chat-entry-screen {
+  position: relative;
   display: grid;
   min-height: 100dvh;
-  padding: max(1.5rem, env(safe-area-inset-top)) 1.25rem max(1.5rem, env(safe-area-inset-bottom));
+  padding: calc(max(1rem, env(safe-area-inset-top)) + 4rem) 1.25rem
+    max(1.5rem, env(safe-area-inset-bottom));
   place-items: center;
   background: var(--color-bg-secondary);
+}
+
+.chat-entry-header {
+  position: absolute;
+  top: max(1rem, env(safe-area-inset-top));
+  left: max(1rem, env(safe-area-inset-left));
+}
+
+.chat-entry-screen .chat-entry-back {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
 }
 
 .chat-entry-card {
