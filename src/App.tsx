@@ -402,10 +402,13 @@ function loginHref(location: { pathname: string; search: string; hash: string })
   return `${LOGIN_PATH}?returnTo=${encodeURIComponent(returnTo)}`;
 }
 
+const MAX_PROMPT_LENGTH = 200;
+
 function ChatbotPage() {
   const [conversationKey] = useState(() => crypto.randomUUID());
   const [openedAt] = useState(() => new Date());
   const [prompt, setPrompt] = useState('');
+  const isPromptTooLong = prompt.length > MAX_PROMPT_LENGTH;
   const [inputType, setInputType] = useState<RecommendationInputType>('TEXT');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -459,7 +462,7 @@ function ChatbotPage() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     const text = prompt.trim();
-    if (!text || requestRef.current) {
+    if (!text || isPromptTooLong || requestRef.current) {
       return;
     }
     const controller = new AbortController();
@@ -686,6 +689,16 @@ function ChatbotPage() {
             </div>
           </div>
         )}
+        <div className="prompt-feedback">
+          <span id="prompt-count">
+            {prompt.length} / {MAX_PROMPT_LENGTH}
+          </span>
+          <p id="prompt-limit-message" role={isPromptTooLong ? 'alert' : undefined}>
+            {isPromptTooLong
+              ? '입력이 200자를 초과했습니다. 내용을 200자 이내로 수정한 뒤 보내 주세요.'
+              : '최대 200자까지 입력할 수 있습니다.'}
+          </p>
+        </div>
         <form className="input-bar" onSubmit={submit}>
           <button
             className={`voice-button ${voice.isRecording ? 'recording' : ''}`}
@@ -717,7 +730,9 @@ function ChatbotPage() {
             id="prompt"
             placeholder="메시지를 입력하세요…"
             rows={1}
-            maxLength={1000}
+            maxLength={MAX_PROMPT_LENGTH}
+            aria-describedby="prompt-count prompt-limit-message"
+            aria-invalid={isPromptTooLong}
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             disabled={loading || voice.isRecording || voice.isTranscribing}
@@ -731,7 +746,13 @@ function ChatbotPage() {
           <button
             className="send-button"
             type="submit"
-            disabled={loading || voice.isRecording || voice.isTranscribing || !prompt.trim()}
+            disabled={
+              loading ||
+              voice.isRecording ||
+              voice.isTranscribing ||
+              isPromptTooLong ||
+              !prompt.trim()
+            }
             aria-label="추천 요청 보내기"
           >
             <img
