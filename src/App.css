@@ -3298,3 +3298,29 @@ button {
 .prompt-feedback [role='alert'] {
   color: var(--color-text-error);
 }
+
+.music-record-toast {
+  position: fixed;
+  z-index: 20;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  left: 50%;
+  width: max-content;
+  max-width: calc(100% - 2rem);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.music-record-toast span {
+  display: block;
+  border-radius: 0.75rem;
+  padding: 0.875rem 1.25rem;
+  background: var(--color-bg-interactive-inverse);
+  box-shadow: 0 0.25rem 1rem rgb(0 0 0 / 16%);
+  color: var(--color-text-interactive-inverse);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+#root:has(.map-bottom-navigation) .music-record-toast {
+  bottom: calc(max(1.5rem, env(safe-area-inset-bottom)) + 11rem);
+}

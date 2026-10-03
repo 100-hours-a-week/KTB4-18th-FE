@@ -33,18 +33,42 @@ export function MusicRecordListPage() {
   const mutationPending = useRef(false);
   const requestGeneration = useRef(0);
   const active = useRef(true);
-  const [isUpdated] = useState(() => {
-    const updated = sessionStorage.getItem('music_record_updated') === '1';
+  const [completionFlags] = useState(() => ({
+    updated: sessionStorage.getItem('music_record_updated') === '1',
+    deleted: sessionStorage.getItem('music_record_deleted') === '1',
+  }));
+  const [missingNotice] = useState(() =>
+    sessionStorage.getItem('music_record_missing') === '1'
+      ? '이미 삭제되었거나 없는 기록이에요'
+      : '',
+  );
+  const toastSequence = useRef(0);
+  const [toast, setToast] = useState<{ message: string; sequence: number } | null>(null);
+  const showToast = useCallback((message: string) => {
+    toastSequence.current += 1;
+    setToast({ message, sequence: toastSequence.current });
+  }, []);
+
+  useEffect(() => {
     sessionStorage.removeItem('music_record_updated');
-    return updated;
-  });
-  const [deleteNotice, setDeleteNotice] = useState(() => {
-    const deleted = sessionStorage.getItem('music_record_deleted') === '1';
-    const missing = sessionStorage.getItem('music_record_missing') === '1';
     sessionStorage.removeItem('music_record_deleted');
     sessionStorage.removeItem('music_record_missing');
-    return deleted ? '기록이 삭제되었어요' : missing ? '이미 삭제되었거나 없는 기록이에요' : '';
-  });
+    let isActive = true;
+    queueMicrotask(() => {
+      if (!isActive) return;
+      if (completionFlags.deleted) showToast('기록이 삭제되었어요');
+      else if (completionFlags.updated) showToast('기록이 수정되었어요');
+    });
+    return () => {
+      isActive = false;
+    };
+  }, [completionFlags, showToast]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 3_000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   const load = useCallback(async (next?: string | null) => {
     const generation = ++requestGeneration.current;
@@ -84,7 +108,7 @@ export function MusicRecordListPage() {
     try {
       await deleteMusicRecords(idsToDelete, AbortSignal.timeout(10_000));
       if (!active.current) return;
-      setDeleteNotice(`${idsToDelete.length}개의 기록이 삭제되었어요`);
+      showToast(`${idsToDelete.length}개의 기록이 삭제되었어요`);
       setIsDeleteOpen(false);
       setIsSelecting(false);
       setItems((old) => old.filter((record) => !idsToDelete.includes(record.record_id)));
@@ -165,14 +189,9 @@ export function MusicRecordListPage() {
         </button>
       </header>
       <div className="music-list-content">
-        {isUpdated && (
+        {missingNotice && (
           <p role="status" className="music-success">
-            기록이 수정되었어요
-          </p>
-        )}
-        {deleteNotice && (
-          <p role="status" className="music-success">
-            {deleteNotice}
+            {missingNotice}
           </p>
         )}
         {error && (
@@ -289,6 +308,14 @@ export function MusicRecordListPage() {
         {!items.length && !error && !isLoading && (
           <p className="music-empty">아직 기록한 음악이 없어요.</p>
         )}
+      </div>
+      <div
+        className="music-record-toast"
+        role={toast ? 'status' : undefined}
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {toast && <span key={toast.sequence}>{toast.message}</span>}
       </div>
     </main>
   );
