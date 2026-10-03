@@ -2712,6 +2712,9 @@ button {
   font: inherit;
   font-size: 0.875rem;
   line-height: 1.25rem;
+  cursor: pointer;
+}
+.music-change-button:disabled {
   cursor: not-allowed;
 }
 .music-create-page .music-form label,
