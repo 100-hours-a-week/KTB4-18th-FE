@@ -3260,3 +3260,21 @@ button {
     min-height: 20.625rem;
   }
 }
+
+.prompt-feedback {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  margin: 0.25rem 1rem 0;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.prompt-feedback p {
+  margin: 0;
+}
+
+.prompt-feedback [role='alert'] {
+  color: var(--color-text-error);
+}
