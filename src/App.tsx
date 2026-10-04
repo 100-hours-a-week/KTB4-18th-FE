@@ -663,7 +663,9 @@ function ChatbotPage() {
         )}
         {voice.isTranscribing && (
           <p className="voice-status" role="status">
-            음성을 텍스트로 변환하고 있어요…
+            {voice.isAutomaticallyStopped
+              ? '녹음이 자동 종료되었어요. 음성을 변환하고 있어요.'
+              : '음성을 텍스트로 변환하고 있어요…'}
           </p>
         )}
         {voice.status === 'reviewing' && (

@@ -36,10 +36,12 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState('');
   const [canRetry, setCanRetry] = useState(false);
+  const [isAutomaticallyStopped, setIsAutomaticallyStopped] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const shouldTranscribeRef = useRef(false);
+  const stopRequestedRef = useRef(false);
   const intervalRef = useRef<number | null>(null);
   const timeoutRef = useRef<number | null>(null);
   const transcriptionRequestRef = useRef<AbortController | null>(null);
@@ -116,10 +118,12 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
 
   const stopRecording = useCallback(() => {
     const recorder = recorderRef.current;
-    if (!recorder || recorder.state === 'inactive') return;
+    if (!recorder || recorder.state === 'inactive' || stopRequestedRef.current) return;
+    stopRequestedRef.current = true;
+    clearTimers();
     shouldTranscribeRef.current = true;
     recorder.stop();
-  }, []);
+  }, [clearTimers]);
 
   const cancelRecording = useCallback(() => {
     const recorder = recorderRef.current;
@@ -147,6 +151,7 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
     setError('');
     setCanRetry(false);
     failedRecordingRef.current = null;
+    setIsAutomaticallyStopped(false);
     setStatus('requestingPermission');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -160,14 +165,18 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
       recorderRef.current = recorder;
       chunksRef.current = [];
       shouldTranscribeRef.current = false;
+      stopRequestedRef.current = false;
       recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunksRef.current.push(event.data);
+        if (mountedRef.current && recorderRef.current === recorder && event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
       };
       recorder.onerror = () => {
         shouldTranscribeRef.current = false;
         setError('녹음을 진행하지 못했습니다. 마이크 설정을 확인해 주세요.');
       };
       recorder.onstop = () => {
+        if (!mountedRef.current || recorderRef.current !== recorder) return;
         const shouldTranscribe = shouldTranscribeRef.current;
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || mimeType });
         chunksRef.current = [];
@@ -188,7 +197,11 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
           Math.min(MAX_RECORDING_SECONDS, Math.floor((Date.now() - startedAt) / 1_000)),
         );
       }, 250);
-      timeoutRef.current = window.setTimeout(stopRecording, MAX_RECORDING_SECONDS * 1_000);
+      timeoutRef.current = window.setTimeout(() => {
+        if (stopRequestedRef.current || recorder.state === 'inactive') return;
+        setIsAutomaticallyStopped(true);
+        stopRecording();
+      }, MAX_RECORDING_SECONDS * 1_000);
     } catch (caught) {
       releaseRecording();
       setStatus('idle');
@@ -241,6 +254,7 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
     elapsedSeconds,
     error,
     canRetry,
+    isAutomaticallyStopped,
     isRecording: status === 'recording',
     isTranscribing: status === 'transcribing' || status === 'requestingPermission',
     startRecording,
