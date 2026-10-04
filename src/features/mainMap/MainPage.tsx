@@ -107,7 +107,7 @@ function Gnb({ currentDestination, isHidden, onNavigate }: GnbProps) {
   const items: GnbItem[] = [
     { destination: 'map', label: '지도', iconPath: '/icons/map.svg' },
     { destination: 'records', label: '기록', iconPath: '/icons/records.svg' },
-    { destination: 'chatRooms', label: '채팅방', iconPath: '/icons/chat.svg' },
+    { destination: 'chatRooms', label: '채팅', iconPath: '/icons/chat.svg' },
     { destination: 'my', label: '마이', iconPath: '/icons/mypage.svg' },
   ];
 

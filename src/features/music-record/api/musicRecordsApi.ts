@@ -42,7 +42,9 @@ export type CreatedRecord = Pick<
 export type MusicRecordDetail = MusicRecord & { updated_at: string | null };
 export type MusicRecordChanges = Partial<
   Pick<MusicRecordDetail, 'custom_place_name' | 'emotion_memo'>
->;
+> & {
+  music?: Pick<Music, 'provider' | 'external_music_id'>;
+};
 export type Page<T> = { items: T[]; next_cursor: string | null; has_next: boolean };
 
 export class MusicApiError extends Error {
@@ -156,17 +158,23 @@ export async function getAllMusicRecords(): Promise<MusicRecord[]> {
 }
 export const getMusicRecord = (recordId: number) =>
   fetchProtectedData<MusicRecordDetail>(`/music-records/${recordId}`);
-export const updateMusicRecord = (
+export const updateMusicRecord = async (
   recordId: number,
   changes: MusicRecordChanges,
   signal?: AbortSignal,
-) =>
-  fetchProtectedData<{ record_id: number; updated_at: string }>(`/music-records/${recordId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(changes),
-    signal,
-  });
+) => {
+  const updated = await fetchProtectedData<{ record_id: number; updated_at: string }>(
+    `/music-records/${recordId}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(changes),
+      signal,
+    },
+  );
+  invalidateMapDotsCache();
+  return updated;
+};
 
 export async function deleteMusicRecord(recordId: number, signal?: AbortSignal): Promise<void> {
   const response = await fetchProtectedResponse(`/music-records/${recordId}`, {

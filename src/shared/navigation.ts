@@ -11,8 +11,22 @@ export function navigate(path: string): void {
   if (destination.origin !== window.location.origin) return;
   const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   const next = `${destination.pathname}${destination.search}${destination.hash}`;
-  if (current !== next) window.history.pushState(null, '', next);
+  if (current !== next) window.history.pushState({ meomuneumPreviousRoute: current }, '', next);
   window.dispatchEvent(new Event(ROUTE_CHANGE_EVENT));
+}
+
+export function navigateBack(): void {
+  const previousRoute = window.history.state?.meomuneumPreviousRoute;
+  if (
+    typeof previousRoute === 'string' &&
+    previousRoute.startsWith('/') &&
+    !previousRoute.startsWith('//') &&
+    window.history.length > 1
+  ) {
+    window.history.back();
+  } else {
+    replaceRoute('/');
+  }
 }
 
 export function replaceRoute(path: string): void {

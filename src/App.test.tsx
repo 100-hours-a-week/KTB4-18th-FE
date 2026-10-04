@@ -5,6 +5,7 @@ import App from './App';
 import { recommend, streamRecommendation } from './api/recommendations';
 import { login } from './features/auth-login/api/loginApi';
 import { logout } from './features/auth-login/api/logoutApi';
+import { getMyProfile, getMySettings } from './features/mypage/api/mypageApi';
 import {
   ACCESS_TOKEN_REFRESH_EARLY_MS,
   authenticatedFetch,
@@ -65,12 +66,36 @@ vi.mock('./features/user-signup/api/termsApi', async (importOriginal) => ({
   getCurrentTerms: vi.fn(),
   getTermDetail: vi.fn(),
 }));
+vi.mock('./features/mainMap/useMapIntro', () => ({
+  useMapIntro: () => ({ isCompleted: true, prefersReducedMotion: false, completeIntro: vi.fn() }),
+}));
+vi.mock('./features/mypage/api/mypageApi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./features/mypage/api/mypageApi')>()),
+  getMyProfile: vi.fn(),
+  getMySettings: vi.fn(),
+}));
 vi.mock('./features/chat-entry/components/ChatEntryPage', () => ({
   ChatEntryPage: () => <h1>우리 지역 채팅방</h1>,
 }));
 
 beforeEach(() => {
   cleanup();
+  vi.clearAllMocks();
+  resetAuthSessionForTests();
+  sessionStorage.clear();
+  vi.mocked(getMyProfile).mockResolvedValue({
+    user_id: 1,
+    email: 'user@example.com',
+    nickname: '테스트닉',
+    birth_year: 2000,
+    gender: 'FEMALE',
+    profile_image_url: null,
+    created_at: '2026-01-01T00:00:00Z',
+  });
+  vi.mocked(getMySettings).mockResolvedValue({
+    map_visibility: 'PRIVATE',
+    is_unrecorded_dot_recommendation_enabled: true,
+  });
   if (!window.matchMedia) {
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
@@ -437,16 +462,19 @@ describe('access token 사전 재발급 스케줄러', () => {
       }),
     );
     setAccessToken(accessTokenWithExpiration(initialTime + 60 * 60 * 1000));
-    window.history.replaceState(null, '', '/');
+    window.history.replaceState(null, '', '/my');
 
     render(<App />);
     await act(async () => {
-      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(0);
       await Promise.resolve();
     });
+    await act(async () => vi.advanceTimersByTimeAsync(1));
     const logoutButton = screen.getByRole('button', { name: '로그아웃' });
     await act(async () => fireEvent.click(logoutButton));
+    expect(logout).toHaveBeenCalledOnce();
     expect(getAccessToken()).toBeNull();
+    expect(window.location.pathname).toBe('/login');
 
     await act(async () => vi.advanceTimersByTimeAsync(61 * 60 * 1000));
     expect(refreshCount).toBe(0);
@@ -489,9 +517,12 @@ describe('음성 transcript 공통 추천 흐름', () => {
       ],
       completed_at: '2026-09-21T12:00:00Z',
     });
-    vi.mocked(login).mockResolvedValue({
-      message: 'login success',
-      data: { access_token: 'test-access-token', expires_in: 3600 },
+    vi.mocked(login).mockImplementation(async () => {
+      setAccessToken('test-access-token');
+      return {
+        message: 'login success',
+        data: { access_token: 'test-access-token', expires_in: 3600 },
+      };
     });
     vi.mocked(signup).mockResolvedValue({
       message: 'register success',
@@ -520,6 +551,103 @@ describe('음성 transcript 공통 추천 흐름', () => {
       expect.any(AbortSignal),
       'VOICE',
     );
+  });
+
+  it.each([199, 200])(
+    '%i자 직접 입력은 글자 수를 표시하고 전체 내용을 전송한다',
+    async (length) => {
+      render(<App />);
+      const input = await screen.findByLabelText('추천받고 싶은 상황');
+      expect(input).toHaveAttribute('maxLength', '200');
+      const prompt = '가'.repeat(length);
+      fireEvent.change(input, { target: { value: prompt } });
+      expect(screen.getByText(`${length} / 200`)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '추천 요청 보내기' }));
+      await waitFor(() =>
+        expect(recommend).toHaveBeenCalledWith(
+          prompt,
+          expect.any(String),
+          expect.any(AbortSignal),
+          'TEXT',
+        ),
+      );
+    },
+  );
+
+  it('붙여넣기는 200자 한도를 지키고 공백 입력은 버튼과 Enter 전송을 차단한다', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const input = await screen.findByLabelText('추천받고 싶은 상황');
+    await user.click(input);
+    await user.paste('가'.repeat(201));
+    expect(input).toHaveValue('가'.repeat(200));
+    expect(screen.getByText('200 / 200')).toBeInTheDocument();
+    await user.clear(input);
+    expect(screen.getByRole('button', { name: '추천 요청 보내기' })).toBeDisabled();
+    await user.type(input, '   ');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getByRole('button', { name: '추천 요청 보내기' })).toBeDisabled();
+    expect(recommend).not.toHaveBeenCalled();
+  });
+
+  it('초과 전사문은 원문을 유지하고 Enter와 버튼을 막으며 수정 후 VOICE 전송을 허용한다', async () => {
+    render(<App />);
+    const input = await screen.findByLabelText('추천받고 싶은 상황');
+    const transcript = '앞' + '가'.repeat(197) + '\n🎵';
+    act(() => transcriptHandler(transcript));
+    expect(input).toHaveValue(transcript);
+    expect(screen.getByText('201 / 200')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('200자 이내로 수정');
+    const send = screen.getByRole('button', { name: '추천 요청 보내기' });
+    expect(send).toBeDisabled();
+    fireEvent.click(send);
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.submit(input.closest('form')!);
+    expect(recommend).not.toHaveBeenCalled();
+
+    const edited = '앞' + '가'.repeat(196) + '\n🎵';
+    fireEvent.change(input, { target: { value: edited } });
+    expect(screen.getByText('200 / 200')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(send).toBeEnabled();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() =>
+      expect(recommend).toHaveBeenCalledWith(
+        edited,
+        expect.any(String),
+        expect.any(AbortSignal),
+        'VOICE',
+      ),
+    );
+  });
+
+  it('한글 조합 중 Enter는 전송하지 않고 초과 입력도 절단 없이 수정을 안내한다', async () => {
+    render(<App />);
+    const input = await screen.findByLabelText('추천받고 싶은 상황');
+    fireEvent.compositionStart(input);
+    fireEvent.change(input, { target: { value: '가'.repeat(200) } });
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+    expect(recommend).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: '가'.repeat(201) } });
+    fireEvent.compositionEnd(input);
+    expect(input).toHaveValue('가'.repeat(201));
+    expect(screen.getByRole('button', { name: '추천 요청 보내기' })).toBeDisabled();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(recommend).not.toHaveBeenCalled();
+  });
+
+  it('백엔드의 200자 검증 오류는 안내를 표시하고 입력을 복구한다', async () => {
+    vi.mocked(recommend).mockRejectedValueOnce(
+      new Error('입력 내용과 요청 형식을 확인해 주세요. (최대 200자)'),
+    );
+    render(<App />);
+    const input = await screen.findByLabelText('추천받고 싶은 상황');
+    fireEvent.change(input, { target: { value: '가'.repeat(200) } });
+    fireEvent.click(screen.getByRole('button', { name: '추천 요청 보내기' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('최대 200자');
+    expect(input).toHaveValue('가'.repeat(200));
+    expect(screen.getByRole('button', { name: '추천 요청 보내기' })).toBeEnabled();
+    expect(streamRecommendation).not.toHaveBeenCalled();
   });
 
   it('전사 실패 시 재시도·재녹음·텍스트 입력 경로를 제공한다', async () => {
@@ -599,9 +727,12 @@ describe('로그인과 회원가입 화면 연결', () => {
         effective_at: '2026-09-25T10:00:00Z',
       })),
     );
-    vi.mocked(login).mockResolvedValue({
-      message: 'login success',
-      data: { access_token: 'test-access-token', expires_in: 3600 },
+    vi.mocked(login).mockImplementation(async () => {
+      setAccessToken('test-access-token');
+      return {
+        message: 'login success',
+        data: { access_token: 'test-access-token', expires_in: 3600 },
+      };
     });
     vi.mocked(signup).mockResolvedValue({
       message: 'register success',
@@ -641,7 +772,7 @@ describe('로그인과 회원가입 화면 연결', () => {
 
     render(<App />);
 
-    await screen.findByRole('heading', { name: '다시 만나서 반가워요' });
+    await screen.findByRole('heading', { name: '머문음' });
     expect(window.location.pathname).toBe('/login');
     expect(new URLSearchParams(window.location.search).get('returnTo')).toBe(
       '/music-records?sort=recent#top',
@@ -889,7 +1020,8 @@ describe('로그인과 회원가입 화면 연결', () => {
       expect(screen.getByRole('heading', { name: '음악 지도' })).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('button', { name: '로그아웃' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
+    expect(getAccessToken()).toBe('test-access-token');
   });
 
   it('로그인 성공 후 returnTo에 지정된 보호 페이지로 돌아간다', async () => {
@@ -937,6 +1069,9 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.type(screen.getByLabelText('이메일'), 'login.test@example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
     await user.click(screen.getByRole('button', { name: '로그인' }));
+    await screen.findByRole('button', { name: '마이' });
+    await user.click(screen.getByRole('button', { name: '마이' }));
+    expect(window.location.pathname).toBe('/my');
     await user.click(await screen.findByRole('button', { name: '로그아웃' }));
 
     await waitFor(() => {
@@ -952,7 +1087,8 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.type(screen.getByLabelText('이메일'), 'login.test@example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
     await user.click(screen.getByRole('button', { name: '로그인' }));
-    expect(await screen.findByRole('button', { name: '로그아웃' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '음악 지도' })).toBeInTheDocument();
+    expect(getAccessToken()).toBe('test-access-token');
 
     const chatbotLink = screen.getByRole('link', { name: '음악 추천 챗봇 열기' });
     await user.click(chatbotLink);
@@ -1039,14 +1175,13 @@ describe('로그인과 회원가입 화면 연결', () => {
     window.history.replaceState(null, '', '/');
     const user = userEvent.setup();
     render(<App />);
-    expect(await screen.findByRole('button', { name: '로그아웃' })).toBeInTheDocument();
+    await screen.findByRole('button', { name: '기록' });
+    expect(getAccessToken()).toBe('test-token');
     await user.click(screen.getByRole('button', { name: '기록' }));
-    await screen.findByRole('alert');
-    act(() => {
-      window.history.replaceState(null, '', '/');
-      window.dispatchEvent(new PopStateEvent('popstate'));
-    });
-    expect(await screen.findByRole('button', { name: '로그인' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '머문음' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/login');
+    expect(new URLSearchParams(window.location.search).get('returnTo')).toBe('/music-records');
+    expect(refreshCount).toBe(2);
     expect(getAccessToken()).toBeNull();
   });
 
@@ -1082,12 +1217,11 @@ describe('음악 기록 생성·상세 경로 연결', () => {
       }),
     );
     render(<App />);
-    expect(await screen.findByText('로그인이 필요한 페이지입니다.')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '머문음' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/login');
+    expect(new URLSearchParams(window.location.search).get('returnTo')).toBe('/music-records/new');
     expect(screen.queryByRole('textbox', { name: '음악 검색' })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '로그인하기' })).toHaveAttribute(
-      'href',
-      '/login?returnTo=%2Fmusic-records%2Fnew',
-    );
+    expect(getAccessToken()).toBeNull();
   });
 
   it('생성 확인은 메인으로, 수정 상세 확인은 목록으로 이동한다', async () => {

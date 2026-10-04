@@ -13,7 +13,11 @@ type SignupSuccess = {
 };
 
 type SignupFailure = {
-  message: 'invalid request' | 'email already exists' | 'internal server error';
+  message:
+    | 'invalid request'
+    | 'email already exists'
+    | 'nickname already exists'
+    | 'internal server error';
   data: null;
 };
 
