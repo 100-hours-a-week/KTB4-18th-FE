@@ -289,7 +289,7 @@ function ProfilePage({
     try {
       await updateMyProfile({
         nickname: nickname.trim(),
-        ...(birthYear ? { birth_year: Number(birthYear) } : {}),
+        birth_year: birthYear ? Number(birthYear) : null,
         gender: gender || null,
       });
       setNotice('프로필을 저장했어요.');
