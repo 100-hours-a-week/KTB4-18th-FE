@@ -36,6 +36,7 @@ let voiceState: {
   canRetry: boolean;
   isRecording: boolean;
   isTranscribing: boolean;
+  isAutomaticallyStopped?: boolean;
 } = {
   status: 'idle',
   elapsedSeconds: 0,
@@ -648,6 +649,20 @@ describe('음성 transcript 공통 추천 흐름', () => {
     expect(input).toHaveValue('가'.repeat(200));
     expect(screen.getByRole('button', { name: '추천 요청 보내기' })).toBeEnabled();
     expect(streamRecommendation).not.toHaveBeenCalled();
+  });
+
+  it('자동 종료 후 전사 진행을 안내하고 추천을 자동 요청하지 않는다', async () => {
+    voiceState = {
+      ...voiceState,
+      status: 'transcribing',
+      isTranscribing: true,
+      isAutomaticallyStopped: true,
+    };
+    render(<App />);
+    expect(
+      await screen.findByText('녹음이 자동 종료되었어요. 음성을 변환하고 있어요.'),
+    ).toBeInTheDocument();
+    expect(recommend).not.toHaveBeenCalled();
   });
 
   it('전사 실패 시 재시도·재녹음·텍스트 입력 경로를 제공한다', async () => {
