@@ -89,4 +89,18 @@ describe('transcribeAudio', () => {
     expect(error).toBeInstanceOf(SpeechTranscriptionError);
     expect(error).toMatchObject({ status: null, isRetryable: true });
   });
+  it.each([
+    [400, '음성 파일 형식과 MIME 타입이 일치하지 않습니다. 다시 녹음해 주세요.'],
+    [400, '음성 파일이 손상되었거나 재생 가능한 음성이 없습니다. 다시 녹음해 주세요.'],
+    [502, '음성 파일을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'],
+    [504, '음성 파일 준비 시간이 초과됐습니다. 다시 시도해 주세요.'],
+  ])('%s 공개 오류의 구체적인 안내를 유지한다', async (status, message) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(Response.json({ message, data: null }, { status })),
+    );
+    await expect(
+      transcribeAudio(new File(['audio'], 'voice.webm'), new AbortController().signal),
+    ).rejects.toMatchObject({ message, status, isRetryable: status >= 500 });
+  });
 });
