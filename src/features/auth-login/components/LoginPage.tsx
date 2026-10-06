@@ -1,7 +1,6 @@
 import { ActionButton } from '@seed-design/react';
 import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { convertHangulToKeyboardInput } from '../../../shared/convertHangulToKeyboardInput';
 
 import { login, LoginRequestError, type LoginSuccessResponse } from '../api/loginApi';
 import './LoginPage.css';
@@ -18,12 +17,10 @@ type LoginPageProps = {
 };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const INVALID_EMAIL_CHARACTER_PATTERN = /[^A-Za-z0-9._+@-]/g;
+const INVALID_EMAIL_CHARACTER_PATTERN = /[^\p{Script=Hangul}A-Za-z0-9._+@-]/gu;
 
 function normalizeEmail(value: string) {
-  return convertHangulToKeyboardInput(value)
-    .replace(INVALID_EMAIL_CHARACTER_PATTERN, '')
-    .toLowerCase();
+  return value.replace(INVALID_EMAIL_CHARACTER_PATTERN, '').toLowerCase();
 }
 
 function validate(email: string, password: string): FieldErrors {
@@ -51,6 +48,15 @@ export function LoginPage({ onLoginSuccess, onLoginStart, onLoginFailure }: Logi
   const isSubmittingRef = useRef(false);
   const [isLoginSuccessful, setIsLoginSuccessful] = useState(false);
   const isFormValid = Object.keys(validate(email, password)).length === 0;
+
+  function updateEmail(value: string) {
+    const nextEmail = normalizeEmail(value);
+    setEmail(nextEmail);
+    setFieldErrors((current) => ({
+      ...current,
+      email: validate(nextEmail, password).email,
+    }));
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -114,27 +120,18 @@ export function LoginPage({ onLoginSuccess, onLoginStart, onLoginFailure }: Logi
                     id="email"
                     className="login-input"
                     type="email"
+                    inputMode="email"
                     autoComplete="email"
                     placeholder="이메일을 입력해주세요"
                     value={email}
-                    onChange={(event) => {
-                      const nextEmail = normalizeEmail(event.target.value);
-                      setEmail(nextEmail);
-                      setFieldErrors((current) => ({
-                        ...current,
-                        email: validate(nextEmail, password).email,
-                      }));
-                    }}
-                    onBlur={() => {
-                      setFieldErrors((current) => ({
-                        ...current,
-                        email: validate(email, password).email,
-                      }));
-                    }}
+                    onInput={(event) => updateEmail(event.currentTarget.value)}
+                    onChange={(event) => updateEmail(event.currentTarget.value)}
+                    onCompositionUpdate={(event) => updateEmail(event.currentTarget.value)}
+                    onCompositionEnd={(event) => updateEmail(event.currentTarget.value)}
+                    onBlur={(event) => updateEmail(event.currentTarget.value)}
                     autoCapitalize="none"
                     autoCorrect="off"
                     spellCheck={false}
-                    lang="en"
                     aria-invalid={Boolean(fieldErrors.email)}
                     aria-describedby={fieldErrors.email ? 'email-error' : undefined}
                     disabled={isSubmitting}
