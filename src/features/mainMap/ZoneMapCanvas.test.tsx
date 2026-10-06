@@ -14,7 +14,7 @@ describe('ZoneMapCanvas album covers', () => {
           {
             map_dot_id: 1,
             code: 'KR-COAST-0001',
-            album_cover_url: 'https://cdn.example.com/cover.jpg',
+            album_cover_url: 'https://is1-ssl.mzstatic.com/image/thumb/cover/100x100bb.jpg',
             latest_recorded_at: '2026-09-03T11:00:00Z',
           },
         ]}
@@ -23,7 +23,10 @@ describe('ZoneMapCanvas album covers', () => {
     );
 
     const image = container.querySelector('image');
-    expect(image).toHaveAttribute('href', 'https://cdn.example.com/cover.jpg');
+    expect(image).toHaveAttribute(
+      'href',
+      'https://is1-ssl.mzstatic.com/image/thumb/cover/680x680bb.jpg',
+    );
     expect(image?.getAttribute('clip-path')).toMatch(/^url\(#zone-cover-/);
     expect(container.querySelector('clipPath circle')).toBeInTheDocument();
   });
