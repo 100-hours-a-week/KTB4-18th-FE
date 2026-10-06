@@ -67,10 +67,13 @@ function App() {
   const [routeLocation, setRouteLocation] = useState(() => readRouteLocation());
   const pathname = routeLocation.pathname;
   const [authStatus, setAuthStatus] = useState<AuthStatus>('restoring');
+  const [passwordChangedNotice, setPasswordChangedNotice] = useState(false);
   const authIntent = useRef(0);
   const [authIntentVersion, setAuthIntentVersion] = useState(0);
   const isLoggingOutRef = useRef(false);
   const [, setLogoutError] = useState('');
+  const [isManualLogoutPending, setIsManualLogoutPending] = useState(false);
+  const [manualLogoutError, setManualLogoutError] = useState('');
   const advanceAuthIntent = () => {
     authIntent.current += 1;
     setAuthIntentVersion(authIntent.current);
@@ -260,6 +263,7 @@ function App() {
     advanceAuthIntent();
     setAuthStatus('authenticated');
     setLogoutError('');
+    setManualLogoutError('');
     navigate(getSafeReturnTo(window.location.search));
   };
 
@@ -270,8 +274,10 @@ function App() {
 
     isLoggingOutRef.current = true;
     advanceAuthIntent();
+    setIsManualLogoutPending(true);
     setAuthStatus('logging-out');
     setLogoutError('');
+    setManualLogoutError('');
     try {
       await logout();
       clearAccessToken();
@@ -279,18 +285,21 @@ function App() {
       navigate(LOGIN_PATH);
     } catch (error) {
       setAuthStatus(getAccessToken() ? 'authenticated' : 'retryable-error');
-      setLogoutError(
+      const message =
         error instanceof LogoutRequestError && error.status === null
           ? '네트워크 상태를 확인한 뒤 다시 시도해 주세요.'
-          : '로그아웃에 실패했어요. 잠시 후 다시 시도해 주세요.',
-      );
+          : '로그아웃에 실패했어요. 잠시 후 다시 시도해 주세요.';
+      setLogoutError(message);
+      setManualLogoutError(message);
     } finally {
       isLoggingOutRef.current = false;
+      setIsManualLogoutPending(false);
     }
   };
 
   const handleWithdrawalComplete = async () => {
     advanceAuthIntent();
+    setManualLogoutError('');
     setAuthStatus('logging-out');
     setLogoutError('');
     try {
@@ -311,6 +320,8 @@ function App() {
   if (pathname === LOGIN_PATH) {
     return (
       <LoginPage
+        passwordChangedNotice={passwordChangedNotice}
+        onPasswordChangedNoticeDismiss={() => setPasswordChangedNotice(false)}
         onLoginSuccess={handleLoginSuccess}
         onLoginStart={() => {
           advanceAuthIntent();
@@ -335,7 +346,14 @@ function App() {
     return (
       <main role="alert">
         <p>인증 서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.</p>
-        <button type="button" onClick={() => void restore()}>
+        {manualLogoutError && <p>{manualLogoutError}</p>}
+        <button
+          type="button"
+          onClick={() => {
+            setManualLogoutError('');
+            void restore();
+          }}
+        >
           다시 시도
         </button>
         <a href={loginHref(routeLocation)}>로그인</a>
@@ -349,7 +367,11 @@ function App() {
       </main>
     );
   }
-  if (isProtectedRoute && (authStatus === 'logging-in' || authStatus === 'logging-out')) {
+  if (
+    isProtectedRoute &&
+    (authStatus === 'logging-in' || authStatus === 'logging-out') &&
+    !(pathname === MY_PATH && isManualLogoutPending)
+  ) {
     return (
       <main role="status" aria-live="polite">
         인증 상태를 갱신하고 있어요.
@@ -369,7 +391,16 @@ function App() {
         onLogin={() => navigate(LOGIN_PATH)}
         onBack={() => navigate('/')}
         onLogout={handleLogout}
+        isLogoutPending={isManualLogoutPending}
+        logoutError={manualLogoutError}
         onWithdrawn={handleWithdrawalComplete}
+        onPasswordChanged={() => {
+          advanceAuthIntent();
+          clearAccessToken();
+          setAuthStatus('guest');
+          setPasswordChangedNotice(true);
+          navigate(LOGIN_PATH);
+        }}
       />
     );
   }

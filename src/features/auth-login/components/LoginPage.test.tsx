@@ -21,23 +21,21 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('LoginPage email input', () => {
-  it('converts Korean keyboard characters while preserving ASCII email characters', async () => {
+  it('keeps Korean characters as typed', async () => {
     const user = userEvent.setup();
     render(<LoginPage />);
 
     const emailInput = screen.getByLabelText('이메일');
     await user.type(emailInput, '한글User+tag@Example.com');
 
-    expect(emailInput).toHaveValue('gksrmfuser+tag@example.com');
+    expect(emailInput).toHaveValue('한글user+tag@example.com');
   });
 
   it.each([
-    ['ㅁㅠㅊ@ㄷㅌㅁㅡㅔㅣㄷ.채ㅡ', 'abc@example.com'],
-    ['뷁값@Example.com', 'qnpfrrkqt@example.com'],
-    ['ㄲㅒㅖㅃㅉ@Example.com', 'ropqw@example.com'],
+    ['user@한글.com', 'user@한글.com'],
+    ['한글User+tag@Example.com', '한글user+tag@example.com'],
     ['User.name_12+tag-test@Example.com', 'user.name_12+tag-test@example.com'],
-    ['한글!%🙂@Example.com', 'gksrmf@example.com'],
-  ])('normalizes pasted %s to %s', async (input, expected) => {
+  ])('keeps Korean and supported email characters from pasted %s', async (input, expected) => {
     const user = userEvent.setup();
     render(<LoginPage />);
     const emailInput = screen.getByLabelText('이메일');
@@ -46,39 +44,89 @@ describe('LoginPage email input', () => {
     expect(emailInput).toHaveValue(expected);
   });
 
-  it('converts each IME change immediately and keeps the final change idempotent', async () => {
+  it('keeps Korean characters during IME composition', () => {
+    render(<LoginPage />);
+    const emailInput = screen.getByLabelText('이메일');
+    fireEvent.compositionStart(emailInput);
+    fireEvent.change(emailInput, { target: { value: 'user@한글.com' } });
+
+    expect(emailInput).toHaveValue('user@한글.com');
+
+    fireEvent.compositionEnd(emailInput, { data: '한글' });
+    expect(emailInput).toHaveValue('user@한글.com');
+    expect(emailInput.value).toMatch(/[가-힣]/);
+  });
+
+  it('submits the Korean email as entered', async () => {
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    const emailInput = screen.getByLabelText('이메일');
+    const setNativeValue = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value',
+    )?.set;
+
+    // Simulate the browser committing the complete IME value before compositionend.
+    setNativeValue?.call(emailInput, 'user@한글.com');
+    fireEvent.compositionEnd(emailInput, { data: '한글' });
+
+    expect(emailInput).toHaveValue('user@한글.com');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    fireEvent.submit(emailInput.closest('form')!);
+    expect(login).toHaveBeenCalledExactlyOnceWith({
+      email: 'user@한글.com',
+      password: 'password',
+    });
+  });
+
+  it('keeps Korean characters before submitting even if composition has not blurred', async () => {
     const user = userEvent.setup();
     render(<LoginPage />);
     const emailInput = screen.getByLabelText('이메일');
     await user.type(screen.getByLabelText('비밀번호'), 'password');
     fireEvent.compositionStart(emailInput);
-    fireEvent.change(emailInput, { target: { value: '한글@Example.com' } });
+    fireEvent.change(emailInput, { target: { value: 'user@한글.com' } });
 
-    expect(emailInput).toHaveValue('gksrmf@example.com');
-    expect(screen.getByRole('button', { name: '로그인' })).toBeEnabled();
+    expect(emailInput).toHaveValue('user@한글.com');
+    fireEvent.submit(emailInput.closest('form')!);
 
-    fireEvent.compositionEnd(emailInput, { data: '한글' });
-    expect(emailInput).toHaveValue('gksrmf@example.com');
-    expect(screen.getByRole('button', { name: '로그인' })).toBeEnabled();
-    fireEvent.change(emailInput, { target: { value: 'gksrmf@example.com' } });
-    expect(emailInput).toHaveValue('gksrmf@example.com');
-    await user.click(screen.getByRole('button', { name: '로그인' }));
+    expect(emailInput).toHaveValue('user@한글.com');
     expect(login).toHaveBeenCalledExactlyOnceWith({
-      email: 'gksrmf@example.com',
+      email: 'user@한글.com',
       password: 'password',
     });
   });
 
-  it('converts native composing input immediately without requiring compositionstart', async () => {
+  it('blocks login when the Korean email remains malformed', async () => {
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    const emailInput = screen.getByLabelText('이메일');
+    const setNativeValue = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value',
+    )?.set;
+
+    setNativeValue?.call(emailInput, 'user@한글');
+    fireEvent.compositionEnd(emailInput, { data: '한글' });
+    expect(emailInput).toHaveValue('user@한글');
+    expect(screen.getByRole('alert')).toHaveTextContent('이메일 형식을 확인해 주세요.');
+
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    fireEvent.submit(emailInput.closest('form')!);
+    expect(login).not.toHaveBeenCalled();
+  });
+
+  it('keeps Korean characters from input events marked as composing', async () => {
     const user = userEvent.setup();
     render(<LoginPage />);
     const emailInput = screen.getByLabelText('이메일');
     await user.type(screen.getByLabelText('비밀번호'), 'password');
-    fireEvent.input(emailInput, { target: { value: 'ㅁㅠㅊ@Example.com' }, isComposing: true });
-    expect(emailInput).toHaveValue('abc@example.com');
+    fireEvent.input(emailInput, { target: { value: 'user@한글.com' }, isComposing: true });
+    expect(emailInput).toHaveValue('user@한글.com');
     expect(screen.getByRole('button', { name: '로그인' })).toBeEnabled();
     fireEvent.compositionEnd(emailInput);
-    expect(emailInput).toHaveValue('abc@example.com');
+    expect(emailInput).toHaveValue('user@한글.com');
     expect(screen.getByRole('button', { name: '로그인' })).toBeEnabled();
   });
 
@@ -92,7 +140,7 @@ describe('LoginPage email input', () => {
     expect(emailInput).toHaveAttribute('autocapitalize', 'none');
     expect(emailInput).toHaveAttribute('autocorrect', 'off');
     expect(emailInput).toHaveAttribute('spellcheck', 'false');
-    expect(emailInput).toHaveAttribute('lang', 'en');
+    expect(emailInput).not.toHaveAttribute('lang');
     expect(emailInput).not.toHaveAttribute('maxlength');
     fireEvent.change(emailInput, { target: { value: 'user@example.com' } });
     expect(emailInput).toHaveValue('user@example.com');
@@ -177,11 +225,11 @@ describe('LoginPage email input', () => {
     expect(screen.getByRole('button', { name: '로그인' })).toBeEnabled();
   });
 
-  it('sends the converted email and preserves the original password', async () => {
+  it('sends the normalized email and preserves the original password', async () => {
     const user = userEvent.setup();
     const onLoginSuccess = vi.fn();
     render(<LoginPage onLoginSuccess={onLoginSuccess} />);
-    await user.type(screen.getByLabelText('이메일'), 'ㅁㅠㅊ@Example.com');
+    await user.type(screen.getByLabelText('이메일'), 'abc@Example.com');
     await user.type(screen.getByLabelText('비밀번호'), ' PaSs한글! ');
     await user.click(screen.getByRole('button', { name: '로그인' }));
     expect(login).toHaveBeenCalledExactlyOnceWith({
@@ -208,11 +256,11 @@ describe('LoginPage email input', () => {
     expect(loginButton).toBeEnabled();
   });
 
-  it('keeps normalized input and the existing authentication error on login failure', async () => {
+  it('keeps normalized ASCII input and the existing authentication error on login failure', async () => {
     vi.mocked(login).mockRejectedValueOnce(new LoginRequestError(401));
     const user = userEvent.setup();
     render(<LoginPage />);
-    await user.type(screen.getByLabelText('이메일'), 'ㅁㅠㅊ@Example.com');
+    await user.type(screen.getByLabelText('이메일'), 'abc@Example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'password');
     await user.click(screen.getByRole('button', { name: '로그인' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -223,7 +271,7 @@ describe('LoginPage email input', () => {
     expect(screen.getByRole('button', { name: '로그인' })).toBeEnabled();
   });
 
-  it('blocks duplicate submits while the converted email request is pending', async () => {
+  it('blocks duplicate submits while the login request is pending', async () => {
     let finishLogin!: (response: LoginSuccessResponse) => void;
     vi.mocked(login).mockImplementationOnce(
       () =>
@@ -234,7 +282,7 @@ describe('LoginPage email input', () => {
     const user = userEvent.setup();
     render(<LoginPage />);
     const emailInput = screen.getByLabelText('이메일');
-    await user.type(emailInput, 'ㅁㅠㅊ@Example.com');
+    await user.type(emailInput, 'abc@Example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'password');
     await user.click(screen.getByRole('button', { name: '로그인' }));
     expect(screen.getByRole('button', { name: '로그인' })).toBeDisabled();

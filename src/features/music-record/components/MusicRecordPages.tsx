@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { navigate } from '../../../shared/navigation';
+import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
 import {
   createMusicRecord,
   deleteMusicRecords,
@@ -233,7 +234,11 @@ export function MusicRecordListPage() {
             const content = (
               <>
                 {record.music.album_cover_url ? (
-                  <img className="record-cover" src={record.music.album_cover_url} alt="" />
+                  <img
+                    className="record-cover"
+                    src={getHighResolutionArtworkUrl(record.music.album_cover_url) ?? ''}
+                    alt=""
+                  />
                 ) : (
                   <span className="record-cover-placeholder" aria-hidden="true" />
                 )}
@@ -701,7 +706,10 @@ export function MusicRecordCreatePage() {
                       }}
                     >
                       {music.album_cover_url ? (
-                        <img src={music.album_cover_url} alt="" />
+                        <img
+                          src={getHighResolutionArtworkUrl(music.album_cover_url) ?? ''}
+                          alt=""
+                        />
                       ) : (
                         <span className="music-cover-placeholder" aria-hidden="true" />
                       )}
@@ -795,7 +803,7 @@ export function MusicRecordCreatePage() {
         <section className="music-form" aria-label="음악 기록 입력">
           <article className="music-selected-content">
             {selected?.album_cover_url ? (
-              <img src={selected.album_cover_url} alt="" />
+              <img src={getHighResolutionArtworkUrl(selected.album_cover_url) ?? ''} alt="" />
             ) : (
               <span className="music-cover-placeholder" aria-hidden="true" />
             )}
