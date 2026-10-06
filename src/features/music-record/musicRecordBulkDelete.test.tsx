@@ -1,3 +1,5 @@
+import { StrictMode } from 'react';
+
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -66,6 +68,7 @@ describe('음악 기록 다중 선택 삭제', () => {
   });
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     clearAccessToken();
@@ -83,6 +86,94 @@ describe('음악 기록 다중 선택 삭제', () => {
     fireEvent.click(screen.getByRole('button', { name: '선택한 기록 삭제 확인' }));
     fireEvent.click(screen.getByRole('button', { name: '확인' }));
   };
+
+  it.each([
+    ['music_record_deleted', '기록이 삭제되었어요'],
+    ['music_record_updated', '기록이 수정되었어요'],
+  ])('%s 완료 안내를 한 번만 표시하고 3초 뒤 숨긴다', async (flag, message) => {
+    vi.useFakeTimers();
+    sessionStorage.setItem(flag, '1');
+    const view = render(
+      <StrictMode>
+        <MusicRecordListPage />
+      </StrictMode>,
+    );
+    const back = screen.getByRole('link', { name: '메인으로 돌아가기' });
+    back.focus();
+    await act(async () => {});
+
+    const toast = screen.getByRole('status');
+    expect(toast).toHaveClass('music-record-toast');
+    expect(toast).toHaveTextContent(message);
+    expect(toast).toHaveAttribute('aria-live', 'polite');
+    expect(toast).toHaveAttribute('aria-atomic', 'true');
+    expect(toast.closest('.music-list-content')).toBeNull();
+    expect(back).toHaveFocus();
+    expect(sessionStorage.getItem(flag)).toBeNull();
+    await act(async () => vi.advanceTimersByTimeAsync(2_999));
+    expect(screen.getByText(message)).toBeInTheDocument();
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(screen.queryByText(message)).not.toBeInTheDocument();
+
+    view.unmount();
+    await act(async () => {
+      render(<MusicRecordListPage />);
+    });
+    expect(screen.queryByText(message)).not.toBeInTheDocument();
+  });
+
+  it('연속으로 같은 개수를 삭제해도 마지막 완료 시점부터 3초간 표시한다', async () => {
+    vi.useFakeTimers();
+    deleteResponse = async () => {
+      records = records.slice(1);
+      return new Response(null, { status: 204 });
+    };
+    await act(async () => {
+      render(<MusicRecordListPage />);
+    });
+    const remove = async (id: number) => {
+      fireEvent.click(screen.getByRole('button', { name: '삭제할 기록 선택' }));
+      select(id);
+      fireEvent.click(screen.getByRole('button', { name: '선택한 기록 삭제 확인' }));
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: '확인' })));
+    };
+    await remove(7);
+    expect(screen.getByText('1개의 기록이 삭제되었어요')).toBeInTheDocument();
+    await act(async () => vi.advanceTimersByTimeAsync(2_000));
+    await remove(8);
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(screen.getByText('1개의 기록이 삭제되었어요')).toBeInTheDocument();
+    await act(async () => vi.advanceTimersByTimeAsync(1_999));
+    expect(screen.getByText('1개의 기록이 삭제되었어요')).toBeInTheDocument();
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(screen.queryByText('1개의 기록이 삭제되었어요')).not.toBeInTheDocument();
+  });
+
+  it('다른 작업 완료 메시지로 갱신하고 화면을 벗어나면 타이머를 정리한다', async () => {
+    vi.useFakeTimers();
+    sessionStorage.setItem('music_record_updated', '1');
+    let view!: ReturnType<typeof render>;
+    await act(async () => {
+      view = render(<MusicRecordListPage />);
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(2_000));
+    fireEvent.click(screen.getByRole('button', { name: '삭제할 기록 선택' }));
+    select(7);
+    select(8);
+    fireEvent.click(screen.getByRole('button', { name: '선택한 기록 삭제 확인' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '확인' })));
+    expect(screen.queryByText('기록이 수정되었어요')).not.toBeInTheDocument();
+    expect(screen.getByText('2개의 기록이 삭제되었어요')).toBeInTheDocument();
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(screen.getByText('2개의 기록이 삭제되었어요')).toBeInTheDocument();
+    expect(vi.getTimerCount()).toBe(1);
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+    await act(async () => {
+      render(<MusicRecordListPage />);
+    });
+    expect(screen.queryByText('2개의 기록이 삭제되었어요')).not.toBeInTheDocument();
+  });
 
   it('선택 표시와 해제, 모드 취소를 제공하며 상세로 이동하지 않는다', async () => {
     render(<MusicRecordListPage />);
