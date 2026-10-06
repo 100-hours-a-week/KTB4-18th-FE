@@ -188,12 +188,7 @@ export function LoginPage({
                   >
                     <img
                       src={
-                        '/icons/auth/' +
-                        (isPasswordVisible
-                          ? 'View-off.svg'
-                          : password
-                            ? 'View-on.svg'
-                            : 'View-off.svg')
+                        isPasswordVisible ? '/icons/auth/View-on.svg' : '/icons/auth/View-off.svg'
                       }
                       alt=""
                     />
