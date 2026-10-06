@@ -67,6 +67,7 @@ function App() {
   const [routeLocation, setRouteLocation] = useState(() => readRouteLocation());
   const pathname = routeLocation.pathname;
   const [authStatus, setAuthStatus] = useState<AuthStatus>('restoring');
+  const [passwordChangedNotice, setPasswordChangedNotice] = useState(false);
   const authIntent = useRef(0);
   const [authIntentVersion, setAuthIntentVersion] = useState(0);
   const isLoggingOutRef = useRef(false);
@@ -279,18 +280,21 @@ function App() {
       navigate(LOGIN_PATH);
     } catch (error) {
       setAuthStatus(getAccessToken() ? 'authenticated' : 'retryable-error');
-      setLogoutError(
+      const message =
         error instanceof LogoutRequestError && error.status === null
           ? '네트워크 상태를 확인한 뒤 다시 시도해 주세요.'
-          : '로그아웃에 실패했어요. 잠시 후 다시 시도해 주세요.',
-      );
+          : '로그아웃에 실패했어요. 잠시 후 다시 시도해 주세요.';
+      setLogoutError(message);
+      setManualLogoutError(message);
     } finally {
       isLoggingOutRef.current = false;
+      setIsManualLogoutPending(false);
     }
   };
 
   const handleWithdrawalComplete = async () => {
     advanceAuthIntent();
+    setManualLogoutError('');
     setAuthStatus('logging-out');
     setLogoutError('');
     try {
@@ -370,6 +374,13 @@ function App() {
         onBack={() => navigate('/')}
         onLogout={handleLogout}
         onWithdrawn={handleWithdrawalComplete}
+        onPasswordChanged={() => {
+          advanceAuthIntent();
+          clearAccessToken();
+          setAuthStatus('guest');
+          setPasswordChangedNotice(true);
+          navigate(LOGIN_PATH);
+        }}
       />
     );
   }

@@ -6,6 +6,8 @@ import {
   getMyProfile,
   getMySettings,
   MyPageRequestError,
+  verifyMyCurrentPassword,
+  changeMyPassword,
   updateMyProfile,
   withdrawMyAccount,
 } from '../api/mypageApi';
@@ -22,6 +24,8 @@ vi.mock('../api/mypageApi', async (importOriginal) => ({
   }),
   updateMyProfile: vi.fn(),
   withdrawMyAccount: vi.fn(),
+  verifyMyCurrentPassword: vi.fn(),
+  changeMyPassword: vi.fn(),
 }));
 
 vi.mock('../../music-record/api/musicRecordsApi', () => ({
@@ -171,6 +175,60 @@ describe('MyPage profile validation', () => {
     await user.click(screen.getByRole('button', { name: '마이페이지로 돌아가기' }));
 
     expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  it('verifies the current password on blur and enables save only after all password rules pass', async () => {
+    const user = userEvent.setup();
+    const onPasswordChanged = vi.fn();
+    vi.mocked(verifyMyCurrentPassword).mockResolvedValue({ valid: false });
+    render(
+      <MyPage
+        onLogin={vi.fn()}
+        onBack={vi.fn()}
+        onLogout={vi.fn()}
+        onWithdrawn={vi.fn()}
+        onPasswordChanged={onPasswordChanged}
+      />,
+    );
+    await screen.findByText('기존닉');
+    await user.click(screen.getByRole('button', { name: '비밀번호 재설정' }));
+    expect(
+      screen.getByText(
+        '새 비밀번호는 8~64자이며, 숫자와 특수문자를 각각 1개 이상 포함해야 합니다.',
+      ),
+    ).toBeTruthy();
+    const current = screen.getByLabelText('현재 비밀번호');
+    expect(screen.queryByText(/현재 사용 중인 비밀번호를 입력해 주세요/)).toBeNull();
+    await user.click(current);
+    const currentHelp = await screen.findByText(/현재 사용 중인 비밀번호를 입력해 주세요/);
+    expect(currentHelp).toHaveClass('mypage-notice');
+    await user.type(current, 'old-password');
+    await user.tab();
+    expect(await screen.findByText('현재 비밀번호가 틀립니다.')).toBeTruthy();
+    expect(changeMyPassword).not.toHaveBeenCalled();
+
+    vi.mocked(verifyMyCurrentPassword).mockResolvedValue({ valid: true });
+    await user.clear(current);
+    await user.type(current, 'old-password');
+    await user.tab();
+    expect(screen.queryByText(/현재 사용 중인 비밀번호를 입력해 주세요/)).toBeNull();
+    const next = screen.getByLabelText('새 비밀번호');
+    await user.click(next);
+    expect(
+      screen.getByText(
+        '새 비밀번호는 8~64자이며, 숫자와 특수문자를 각각 1개 이상 포함해야 합니다.',
+      ),
+    ).toBeTruthy();
+    await user.type(next, 'Newpass1!');
+    const confirmation = screen.getByLabelText('새 비밀번호 확인');
+    await user.click(confirmation);
+    expect(screen.queryByText('새 비밀번호와 같은 값을 입력해 주세요.')).toBeNull();
+    await user.tab();
+    expect(await screen.findByText('새 비밀번호와 같은 값을 입력해 주세요.')).toBeTruthy();
+    await user.type(confirmation, 'Newpass1!');
+    await user.tab();
+    expect(screen.queryByText('새 비밀번호와 같은 값을 입력해 주세요.')).toBeNull();
+    expect(screen.getByRole('button', { name: '변경하기' })).toBeEnabled();
   });
 
   it('shows the Figma withdrawal warning first and preserves password confirmation before deletion', async () => {

@@ -14,6 +14,8 @@ type LoginPageProps = {
   onLoginSuccess?: (response: LoginSuccessResponse) => void;
   onLoginStart?: () => void;
   onLoginFailure?: () => void;
+  passwordChangedNotice?: boolean;
+  onPasswordChangedNoticeDismiss?: () => void;
 };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -38,7 +40,13 @@ function getRequestErrorMessage(error: LoginRequestError): string {
   return '잠시 후 다시 시도해 주세요.';
 }
 
-export function LoginPage({ onLoginSuccess, onLoginStart, onLoginFailure }: LoginPageProps) {
+export function LoginPage({
+  onLoginSuccess,
+  onLoginStart,
+  onLoginFailure,
+  passwordChangedNotice,
+  onPasswordChangedNoticeDismiss,
+}: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -61,7 +69,9 @@ export function LoginPage({ onLoginSuccess, onLoginStart, onLoginFailure }: Logi
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isSubmittingRef.current) return;
-    const nextFieldErrors = validate(email, password);
+    const normalizedEmail = normalizeEmail(email.trim());
+    setEmail(normalizedEmail);
+    const nextFieldErrors = validate(normalizedEmail, password);
     setFieldErrors(nextFieldErrors);
     setRequestError('');
     setIsLoginSuccessful(false);
