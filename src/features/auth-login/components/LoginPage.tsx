@@ -81,7 +81,7 @@ export function LoginPage({
     isSubmittingRef.current = true;
     onLoginStart?.();
     try {
-      const response = await login({ email: email.trim().toLowerCase(), password });
+      const response = await login({ email: normalizedEmail, password });
       if (onLoginSuccess) {
         onLoginSuccess(response);
         return;
@@ -116,6 +116,14 @@ export function LoginPage({
           </header>
 
           <div className="login-body">
+            {passwordChangedNotice && (
+              <p role="status">
+                비밀번호가 변경되었어요. 새 비밀번호로 다시 로그인해 주세요.{' '}
+                <button type="button" onClick={onPasswordChangedNoticeDismiss}>
+                  확인
+                </button>
+              </p>
+            )}
             <div className="login-divider" aria-hidden="true">
               <span>로그인/회원가입</span>
             </div>
