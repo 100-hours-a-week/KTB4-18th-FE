@@ -256,7 +256,7 @@ function Header({
           onClick={onBack}
           aria-label="마이페이지로 돌아가기"
         >
-          <img src="/icons/mypage/arrow-back.svg" alt="" />
+          <img src="/icons/chatbot/Arrow-reft.svg" alt="" aria-hidden="true" />
         </button>
       ) : (
         <span className="mypage-header-spacer" aria-hidden="true" />
@@ -1263,7 +1263,7 @@ export function MyPage({
                   <img src={profile.profile_image_url} alt="프로필" />
                 ) : (
                   <span className="mypage-avatar-placeholder" aria-label="기본 프로필 이미지">
-                    <img src="/icons/mypage/profile.svg" alt="" />
+                    <img src="/icons/mypage/Profile.svg" alt="" />
                   </span>
                 )}
               </div>
