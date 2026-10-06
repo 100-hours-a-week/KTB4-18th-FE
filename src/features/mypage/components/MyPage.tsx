@@ -1222,7 +1222,11 @@ export function MyPage({
       <>
         <Header title="마이페이지" onBack={onBack} className="mypage-overview-header">
           <Menu.Root>
-            <Menu.Trigger className="mypage-icon-button" aria-label="더보기">
+            <Menu.Trigger
+              className="mypage-icon-button"
+              aria-label="더보기"
+              disabled={isLogoutPending}
+            >
               <svg aria-hidden="true" viewBox="0 0 24 24">
                 <circle cx="5" cy="12" r="1.5" />
                 <circle cx="12" cy="12" r="1.5" />
@@ -1232,7 +1236,9 @@ export function MyPage({
             <Menu.Positioner>
               <Menu.Content>
                 <Menu.Item onClick={() => setView('profile')}>프로필 수정</Menu.Item>
-                <Menu.Item onClick={() => setWithdrawOpen(true)}>회원 탈퇴</Menu.Item>
+                <Menu.Item disabled={isLogoutPending} onClick={() => setWithdrawOpen(true)}>
+                  회원 탈퇴
+                </Menu.Item>
               </Menu.Content>
             </Menu.Positioner>
           </Menu.Root>
@@ -1311,7 +1317,22 @@ export function MyPage({
                 <img src="/icons/mypage/arrow-right.svg" alt="" />
               </button>
             </nav>
-            <button className="mypage-logout-button" type="button" onClick={() => void onLogout()}>
+            {isLogoutPending && (
+              <p role="status" aria-live="polite">
+                로그아웃 중…
+              </p>
+            )}
+            {logoutError && (
+              <p className="mypage-page-error" role="alert">
+                {logoutError}
+              </p>
+            )}
+            <button
+              className="mypage-logout-button"
+              type="button"
+              onClick={() => void onLogout()}
+              disabled={isLogoutPending}
+            >
               로그아웃
             </button>
           </>
