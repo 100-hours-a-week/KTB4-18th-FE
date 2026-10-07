@@ -12,8 +12,11 @@ import {
   type MusicRecord,
 } from '../api/musicRecordsApi';
 import { useLocation } from '../hooks/useLocation';
+import { useMusicRecordRegionFilter } from '../hooks/useMusicRecordRegionFilter';
+import { MusicRecordRegionFilter } from './MusicRecordRegionFilter';
 import { useMusicPreview } from '../hooks/useMusicPreview';
 import { formatMusicRecordDate } from '../model/formatMusicRecordDate';
+import { musicRecordFilterPath, readMusicRecordSidoCode } from '../model/musicRecordFilterPath';
 import { formatMusicRecordTime } from '../model/formatMusicRecordTime';
 import { UnsavedChangesDialog } from './UnsavedChangesDialog';
 import { MusicRecordDeleteDialog } from './MusicRecordDeleteDialog';
@@ -31,6 +34,10 @@ export function MusicRecordListPage() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const regionFilter = useMusicRecordRegionFilter();
+  const visibleItems =
+    regionFilter.selectedSidoCode === null ? items : regionFilter.filteredSnapshot;
+  const isFilterDisabled = isSelecting || isDeleting || isLoading || regionFilter.isSnapshotLoading;
   const mutationPending = useRef(false);
   const requestGeneration = useRef(0);
   const active = useRef(true);
@@ -109,6 +116,7 @@ export function MusicRecordListPage() {
     try {
       await deleteMusicRecords(idsToDelete, AbortSignal.timeout(10_000));
       if (!active.current) return;
+      regionFilter.removeFromSnapshot(idsToDelete);
       showToast(`${idsToDelete.length}개의 기록이 삭제되었어요`);
       setIsDeleteOpen(false);
       setIsSelecting(false);
@@ -213,20 +221,31 @@ export function MusicRecordListPage() {
             onClick={() => {
               setDeleteError('');
               void load();
+              regionFilter.refreshSnapshot();
             }}
           >
             목록 새로고침
           </button>
         )}
-        {!isSelecting && !isLoading && items.length > 0 && (
-          <div className="record-list-count">검색 결과 {items.length}곡</div>
+        <MusicRecordRegionFilter
+          regions={regionFilter.regions}
+          selectedSidoCode={regionFilter.selectedSidoCode}
+          isDisabled={isFilterDisabled}
+          isLoading={regionFilter.isSnapshotLoading}
+          error={regionFilter.snapshotError}
+          onSelect={(code) => {
+            if (!isFilterDisabled) regionFilter.setSelectedSidoCode(code);
+          }}
+        />
+        {!isSelecting && !isLoading && visibleItems.length > 0 && (
+          <div className="record-list-count">검색 결과 {visibleItems.length}곡</div>
         )}
         {isLoading && !items.length && <p role="status">기록을 불러오는 중…</p>}
         <section
           className={`record-list${isSelecting ? ' selecting' : ''}`}
           aria-label="음악 기록 목록"
         >
-          {items.map((record) => {
+          {visibleItems.map((record) => {
             const selected = selectedIds.includes(record.record_id);
             const placeName =
               record.custom_place_name?.trim() ||
@@ -280,10 +299,18 @@ export function MusicRecordListPage() {
               <a
                 className="record-card"
                 key={record.record_id}
-                href={`/music-records/${record.record_id}`}
+                href={musicRecordFilterPath(
+                  `/music-records/${record.record_id}`,
+                  regionFilter.selectedSidoCode,
+                )}
                 onClick={(event) => {
                   event.preventDefault();
-                  navigate(`/music-records/${record.record_id}`);
+                  navigate(
+                    musicRecordFilterPath(
+                      `/music-records/${record.record_id}`,
+                      regionFilter.selectedSidoCode,
+                    ),
+                  );
                 }}
                 aria-label={`${record.music.title} 기록 상세 보기`}
               >
@@ -301,7 +328,7 @@ export function MusicRecordListPage() {
             onConfirm={() => void removeSelected()}
           />
         )}
-        {hasNext && (
+        {regionFilter.selectedSidoCode === null && hasNext && (
           <button
             className="music-secondary-button"
             disabled={isLoading}
@@ -327,6 +354,8 @@ export function MusicRecordListPage() {
 }
 
 export function MusicRecordCreatePage() {
+  const selectedSidoCode = readMusicRecordSidoCode();
+  const listPath = musicRecordFilterPath('/music-records', selectedSidoCode);
   const replacementParams = new URLSearchParams(window.location.search).getAll('replaceRecordId');
   const hasReplacementParam = replacementParams.length > 0;
   const replacementRecordId = (() => {
@@ -530,7 +559,7 @@ export function MusicRecordCreatePage() {
       const resolved = location.location ?? (await location.acquire());
       createRequestStarted = true;
       await createMusicRecord(selected, resolved.location_resolution_token, place, memo);
-      navigate('/music-records');
+      navigate(listPath);
     } catch (caught) {
       if (
         createRequestStarted &&
@@ -598,7 +627,7 @@ export function MusicRecordCreatePage() {
         key,
         JSON.stringify({ ...draft, music: selected, status: 'pending' }),
       );
-      navigate(`/music-records/${replacementRecordId}`);
+      navigate(musicRecordFilterPath(`/music-records/${replacementRecordId}`, selectedSidoCode));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '선택한 곡을 임시 저장하지 못했습니다.');
       replacementPending.current = false;
@@ -627,11 +656,13 @@ export function MusicRecordCreatePage() {
           onClick={() => {
             if (replacementRecordId !== null) {
               stopPreview();
-              navigate(`/music-records/${replacementRecordId}`);
+              navigate(
+                musicRecordFilterPath(`/music-records/${replacementRecordId}`, selectedSidoCode),
+              );
               return;
             }
             if (hasInvalidReplacementParam) {
-              navigate('/music-records');
+              navigate(listPath);
               return;
             }
             if (step === 'form' && hasCreateChanges) setShowExitWarning(true);
@@ -651,7 +682,7 @@ export function MusicRecordCreatePage() {
           <button
             type="button"
             className="music-secondary-button"
-            onClick={() => navigate('/music-records')}
+            onClick={() => navigate(listPath)}
           >
             음악 기록 목록으로 이동
           </button>
@@ -877,7 +908,7 @@ export function MusicRecordCreatePage() {
             <div role="alert" className="music-error">
               <p>{location.error || error}</p>
               {saveResultUnclear && (
-                <button type="button" onClick={() => navigate('/music-records')}>
+                <button type="button" onClick={() => navigate(listPath)}>
                   음악 기록 목록에서 확인
                 </button>
               )}
