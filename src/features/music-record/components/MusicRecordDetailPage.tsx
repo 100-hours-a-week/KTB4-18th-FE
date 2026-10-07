@@ -12,11 +12,13 @@ import {
   type MusicRecordDetail,
 } from '../api/musicRecordsApi';
 import { formatMusicRecordDate } from '../model/formatMusicRecordDate';
+import { musicRecordFilterPath, readMusicRecordSidoCode } from '../model/musicRecordFilterPath';
 import { invalidateMapDotsCache } from '../../mainMap/mapApi';
 import { MusicRecordDeleteDialog } from './MusicRecordDeleteDialog';
 import { UnsavedChangesDialog } from './UnsavedChangesDialog';
 
 type MusicRecordDetailPageProps = { recordId: number };
+
 const replacementDraftKey = (recordId: number) => `music-record-replacement-draft:${recordId}`;
 
 type MusicReplacementDraft = {
@@ -60,6 +62,8 @@ function parseReplacementDraft(value: unknown): MusicReplacementDraft | null {
 }
 
 export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) {
+  const selectedSidoCode = readMusicRecordSidoCode();
+  const listPath = musicRecordFilterPath('/music-records', selectedSidoCode);
   const [record, setRecord] = useState<MusicRecordDetail | null>(null);
   const [selectedMusic, setSelectedMusic] = useState<Music | null>(null);
   const [place, setPlace] = useState('');
@@ -72,7 +76,7 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
   const [showExitWarning, setShowExitWarning] = useState(false);
   const backButton = useRef<HTMLButtonElement>(null);
   const exitIntent = useRef<{ destination: string; trigger: HTMLButtonElement | null }>({
-    destination: '/music-records',
+    destination: listPath,
     trigger: null,
   });
   const isMutationPending = useRef(false);
@@ -178,7 +182,9 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
       setError('작성 중인 내용을 임시 저장하지 못했습니다. 현재 화면에서 다시 시도해 주세요.');
       return;
     }
-    navigate(`/music-records/new?replaceRecordId=${recordId}`);
+    navigate(
+      musicRecordFilterPath(`/music-records/new?replaceRecordId=${recordId}`, selectedSidoCode),
+    );
   };
 
   const changes: MusicRecordChanges = {};
@@ -279,7 +285,7 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
       } catch {
         // The saved record is still available from the list even without the notice flag.
       }
-      navigate('/music-records');
+      navigate(listPath);
     } catch (caught) {
       setError(
         caught instanceof MusicApiError && caught.status === 401
@@ -308,14 +314,14 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
       if (activeRecordId.current !== recordId) return;
       sessionStorage.setItem('music_record_deleted', '1');
       setIsDeleteOpen(false);
-      navigate('/music-records');
+      navigate(listPath);
     } catch (caught) {
       if (activeRecordId.current !== recordId) return;
       if (caught instanceof MusicApiError && caught.status === 404) {
         invalidateMapDotsCache();
         sessionStorage.setItem('music_record_missing', '1');
         setIsDeleteOpen(false);
-        navigate('/music-records');
+        navigate(listPath);
         return;
       }
       setDeleteError(
@@ -343,7 +349,7 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
           className="music-back"
           aria-label="음악 기록 목록으로 돌아가기"
           onClick={() => {
-            requestExit('/music-records', backButton.current);
+            requestExit(listPath, backButton.current);
           }}
           aria-disabled={isDeleting}
         >
