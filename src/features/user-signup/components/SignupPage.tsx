@@ -26,7 +26,7 @@ const maxLengthByField = {
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const nicknameCharacterPattern = /^[가-힣A-Za-z0-9]*$/;
 const passwordPattern = /^[A-Za-z0-9!@#$%^&*_+=-]+$/;
-const EMAIL_PART_CHARACTER_PATTERN = /[^A-Za-z0-9._+@\-\s]/g;
+const EMAIL_PART_CHARACTER_PATTERN = /[^\p{Script=Hangul}A-Za-z0-9._+@\-\s]/gu;
 const PASSWORD_GUIDANCE = '8~64자 / 사용 가능 특수문자: ! @ # $ % ^ & * _ - + =';
 const PASSWORD_CHARACTER_ERROR = `사용할 수 없는 특수 문자가 포함되어 있어요. ${PASSWORD_GUIDANCE}`;
 const MIN_BIRTH_YEAR = 1900;
@@ -39,9 +39,7 @@ const errorMessages: Record<string, string> = {
 };
 
 function normalizeEmailPart(value: string) {
-  return convertHangulToKeyboardInput(value)
-    .replace(EMAIL_PART_CHARACTER_PATTERN, '')
-    .toLowerCase();
+  return value.replace(EMAIL_PART_CHARACTER_PATTERN, '').toLowerCase();
 }
 
 function getInputError(field: InputField, value: string) {
@@ -527,7 +525,10 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
                   maxLength={maxLengthByField.email}
                   value={email}
                   onBeforeInput={(event) => preventOverLengthInput(event, 'email', email)}
-                  onChange={(event) => updateEmail(event.target.value)}
+                  onInput={(event) => updateEmail(event.currentTarget.value)}
+                  onChange={(event) => updateEmail(event.currentTarget.value)}
+                  onCompositionUpdate={(event) => updateEmail(event.currentTarget.value)}
+                  onCompositionEnd={(event) => updateEmail(event.currentTarget.value)}
                   onBlur={() => {
                     const normalizedEmail = email.trim().toLowerCase();
                     setEmail(normalizedEmail);
@@ -539,7 +540,6 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
-                  lang="en"
                   aria-invalid={Boolean(
                     fieldErrors.email ||
                     availabilityErrors.email?.value === normalizeDuplicateValue('email', email),
@@ -613,14 +613,7 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
                   disabled={submitting}
                 >
                   <img
-                    src={
-                      '/icons/auth/' +
-                      (isPasswordVisible
-                        ? 'View-off.svg'
-                        : password
-                          ? 'View-on.svg'
-                          : 'View-off.svg')
-                    }
+                    src={isPasswordVisible ? '/icons/auth/View-on.svg' : '/icons/auth/View-off.svg'}
                     alt=""
                   />
                 </button>

@@ -125,6 +125,11 @@ export const changeMyPassword = (currentPassword: string, newPassword: string) =
     new_password: newPassword,
   });
 
+export const verifyMyCurrentPassword = (currentPassword: string) =>
+  mutation<{ valid: boolean }>('/api/v1/users/me/password/verification', 'POST', {
+    current_password: currentPassword,
+  });
+
 export const withdrawMyAccount = (password: string) =>
   runAuthTransition(async () => {
     const accessToken = getAccessToken();

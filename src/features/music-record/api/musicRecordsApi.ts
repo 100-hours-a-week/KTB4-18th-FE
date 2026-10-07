@@ -1,5 +1,6 @@
 import { AuthRequestError, authenticatedFetch } from '../../auth-login/api/authSession';
 import { invalidateMapDotsCache } from '../../mainMap/mapApi';
+import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
@@ -93,10 +94,6 @@ async function fetchProtectedResponse(path: string, options: RequestInit = {}): 
 
 async function fetchProtectedData<T>(path: string, options: RequestInit = {}): Promise<T> {
   return parseResponse<T>(await fetchProtectedResponse(path, options));
-}
-
-function getHighResolutionArtworkUrl(url: string | null): string | null {
-  return url?.replace(/\/\d+x\d+bb(?=[./?-]|$)/i, '/680x680bb') ?? null;
 }
 
 export const searchMusic = async (query: string, cursor?: string | null) => {

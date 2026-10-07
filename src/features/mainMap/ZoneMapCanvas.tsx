@@ -1,6 +1,7 @@
 import { useId, useState, type ReactNode } from 'react';
 import { getGridBounds } from './mapGeometry';
 import type { MapDot, MapGridDot } from './mapTypes';
+import { getHighResolutionArtworkUrl } from '../../shared/albumArtwork';
 
 type ZoneMapCanvasProps = {
   children?: ReactNode;
@@ -36,7 +37,7 @@ export function ZoneMapCanvas({
         >
           {gridDots.map((dot) => {
             const mapDot = mapDotByCode.get(dot.code);
-            const coverUrl = mapDot?.album_cover_url;
+            const coverUrl = getHighResolutionArtworkUrl(mapDot?.album_cover_url ?? null);
             const imageKey = `${dot.code}:${coverUrl ?? ''}`;
             const showCover = Boolean(coverUrl) && !failedImages.has(imageKey);
             const centerX = dot.gridColumn + 0.5;
