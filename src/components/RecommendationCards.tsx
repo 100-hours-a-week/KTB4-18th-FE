@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { Recommendation } from '../types/recommendation';
+import { getHighResolutionArtworkUrl } from '../shared/albumArtwork';
 
 function MarqueeText({ text, className }: { text: string; className: string }) {
   const viewportRef = useRef<HTMLSpanElement | null>(null);
@@ -147,7 +148,9 @@ export function RecommendationCards({ recommendation, activePreview, onPreviewCh
             <li className="music-card" key={key}>
               <div className="music-info">
                 <img
-                  src={music.album_cover_url ?? '/album-placeholder.svg'}
+                  src={
+                    getHighResolutionArtworkUrl(music.album_cover_url) ?? '/album-placeholder.svg'
+                  }
                   alt={`${music.title} 앨범 커버`}
                   onError={(event) => {
                     event.currentTarget.onerror = null;

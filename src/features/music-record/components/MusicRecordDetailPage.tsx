@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { navigate } from '../../../shared/navigation';
+import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
 import {
   deleteMusicRecord,
   getMusicRecord,
@@ -367,7 +368,11 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
           <article className="music-selected-content">
             {(selectedMusic?.album_cover_url ?? record.music.album_cover_url) ? (
               <img
-                src={selectedMusic?.album_cover_url ?? record.music.album_cover_url ?? ''}
+                src={
+                  getHighResolutionArtworkUrl(
+                    selectedMusic?.album_cover_url ?? record.music.album_cover_url ?? null,
+                  ) ?? ''
+                }
                 alt=""
               />
             ) : (

@@ -4,11 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { recommend, streamRecommendation } from './api/recommendations';
 import { login } from './features/auth-login/api/loginApi';
-import { logout } from './features/auth-login/api/logoutApi';
-import { getMyProfile, getMySettings } from './features/mypage/api/mypageApi';
+import { logout, LogoutRequestError } from './features/auth-login/api/logoutApi';
+import { getMyProfile, getMySettings, withdrawMyAccount } from './features/mypage/api/mypageApi';
 import {
   ACCESS_TOKEN_REFRESH_EARLY_MS,
   authenticatedFetch,
+  clearAccessToken,
   getAccessToken,
   getLastAccessTokenRefreshAt,
   resetAuthSessionForTests,
@@ -59,7 +60,14 @@ vi.mock('./features/auth-login/api/loginApi', () => ({
 }));
 vi.mock('./features/auth-login/api/logoutApi', () => ({
   logout: vi.fn(),
-  LogoutRequestError: class LogoutRequestError extends Error {},
+  LogoutRequestError: class LogoutRequestError extends Error {
+    readonly status: number | null;
+
+    constructor(status: number | null) {
+      super('Logout request failed');
+      this.status = status;
+    }
+  },
 }));
 vi.mock('./features/user-signup/api/signupApi', () => ({ signup: vi.fn() }));
 vi.mock('./features/user-signup/api/termsApi', async (importOriginal) => ({
@@ -74,6 +82,7 @@ vi.mock('./features/mypage/api/mypageApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./features/mypage/api/mypageApi')>()),
   getMyProfile: vi.fn(),
   getMySettings: vi.fn(),
+  withdrawMyAccount: vi.fn(),
 }));
 vi.mock('./features/chat-entry/components/ChatEntryPage', () => ({
   ChatEntryPage: () => <h1>우리 지역 채팅방</h1>,
@@ -125,6 +134,23 @@ function accessTokenWithExpiration(expiresAt: number): string {
     .replace(/\+/g, '-')
     .replace(/\//g, '_');
   return `header.${payload}.signature`;
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+async function renderAuthenticatedMyPage() {
+  setAccessToken(accessTokenWithExpiration(Date.now() + 60 * 60 * 1000));
+  window.history.replaceState(null, '', '/my');
+  render(<App />);
+  return screen.findByRole('button', { name: '로그아웃' });
 }
 
 describe('access token 사전 재발급 스케줄러', () => {
@@ -1212,6 +1238,80 @@ describe('로그인과 회원가입 화면 연결', () => {
 
     expect(await screen.findByRole('heading', { name: '우리 지역 채팅방' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/chat');
+  });
+
+  it('수동 로그아웃 중에는 MyPage를 유지하고 중복 요청과 회원 탈퇴를 막는다', async () => {
+    const user = userEvent.setup();
+    const logoutRequest = createDeferred<void>();
+    vi.mocked(logout).mockReturnValue(logoutRequest.promise);
+    const logoutButton = await renderAuthenticatedMyPage();
+    await user.click(screen.getByRole('button', { name: '더보기' }));
+    const withdrawalItem = screen.getByRole('menuitem', { name: '회원 탈퇴' });
+
+    act(() => {
+      fireEvent.click(logoutButton);
+      fireEvent.click(logoutButton);
+    });
+
+    expect(logout).toHaveBeenCalledOnce();
+    expect(screen.getByText('로그아웃 중…')).toHaveAttribute('role', 'status');
+    expect(logoutButton).toBeDisabled();
+    expect(screen.getByRole('button', { name: '더보기' })).toBeDisabled();
+    expect(withdrawalItem).toHaveAttribute('aria-disabled', 'true');
+    await user.click(withdrawalItem);
+    expect(withdrawMyAccount).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: '마이페이지' })).toBeInTheDocument();
+    expect(screen.queryByText('인증 상태를 갱신하고 있어요.')).not.toBeInTheDocument();
+
+    await act(async () => {
+      logoutRequest.resolve(undefined);
+      await logoutRequest.promise;
+    });
+    expect(getAccessToken()).toBeNull();
+    expect(await screen.findByLabelText('이메일')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/login');
+  });
+
+  it.each([
+    { label: '네트워크', status: null, message: '네트워크 상태를 확인한 뒤 다시 시도해 주세요.' },
+    { label: '일반', status: 500, message: '로그아웃에 실패했어요. 잠시 후 다시 시도해 주세요.' },
+  ])(
+    '토큰이 남은 로그아웃 $label 오류는 MyPage에서 재시도할 수 있다',
+    async ({ status, message }) => {
+      const user = userEvent.setup();
+      vi.mocked(logout).mockRejectedValueOnce(new LogoutRequestError(status));
+      await renderAuthenticatedMyPage();
+
+      await user.click(screen.getByRole('button', { name: '로그아웃' }));
+
+      expect(await screen.findByText(message)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '마이페이지' })).toBeInTheDocument();
+      expect(getAccessToken()).not.toBeNull();
+      await user.click(screen.getByRole('button', { name: '로그아웃' }));
+      expect(logout).toHaveBeenCalledTimes(2);
+      expect(await screen.findByLabelText('이메일')).toBeInTheDocument();
+      expect(window.location.pathname).toBe('/login');
+    },
+  );
+
+  it.each([
+    { label: '네트워크', status: null, message: '네트워크 상태를 확인한 뒤 다시 시도해 주세요.' },
+    { label: '일반', status: 500, message: '로그아웃에 실패했어요. 잠시 후 다시 시도해 주세요.' },
+  ])('토큰이 없을 때 로그아웃 $label 오류는 복구 화면에 유지된다', async ({ status, message }) => {
+    const logoutRequest = createDeferred<void>();
+    vi.mocked(logout).mockReturnValue(logoutRequest.promise);
+    const logoutButton = await renderAuthenticatedMyPage();
+    fireEvent.click(logoutButton);
+    clearAccessToken();
+    await act(async () => {
+      logoutRequest.reject(new LogoutRequestError(status));
+      await logoutRequest.promise.catch(() => undefined);
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(message);
+    expect(screen.getByRole('button', { name: '다시 시도' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '로그인' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '마이페이지' })).not.toBeInTheDocument();
   });
 });
 

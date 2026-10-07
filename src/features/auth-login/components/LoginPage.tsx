@@ -1,7 +1,6 @@
 import { ActionButton } from '@seed-design/react';
 import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { convertHangulToKeyboardInput } from '../../../shared/convertHangulToKeyboardInput';
 
 import { login, LoginRequestError, type LoginSuccessResponse } from '../api/loginApi';
 import './LoginPage.css';
@@ -15,15 +14,15 @@ type LoginPageProps = {
   onLoginSuccess?: (response: LoginSuccessResponse) => void;
   onLoginStart?: () => void;
   onLoginFailure?: () => void;
+  passwordChangedNotice?: boolean;
+  onPasswordChangedNoticeDismiss?: () => void;
 };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const INVALID_EMAIL_CHARACTER_PATTERN = /[^A-Za-z0-9._+@-]/g;
+const INVALID_EMAIL_CHARACTER_PATTERN = /[^\p{Script=Hangul}A-Za-z0-9._+@-]/gu;
 
 function normalizeEmail(value: string) {
-  return convertHangulToKeyboardInput(value)
-    .replace(INVALID_EMAIL_CHARACTER_PATTERN, '')
-    .toLowerCase();
+  return value.replace(INVALID_EMAIL_CHARACTER_PATTERN, '').toLowerCase();
 }
 
 function validate(email: string, password: string): FieldErrors {
@@ -41,7 +40,13 @@ function getRequestErrorMessage(error: LoginRequestError): string {
   return '잠시 후 다시 시도해 주세요.';
 }
 
-export function LoginPage({ onLoginSuccess, onLoginStart, onLoginFailure }: LoginPageProps) {
+export function LoginPage({
+  onLoginSuccess,
+  onLoginStart,
+  onLoginFailure,
+  passwordChangedNotice,
+  onPasswordChangedNoticeDismiss,
+}: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -52,10 +57,21 @@ export function LoginPage({ onLoginSuccess, onLoginStart, onLoginFailure }: Logi
   const [isLoginSuccessful, setIsLoginSuccessful] = useState(false);
   const isFormValid = Object.keys(validate(email, password)).length === 0;
 
+  function updateEmail(value: string) {
+    const nextEmail = normalizeEmail(value);
+    setEmail(nextEmail);
+    setFieldErrors((current) => ({
+      ...current,
+      email: validate(nextEmail, password).email,
+    }));
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isSubmittingRef.current) return;
-    const nextFieldErrors = validate(email, password);
+    const normalizedEmail = normalizeEmail(email.trim());
+    setEmail(normalizedEmail);
+    const nextFieldErrors = validate(normalizedEmail, password);
     setFieldErrors(nextFieldErrors);
     setRequestError('');
     setIsLoginSuccessful(false);
@@ -65,7 +81,7 @@ export function LoginPage({ onLoginSuccess, onLoginStart, onLoginFailure }: Logi
     isSubmittingRef.current = true;
     onLoginStart?.();
     try {
-      const response = await login({ email: email.trim().toLowerCase(), password });
+      const response = await login({ email: normalizedEmail, password });
       if (onLoginSuccess) {
         onLoginSuccess(response);
         return;
@@ -100,6 +116,14 @@ export function LoginPage({ onLoginSuccess, onLoginStart, onLoginFailure }: Logi
           </header>
 
           <div className="login-body">
+            {passwordChangedNotice && (
+              <p role="status">
+                비밀번호가 변경되었어요. 새 비밀번호로 다시 로그인해 주세요.{' '}
+                <button type="button" onClick={onPasswordChangedNoticeDismiss}>
+                  확인
+                </button>
+              </p>
+            )}
             <div className="login-divider" aria-hidden="true">
               <span>로그인/회원가입</span>
             </div>
@@ -114,27 +138,18 @@ export function LoginPage({ onLoginSuccess, onLoginStart, onLoginFailure }: Logi
                     id="email"
                     className="login-input"
                     type="email"
+                    inputMode="email"
                     autoComplete="email"
                     placeholder="이메일을 입력해주세요"
                     value={email}
-                    onChange={(event) => {
-                      const nextEmail = normalizeEmail(event.target.value);
-                      setEmail(nextEmail);
-                      setFieldErrors((current) => ({
-                        ...current,
-                        email: validate(nextEmail, password).email,
-                      }));
-                    }}
-                    onBlur={() => {
-                      setFieldErrors((current) => ({
-                        ...current,
-                        email: validate(email, password).email,
-                      }));
-                    }}
+                    onInput={(event) => updateEmail(event.currentTarget.value)}
+                    onChange={(event) => updateEmail(event.currentTarget.value)}
+                    onCompositionUpdate={(event) => updateEmail(event.currentTarget.value)}
+                    onCompositionEnd={(event) => updateEmail(event.currentTarget.value)}
+                    onBlur={(event) => updateEmail(event.currentTarget.value)}
                     autoCapitalize="none"
                     autoCorrect="off"
                     spellCheck={false}
-                    lang="en"
                     aria-invalid={Boolean(fieldErrors.email)}
                     aria-describedby={fieldErrors.email ? 'email-error' : undefined}
                     disabled={isSubmitting}
@@ -173,12 +188,7 @@ export function LoginPage({ onLoginSuccess, onLoginStart, onLoginFailure }: Logi
                   >
                     <img
                       src={
-                        '/icons/auth/' +
-                        (isPasswordVisible
-                          ? 'View-off.svg'
-                          : password
-                            ? 'View-on.svg'
-                            : 'View-off.svg')
+                        isPasswordVisible ? '/icons/auth/View-on.svg' : '/icons/auth/View-off.svg'
                       }
                       alt=""
                     />
