@@ -1,8 +1,7 @@
-import { useEffect } from 'react';
-
 import type { ChatRoomMembership, ChatRoomSummary } from '../../../api/chatRooms';
-import { useChatLocation } from '../../../hooks/useChatLocation';
-import { navigateBack } from '../../../shared/navigation';
+import { useChatParticipation } from '../hooks/useChatParticipation';
+import { Gnb } from '../../mainMap/MainPage';
+import { navigate, navigateBack } from '../../../shared/navigation';
 
 export interface ActiveChatRoom {
   room: ChatRoomSummary;
@@ -10,17 +9,9 @@ export interface ActiveChatRoom {
 }
 
 export function ChatEntryPage() {
-  const location = useChatLocation();
-  const { requestLocation, resolution } = location;
-
-  useEffect(() => {
-    void requestLocation();
-  }, [requestLocation]);
-
-  const regionName = resolution?.region.sigungu.name;
-  const preparationMessage = regionName
-    ? `${regionName} 채팅 기능을 준비하고 있어요.`
-    : '채팅 기능을 준비하고 있어요.';
+  const chat = useChatParticipation();
+  const regionName = chat.activeRoom?.room.regionName;
+  const canRetry = ['error', 'full', 'left'].includes(chat.status);
 
   return (
     <main className="chat-entry-screen">
@@ -39,12 +30,39 @@ export function ChatEntryPage() {
           💬
         </span>
         <h1 id="chat-entry-title" className="text-title1-bold">
-          우리 지역 채팅방
+          {regionName ? `${regionName} 채팅방` : '우리 지역 채팅방'}
         </h1>
         <p className="chat-entry-description text-body1-normal-regular" role="status">
-          {preparationMessage}
+          {chat.message}
         </p>
+        <p className="text-body2-normal-regular">정원 25명</p>
+        {canRetry && (
+          <button type="button" className="btn-primary" onClick={chat.retry}>
+            다시 입장
+          </button>
+        )}
+        {chat.isReady && (
+          <button type="button" className="btn-primary" onClick={() => navigate('/')}>
+            퇴장
+          </button>
+        )}
       </section>
+      <Gnb
+        currentDestination="chatRooms"
+        isHidden={false}
+        onNavigate={(destination) => {
+          const paths = {
+            map: '/',
+            records: '/music-records',
+            recordCreate: '/music-records/new',
+            chatRooms: '/chat',
+            my: '/my',
+          };
+          if (destination === 'chatRooms') {
+            if (canRetry) chat.retry();
+          } else navigate(paths[destination]);
+        }}
+      />
     </main>
   );
 }
