@@ -371,19 +371,19 @@ function ProfilePage({
               ref={imageInput}
               type="file"
               hidden
-              accept="image/jpeg,image/png"
+              accept="image/jpeg,image/png,image/webp"
               aria-label="프로필 이미지 선택"
               disabled={saving}
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 event.target.value = '';
                 if (!file || saving) return;
-                if (!['image/jpeg', 'image/png'].includes(file.type)) {
-                  setNotice('JPEG 또는 PNG 이미지를 선택해 주세요.');
+                if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+                  setNotice('JPG, PNG, WEBP 형식의 이미지만 등록할 수 있어요.');
                   return;
                 }
-                if (file.size > 5 * 1024 * 1024) {
-                  setNotice('5 MiB 이하의 이미지를 선택해 주세요.');
+                if (file.size > 10_000_000) {
+                  setNotice('10MB 이하의 이미지만 등록할 수 있어요.');
                   return;
                 }
                 setSelectedImage(file);
