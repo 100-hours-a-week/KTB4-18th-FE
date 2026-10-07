@@ -6,7 +6,13 @@ import {
   resetAuthSessionForTests,
   setAccessToken,
 } from '../../auth-login/api/authSession';
-import { getAllRecommendationHistory, updateMyProfile, withdrawMyAccount } from './mypageApi';
+import {
+  getAllRecommendationHistory,
+  getMyProfileImage,
+  uploadMyProfileImage,
+  updateMyProfile,
+  withdrawMyAccount,
+} from './mypageApi';
 
 describe('mypageApi', () => {
   beforeEach(() => {
@@ -142,5 +148,60 @@ describe('mypageApi', () => {
 
     await expect(withdrawMyAccount('wrong-password')).rejects.toMatchObject({ status: 400 });
     expect(getAccessToken()).toBe('access-token');
+  });
+  it('uploads multipart image with Bearer auth and lets the browser set Content-Type', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        message: 'saved',
+        data: { profile_image_url: '/api/v1/users/me/profile-image/new.png' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const file = new File(['png'], 'avatar.png', { type: 'image/png' });
+    await expect(uploadMyProfileImage(file)).resolves.toEqual({
+      profile_image_url: '/api/v1/users/me/profile-image/new.png',
+    });
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/users/me/profile-image');
+    expect(options.method).toBe('PUT');
+    expect(options.credentials).toBe('include');
+    expect((options.body as FormData).get('image')).toBe(file);
+    expect(new Headers(options.headers).get('Authorization')).toBe('Bearer access-token');
+    expect(new Headers(options.headers).has('Content-Type')).toBe(false);
+  });
+
+  it('loads protected images as blobs through authenticatedFetch without putting tokens in URLs', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response('png', { headers: { 'Content-Type': 'image/png' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const image = await getMyProfileImage('/api/v1/users/me/profile-image/new.png');
+    expect(image.type).toBe('image/png');
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/users/me/profile-image/new.png');
+    expect(options.cache).toBe('no-store');
+    expect(new Headers(options.headers).get('Authorization')).toBe('Bearer access-token');
+    await expect(getMyProfileImage('https://example.com/image.png')).rejects.toMatchObject({
+      status: null,
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('maps upload and protected image server errors into existing request errors', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          Response.json({ message: 'image too large', data: null }, { status: 413 }),
+        ),
+    );
+    await expect(uploadMyProfileImage(new File(['png'], 'avatar.png'))).rejects.toMatchObject({
+      status: 413,
+      messageFromServer: 'image too large',
+    });
+    await expect(getMyProfileImage('/api/v1/users/me/profile-image/new.png')).rejects.toMatchObject(
+      { status: 413 },
+    );
   });
 });

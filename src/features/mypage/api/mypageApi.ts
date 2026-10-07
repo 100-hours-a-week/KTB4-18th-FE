@@ -111,7 +111,7 @@ async function mutation<T>(
 export const getMyProfile = () => request<UserProfile>('/api/v1/users/me');
 
 export const updateMyProfile = (
-  profile: Partial<Pick<UserProfile, 'nickname' | 'birth_year' | 'gender' | 'profile_image_url'>>,
+  profile: Partial<Pick<UserProfile, 'nickname' | 'birth_year' | 'gender'>>,
 ) => mutation<{ user_id: number; updated_at: string }>('/api/v1/users/me', 'PATCH', profile);
 
 export const getMySettings = () => request<UserSettings>('/api/v1/users/me/settings');
@@ -174,3 +174,30 @@ export const getRecommendationHistoryPage = (cursor?: string | null) => {
   if (cursor) query.set('cursor', cursor);
   return request<RecommendationHistory>(`/api/v1/users/me/recommendations?${query.toString()}`);
 };
+
+export const uploadMyProfileImage = (image: File) => {
+  const body = new FormData();
+  body.append('image', image);
+  return request<{ profile_image_url: string }>('/api/v1/users/me/profile-image', {
+    method: 'PUT',
+    body,
+  });
+};
+
+export const isProtectedProfileImage = (source: string) =>
+  /^\/api\/v1\/users\/me\/profile-image\/[^/?#]+\.png$/.test(source);
+
+export async function getMyProfileImage(source: string): Promise<Blob> {
+  if (!isProtectedProfileImage(source)) throw new MyPageRequestError(null);
+  let response: Response;
+  try {
+    response = await authenticatedFetch(
+      `${(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}${source}`,
+      { credentials: 'include', cache: 'no-store' },
+    );
+  } catch (error) {
+    throw new MyPageRequestError(error instanceof AuthRequestError ? error.status : null);
+  }
+  if (!response.ok) throw await readError(response);
+  return response.blob();
+}

@@ -16,12 +16,14 @@ import {
   MyPageRequestError,
   type RecommendationHistoryItem,
   updateMyProfile,
+  uploadMyProfileImage,
   updateMySettings,
   withdrawMyAccount,
   type UserProfile,
   type UserSettings,
 } from '../api/mypageApi';
 import { getAllMusicRecords } from '../../music-record/api/musicRecordsApi';
+import { ProfileImage } from './ProfileImage';
 import { validateProfileFields } from '../model/profileValidation';
 
 type MyPageProps = {
@@ -267,16 +269,24 @@ function ProfilePage({
   profile,
   reload,
   back,
+  onImageSaved,
 }: {
   profile: UserProfile;
   reload: () => void;
   back: () => void;
+  onImageSaved: (url: string) => void;
 }) {
   const [nickname, setNickname] = useState(profile.nickname);
   const [birthYear, setBirthYear] = useState(profile.birth_year?.toString() ?? '');
   const [gender, setGender] = useState(profile.gender ?? '');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const imageInput = useRef<HTMLInputElement>(null);
+  const imageError = useCallback((error: unknown) => {
+    setNotice(message(error, '프로필 이미지를 불러오지 못했어요. 다시 시도해 주세요.'));
+  }, []);
   const validationErrors = validateProfileFields(nickname, birthYear);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -286,7 +296,15 @@ function ProfilePage({
     }
     setSaving(true);
     setNotice('');
+    let isImageSaved = uploadedImageUrl !== null;
     try {
+      if (selectedImage) {
+        const uploaded = await uploadMyProfileImage(selectedImage);
+        setUploadedImageUrl(uploaded.profile_image_url);
+        onImageSaved(uploaded.profile_image_url);
+        setSelectedImage(null);
+        isImageSaved = true;
+      }
       await updateMyProfile({
         nickname: nickname.trim(),
         ...(birthYear ? { birth_year: Number(birthYear) } : {}),
@@ -295,7 +313,16 @@ function ProfilePage({
       setNotice('프로필을 저장했어요.');
       reload();
     } catch (error) {
-      setNotice(message(error, '프로필을 저장하지 못했어요.'));
+      setNotice(
+        isImageSaved
+          ? `프로필 이미지는 저장했지만 프로필 정보는 저장하지 못했어요. ${message(error, '다시 저장해 주세요.')}`
+          : message(
+              error,
+              selectedImage
+                ? '프로필 이미지를 저장하지 못했어요. 다시 시도해 주세요.'
+                : '프로필을 저장하지 못했어요.',
+            ),
+      );
     } finally {
       setSaving(false);
     }
@@ -320,6 +347,55 @@ function ProfilePage({
       </Header>
       <section className="mypage-page-content mypage-profile-page">
         <form className="mypage-form" onSubmit={submit}>
+          <div className="mypage-profile-image-row">
+            <div className="mypage-profile-image-avatar">
+              <ProfileImage
+                source={uploadedImageUrl ?? profile.profile_image_url}
+                userId={profile.user_id}
+                file={selectedImage}
+                onError={imageError}
+                placeholder={
+                  <img
+                    className="mypage-profile-image-placeholder"
+                    src="/icons/mypage/profile-image-placeholder.svg"
+                    alt="기본 프로필 이미지"
+                  />
+                }
+              />
+            </div>
+            <input
+              ref={imageInput}
+              type="file"
+              hidden
+              accept="image/jpeg,image/png"
+              aria-label="프로필 이미지 선택"
+              disabled={saving}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (!file || saving) return;
+                if (!['image/jpeg', 'image/png'].includes(file.type)) {
+                  setNotice('JPEG 또는 PNG 이미지를 선택해 주세요.');
+                  return;
+                }
+                if (file.size > 5 * 1024 * 1024) {
+                  setNotice('5 MiB 이하의 이미지를 선택해 주세요.');
+                  return;
+                }
+                setSelectedImage(file);
+                setUploadedImageUrl(null);
+                setNotice('');
+              }}
+            />
+            <button
+              type="button"
+              className="mypage-profile-image-button"
+              disabled={saving}
+              onClick={() => imageInput.current?.click()}
+            >
+              프로필 변경
+            </button>
+          </div>
           <label>
             <span>
               닉네임 <b aria-hidden="true">*</b>
@@ -1066,7 +1142,13 @@ export function MyPage({ onLogin, onBack, onLogout, onWithdrawn }: MyPageProps) 
   if (view === 'profile' && profile)
     content = (
       <ProfilePage
+        key={profile.user_id}
         profile={profile}
+        onImageSaved={(url) =>
+          setProfile((current) =>
+            current?.user_id === profile.user_id ? { ...current, profile_image_url: url } : current,
+          )
+        }
         reload={() => void reload()}
         back={() => setView('overview')}
       />
@@ -1119,13 +1201,15 @@ export function MyPage({ onLogin, onBack, onLogout, onWithdrawn }: MyPageProps) 
           <>
             <section className="mypage-summary">
               <div className="mypage-avatar">
-                {profile.profile_image_url ? (
-                  <img src={profile.profile_image_url} alt="프로필" />
-                ) : (
-                  <span className="mypage-avatar-placeholder" aria-label="기본 프로필 이미지">
-                    <img src="/icons/mypage/profile.svg" alt="" />
-                  </span>
-                )}
+                <ProfileImage
+                  source={profile.profile_image_url}
+                  userId={profile.user_id}
+                  placeholder={
+                    <span className="mypage-avatar-placeholder" aria-label="기본 프로필 이미지">
+                      <img src="/icons/mypage/profile.svg" alt="" />
+                    </span>
+                  }
+                />
               </div>
               <div>
                 <strong>{profile.nickname}</strong>
