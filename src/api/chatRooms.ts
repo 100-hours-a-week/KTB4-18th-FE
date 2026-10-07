@@ -1,4 +1,8 @@
-import { AuthRequestError, authenticatedFetch } from '../features/auth-login/api/authSession';
+import {
+  AuthRequestError,
+  authenticatedFetch,
+  getAccessToken,
+} from '../features/auth-login/api/authSession';
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
@@ -39,11 +43,13 @@ export interface ChatRoomMembership {
 
 export class ChatRoomRequestError extends Error {
   readonly status: number | null;
+  readonly isBanned: boolean;
 
-  constructor(message: string, status: number | null) {
+  constructor(message: string, status: number | null, isBanned = false) {
     super(message);
     this.name = 'ChatRoomRequestError';
     this.status = status;
+    this.isBanned = isBanned;
   }
 }
 
@@ -62,6 +68,8 @@ function errorMessage(status: number, serverMessage?: string) {
     case 401:
       return '로그인이 만료되었습니다. 다시 로그인해 주세요.';
     case 403:
+      if (serverMessage === 'chat use banned')
+        return '채팅 이용이 일주일간 제한되어 입장할 수 없습니다.';
       return '현재 계정은 채팅방을 이용할 수 없습니다.';
     case 404:
       return '현재 지역의 채팅방을 찾지 못했습니다.';
@@ -99,7 +107,11 @@ async function request<T>(url: string, options: RequestInit): Promise<ApiBody<T>
 
   const body = (await response.json().catch(() => null)) as ApiBody<T> | null;
   if (!response.ok) {
-    throw new ChatRoomRequestError(errorMessage(response.status, body?.message), response.status);
+    throw new ChatRoomRequestError(
+      errorMessage(response.status, body?.message),
+      response.status,
+      response.status === 403 && body?.message === 'chat use banned',
+    );
   }
   if (!body) {
     throw new ChatRoomRequestError('채팅방 응답을 확인할 수 없습니다.', 502);
@@ -164,4 +176,38 @@ export async function joinChatRoom(
     regionId: data.region_id,
     joinedAt: data.joined_at,
   };
+}
+
+// Capture the joining account's token; teardown must never refresh as another account.
+export async function leaveChatRoom(membership: ChatRoomMembership, token = getAccessToken()) {
+  if (!token) return;
+  const current = getAccessToken();
+  try {
+    const identity = (value: string) =>
+      JSON.parse(atob(value.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))) as {
+        sub?: string;
+        sid?: string;
+      };
+    const previous = identity(token);
+    const next = current ? identity(current) : null;
+    if (next && previous.sub && next.sub === previous.sub && next.sid === previous.sid)
+      token = current;
+  } catch {
+    /* Preserve the captured token when its identity cannot be decoded. */
+  }
+  const response = await fetch(
+    `${baseUrl}/api/v1/chat-rooms/${membership.roomId}/members/me?membership_id=${membership.membershipId}`,
+    {
+      method: 'DELETE',
+      credentials: 'include',
+      keepalive: true,
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  if (!response.ok && response.status !== 401 && response.status !== 403) {
+    throw new ChatRoomRequestError(
+      '채팅방 퇴장을 확인하지 못했습니다. 다시 시도해 주세요.',
+      response.status,
+    );
+  }
 }
