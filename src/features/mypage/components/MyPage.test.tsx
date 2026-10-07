@@ -300,7 +300,7 @@ describe('MyPage profile validation', () => {
     );
     expect(screen.getByLabelText('프로필 이미지 선택')).toHaveAttribute(
       'accept',
-      'image/jpeg,image/png',
+      'image/jpeg,image/png,image/webp',
     );
   });
 
@@ -318,12 +318,14 @@ describe('MyPage profile validation', () => {
     fireEvent.change(input, {
       target: { files: [new File(['gif'], 'test.gif', { type: 'image/gif' })] },
     });
-    expect(screen.getByRole('status')).toHaveTextContent('JPEG 또는 PNG');
-    const oversized = new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'large.jpg', {
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'JPG, PNG, WEBP 형식의 이미지만 등록할 수 있어요.',
+    );
+    const oversized = new File([new Uint8Array(10_000_001)], 'large.jpg', {
       type: 'image/jpeg',
     });
     fireEvent.change(input, { target: { files: [oversized] } });
-    expect(screen.getByRole('status')).toHaveTextContent('5 MiB 이하');
+    expect(screen.getByRole('status')).toHaveTextContent('10MB 이하의 이미지만 등록할 수 있어요.');
     expect(screen.getByAltText('프로필')).toHaveAttribute('src', 'blob:preview');
     expect(nickname).toHaveValue('새로운닉');
     expect(URL.revokeObjectURL).not.toHaveBeenCalled();
@@ -407,16 +409,23 @@ describe('MyPage profile validation', () => {
   it('does not PATCH after upload failure and keeps the image for retry', async () => {
     const user = await openProfileEditor();
     vi.mocked(uploadMyProfileImage).mockRejectedValueOnce(
-      new MyPageRequestError(413, '더 작은 이미지를 선택해 주세요.'),
+      new MyPageRequestError(413, '10MB 이하의 이미지만 등록할 수 있어요.'),
     );
     fireEvent.change(screen.getByLabelText('프로필 이미지 선택'), {
       target: { files: [new File(['png'], 'test.png', { type: 'image/png' })] },
     });
     await user.click(screen.getByRole('button', { name: '저장' }));
-    expect(await screen.findByText('더 작은 이미지를 선택해 주세요.')).toBeTruthy();
+    expect(await screen.findByText('10MB 이하의 이미지만 등록할 수 있어요.')).toBeTruthy();
     expect(updateMyProfile).not.toHaveBeenCalled();
     expect(screen.getByAltText('프로필')).toHaveAttribute('src', 'blob:preview');
     expect(screen.getByRole('button', { name: '프로필 변경' })).toBeEnabled();
+    vi.mocked(uploadMyProfileImage).mockResolvedValueOnce({
+      profile_image_url: '/api/v1/users/me/profile-image/new.png',
+    });
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    await screen.findByText('프로필을 저장했어요.');
+    expect(uploadMyProfileImage).toHaveBeenCalledTimes(2);
+    expect(updateMyProfile).toHaveBeenCalledOnce();
   });
   it('opens the picker by keyboard and accepts a JPEG exactly at the size limit', async () => {
     const user = await openProfileEditor();
@@ -425,11 +434,56 @@ describe('MyPage profile validation', () => {
     screen.getByRole('button', { name: '프로필 변경' }).focus();
     await user.keyboard('{Enter}');
     expect(click).toHaveBeenCalledOnce();
-    const file = new File([new Uint8Array(5 * 1024 * 1024)], 'boundary.jpg', {
+    const file = new File([new Uint8Array(10_000_000)], 'boundary.jpg', {
       type: 'image/jpeg',
     });
     fireEvent.change(input, { target: { files: [file] } });
     expect(await screen.findByAltText('프로필')).toHaveAttribute('src', 'blob:preview');
     expect(screen.queryByRole('status')).toBeNull();
+  });
+  it.each([9_999_999, 10_000_000, 10_000_001])(
+    'validates the decimal 10MB boundary at %i bytes',
+    async (size) => {
+      const user = await openProfileEditor();
+      const file = new File([new Uint8Array(size)], 'boundary.webp', { type: 'image/webp' });
+      fireEvent.change(screen.getByLabelText('프로필 이미지 선택'), {
+        target: { files: [file] },
+      });
+      if (size > 10_000_000) {
+        expect(screen.getByRole('status')).toHaveTextContent(
+          '10MB 이하의 이미지만 등록할 수 있어요.',
+        );
+        expect(URL.createObjectURL).not.toHaveBeenCalled();
+      } else {
+        expect(await screen.findByAltText('프로필')).toHaveAttribute('src', 'blob:preview');
+        vi.mocked(uploadMyProfileImage).mockResolvedValueOnce({
+          profile_image_url: '/api/v1/users/me/profile-image/new.png',
+        });
+        await user.click(screen.getByRole('button', { name: '저장' }));
+        await screen.findByText('프로필을 저장했어요.');
+        expect(uploadMyProfileImage).toHaveBeenCalledWith(file);
+      }
+    },
+  );
+
+  it('shows the exact format message after server rejection while preserving a WEBP for retry', async () => {
+    const user = await openProfileEditor();
+    const file = new File(['webp'], 'avatar.webp', { type: 'image/webp' });
+    fireEvent.change(screen.getByLabelText('프로필 이미지 선택'), { target: { files: [file] } });
+    vi.mocked(uploadMyProfileImage).mockRejectedValueOnce(
+      new MyPageRequestError(400, 'JPG, PNG, WEBP 형식의 이미지만 등록할 수 있어요.'),
+    );
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'JPG, PNG, WEBP 형식의 이미지만 등록할 수 있어요.',
+    );
+    expect(screen.getByAltText('프로필')).toHaveAttribute('src', 'blob:preview');
+    expect(updateMyProfile).not.toHaveBeenCalled();
+    vi.mocked(uploadMyProfileImage).mockResolvedValueOnce({
+      profile_image_url: '/api/v1/users/me/profile-image/new.png',
+    });
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    await screen.findByText('프로필을 저장했어요.');
+    expect(uploadMyProfileImage).toHaveBeenNthCalledWith(2, file);
   });
 });

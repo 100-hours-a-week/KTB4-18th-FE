@@ -186,6 +186,20 @@ export const uploadMyProfileImage = (image: File) => {
   return request<{ profile_image_url: string }>('/api/v1/users/me/profile-image', {
     method: 'PUT',
     body,
+  }).catch((error: unknown) => {
+    if (error instanceof MyPageRequestError) {
+      if (error.status === 413) {
+        throw new MyPageRequestError(413, '10MB 이하의 이미지만 등록할 수 있어요.');
+      }
+      if (
+        error.status === 400 &&
+        (error.messageFromServer === 'invalid image' ||
+          error.messageFromServer === 'JPG, PNG, WEBP 형식의 이미지만 등록할 수 있어요.')
+      ) {
+        throw new MyPageRequestError(400, 'JPG, PNG, WEBP 형식의 이미지만 등록할 수 있어요.');
+      }
+    }
+    throw error;
   });
 };
 
