@@ -46,7 +46,7 @@ describe('LoginPage email input', () => {
 
   it('keeps Korean characters during IME composition', () => {
     render(<LoginPage />);
-    const emailInput = screen.getByLabelText('이메일');
+    const emailInput = screen.getByLabelText<HTMLInputElement>('이메일');
     fireEvent.compositionStart(emailInput);
     fireEvent.change(emailInput, { target: { value: 'user@한글.com' } });
 
