@@ -3324,3 +3324,60 @@ button {
 #root:has(.map-bottom-navigation) .music-record-toast {
   bottom: calc(max(1.5rem, env(safe-area-inset-bottom)) + 11rem);
 }
+
+.region-chat-panel {
+  width: min(100%, 30rem);
+  min-width: 0;
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  background: var(--color-bg-primary);
+}
+
+.region-chat-messages {
+  height: min(45dvh, 24rem);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+.region-chat-message {
+  margin-bottom: 1rem;
+}
+
+.region-chat-message time {
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.region-chat-message p {
+  margin: 0.25rem 0;
+  white-space: pre-wrap;
+}
+
+.region-chat-pending span {
+  font-size: 0.75rem;
+}
+
+.region-chat-composer {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.region-chat-composer textarea {
+  width: 100%;
+  min-height: 5rem;
+  padding: 0.75rem;
+  resize: vertical;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 0.5rem;
+  font: inherit;
+}
+
+.region-chat-composer button {
+  min-height: 44px;
+}
+
+.region-chat-composer [role='alert'] {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

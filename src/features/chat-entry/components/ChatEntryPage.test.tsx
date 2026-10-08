@@ -19,12 +19,56 @@ describe('ChatEntryPage', () => {
       activeRoom: null,
       isReady: false,
       retry,
+      send: vi.fn().mockReturnValue(true),
+      retryMessage: vi.fn().mockReturnValue(true),
     });
   });
 
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+  });
+
+  it('연결 전에는 입력을 막고 텍스트는 HTML을 해석하지 않고 표시한다', () => {
+    const state = useChatParticipation();
+    vi.mocked(useChatParticipation).mockReturnValue({
+      ...state,
+      messages: [
+        {
+          messageId: 1,
+          clientMessageId: 'id',
+          roomId: 700,
+          userId: 7,
+          nickname: '닉네임',
+          content: '<img src=x onerror=alert(1)>',
+          createdAt: '2026-10-08T00:00:00Z',
+        },
+      ],
+    });
+    render(<ChatEntryPage />);
+    expect(screen.getByRole('textbox', { name: '메시지' })).toBeDisabled();
+    expect(screen.getByRole('log')).toHaveTextContent('<img src=x onerror=alert(1)>');
+    expect(screen.getByRole('log').querySelector('img')).toBeNull();
+  });
+
+  it('Enter는 전송하고 Shift+Enter와 한글 조합 중 Enter는 전송하지 않는다', () => {
+    const state = useChatParticipation();
+    const send = vi.fn().mockReturnValue(true);
+    vi.mocked(useChatParticipation).mockReturnValue({
+      ...state,
+      status: 'ready',
+      isReady: true,
+      send,
+    });
+    render(<ChatEntryPage />);
+    const input = screen.getByRole('textbox', { name: '메시지' });
+    fireEvent.change(input, { target: { value: '안녕' } });
+    fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+    expect(send).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(send).toHaveBeenCalledWith('안녕');
+    expect(input).toHaveValue('');
   });
 
   it('서비스 내부에서 진입하면 상단 뒤로가기 버튼으로 이전 경로에 복귀한다', async () => {
@@ -59,6 +103,8 @@ describe('ChatEntryPage', () => {
       message: '채팅방에 입장했어요.',
       isReady: true,
       retry,
+      send: vi.fn().mockReturnValue(true),
+      retryMessage: vi.fn().mockReturnValue(true),
       activeRoom: {
         room: {
           roomId: 700,
@@ -89,6 +135,8 @@ describe('ChatEntryPage', () => {
       activeRoom: null,
       isReady: false,
       retry,
+      send: vi.fn().mockReturnValue(true),
+      retryMessage: vi.fn().mockReturnValue(true),
     });
     render(<ChatEntryPage />);
     expect(screen.getByRole('status')).toHaveTextContent('정원이 가득 찼습니다.');
@@ -104,6 +152,8 @@ describe('ChatEntryPage', () => {
       activeRoom: null,
       isReady: false,
       retry,
+      send: vi.fn().mockReturnValue(true),
+      retryMessage: vi.fn().mockReturnValue(true),
     });
     render(<ChatEntryPage />);
     expect(screen.queryByRole('button', { name: '다시 입장' })).not.toBeInTheDocument();
