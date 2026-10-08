@@ -28,6 +28,9 @@ export interface ChatParticipationState {
   message: string;
   activeRoom: ActiveChatRoom | null;
   isReady: boolean;
+  currentUserId?: number | null;
+  connectedCount?: number | null;
+  presenceStatus?: 'loading' | 'live' | 'disconnected' | 'error';
   messages?: ChatMessage[];
   pendingMessages?: PendingChatMessage[];
   sendNotice?: string;
@@ -46,6 +49,11 @@ export class ChatParticipation {
   private controller = new AbortController();
   private active: ActiveChatRoom | null = null;
   private token: string | null = null;
+  private currentUserId: number | null = null;
+  private connectedCount: number | null = null;
+  private presenceVersion = -1;
+  private presenceStatus: NonNullable<ChatParticipationState['presenceStatus']> = 'loading';
+  private presenceTimer: number | undefined;
   private closeConnection:
     ((() => void) & { send?: (id: string, content: string) => boolean }) | null = null;
   private messages: ChatMessage[] = [];
@@ -71,6 +79,9 @@ export class ChatParticipation {
         status,
         message,
         activeRoom: this.active,
+        currentUserId: this.currentUserId,
+        connectedCount: this.connectedCount,
+        presenceStatus: this.presenceStatus,
         isReady: status === 'ready',
         messages: [...this.messages],
         pendingMessages: [...this.pending.values()],
@@ -109,10 +120,35 @@ export class ChatParticipation {
       }
       this.active = { room, membership };
       this.token = token;
+      try {
+        const claims = JSON.parse(
+          atob((token ?? '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/')),
+        ) as { sub?: unknown };
+        const userId =
+          typeof claims.sub === 'string' && /^[1-9][0-9]*$/.test(claims.sub)
+            ? Number(claims.sub)
+            : null;
+        this.currentUserId = userId !== null && Number.isSafeInteger(userId) ? userId : null;
+      } catch {
+        this.currentUserId = null;
+      }
       this.clearMessages();
       this.closeConnection = connectChatRoom(
         membership,
         (status, message) => {
+          if (status === 'connecting' || status === 'reconnecting') {
+            window.clearTimeout(this.presenceTimer);
+            this.connectedCount = null;
+            this.presenceVersion = -1;
+            this.presenceStatus = status === 'reconnecting' ? 'disconnected' : 'loading';
+          }
+          if (status === 'ready' && this.connectedCount === null) {
+            this.presenceTimer = window.setTimeout(() => {
+              if (this.isStopped || this.connectedCount !== null) return;
+              this.presenceStatus = 'error';
+              this.update(this.status, this.statusMessage);
+            }, 10_000);
+          }
           if (status === 'reconnecting') {
             this.pending.forEach((item) => {
               if (item.status === 'sending') {
@@ -146,11 +182,16 @@ export class ChatParticipation {
     this.active = null;
     const token = this.token;
     this.token = null;
+    this.currentUserId = null;
     this.update(this.status, this.statusMessage);
     return active ? transition(() => leaveChatRoom(active.membership, token)) : Promise.resolve();
   }
 
   private clearMessages() {
+    window.clearTimeout(this.presenceTimer);
+    this.connectedCount = null;
+    this.presenceVersion = -1;
+    this.presenceStatus = 'loading';
     this.pendingTimers.forEach((timer) => window.clearTimeout(timer));
     this.pendingTimers.clear();
     this.messages = [];
@@ -161,6 +202,15 @@ export class ChatParticipation {
   private receive(event: ChatEvent) {
     const membership = this.active?.membership;
     if (!membership) return;
+    if (event.type === 'CHAT_PRESENCE') {
+      if (event.roomId !== membership.roomId || event.version <= this.presenceVersion) return;
+      window.clearTimeout(this.presenceTimer);
+      this.connectedCount = event.connectedCount;
+      this.presenceVersion = event.version;
+      this.presenceStatus = 'live';
+      this.update(this.status, this.statusMessage);
+      return;
+    }
     if (event.type === 'CHAT_BANNED') {
       if (event.membershipId !== membership.membershipId || event.roomId !== membership.roomId)
         return;

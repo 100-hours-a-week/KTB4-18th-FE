@@ -16,7 +16,9 @@ vi.mock('../../../api/chatRooms', async (original) => ({
   joinChatRoom: vi.fn(),
   leaveChatRoom: vi.fn(),
 }));
-vi.mock('../../auth-login/api/authSession', () => ({ getAccessToken: () => 'account-token' }));
+vi.mock('../../auth-login/api/authSession', () => ({
+  getAccessToken: () => `header.${btoa(JSON.stringify({ sub: '7' }))}.signature`,
+}));
 vi.mock('./chatConnection', () => ({ connectChatRoom: vi.fn() }));
 vi.mock('./resolveCurrentChatLocation', () => ({ resolveCurrentChatLocation: vi.fn() }));
 
@@ -146,6 +148,32 @@ describe('지역 채팅 메시지 처리', () => {
   });
 });
 
+describe('접속 인원 동기화', () => {
+  it('전체 인원과 버전을 반영하고 이전 버전·다른 방을 무시한다', async () => {
+    await participation.start();
+    const [, status, event] = vi.mocked(connectChatRoom).mock.calls.at(-1)!;
+    status('ready', '입장');
+    expect(states.at(-1)?.currentUserId).toBe(7);
+    expect(states.at(-1)?.connectedCount).toBeNull();
+    event!({ type: 'CHAT_PRESENCE', roomId: 700, connectedCount: 2, version: 5 });
+    event!({ type: 'CHAT_PRESENCE', roomId: 700, connectedCount: 1, version: 4 });
+    event!({ type: 'CHAT_PRESENCE', roomId: 701, connectedCount: 10, version: 100 });
+    expect(states.at(-1)?.connectedCount).toBe(2);
+    status('reconnecting', '단절');
+    expect(states.at(-1)?.connectedCount).toBeNull();
+    expect(states.at(-1)?.presenceStatus).toBe('disconnected');
+    status('connecting', '연결');
+    status('ready', '입장');
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(states.at(-1)?.presenceStatus).toBe('error');
+    event!({ type: 'CHAT_PRESENCE', roomId: 700, connectedCount: 1, version: 1 });
+    expect(states.at(-1)?.connectedCount).toBe(1);
+    expect(states.at(-1)?.presenceStatus).toBe('live');
+    status('left', '퇴장');
+    expect(states.at(-1)?.connectedCount).toBeNull();
+  });
+});
+
 describe('지역 채팅 참여 흐름', () => {
   it('위치, 방 조회, 입장을 순서대로 진행하고 구독 확인 전 준비 상태가 되지 않는다', async () => {
     await participation.start();
@@ -157,7 +185,10 @@ describe('지역 채팅 참여 흐름', () => {
     const stopped = participation.stop();
     expect(close).toHaveBeenCalledOnce();
     await stopped;
-    expect(leaveChatRoom).toHaveBeenCalledWith(membership, 'account-token');
+    expect(leaveChatRoom).toHaveBeenCalledWith(
+      membership,
+      `header.${btoa(JSON.stringify({ sub: '7' }))}.signature`,
+    );
   });
 
   it('화면을 나간 후 늦게 도착한 입장 성공은 퇴장 처리하고 연결하지 않는다', async () => {
@@ -174,7 +205,10 @@ describe('지역 채팅 참여 흐름', () => {
     complete(membership);
     await start;
     expect(connectChatRoom).not.toHaveBeenCalled();
-    expect(leaveChatRoom).toHaveBeenCalledWith(membership, 'account-token');
+    expect(leaveChatRoom).toHaveBeenCalledWith(
+      membership,
+      `header.${btoa(JSON.stringify({ sub: '7' }))}.signature`,
+    );
   });
 
   it('새 화면 입장은 이전 화면의 늦은 입장과 퇴장 완료를 기다린다', async () => {
@@ -221,7 +255,10 @@ describe('지역 채팅 참여 흐름', () => {
     );
     await vi.advanceTimersByTimeAsync(10 * 60 * 1_000 + 15_000);
     expect(close).toHaveBeenCalledOnce();
-    expect(leaveChatRoom).toHaveBeenCalledWith(membership, 'account-token');
+    expect(leaveChatRoom).toHaveBeenCalledWith(
+      membership,
+      `header.${btoa(JSON.stringify({ sub: '7' }))}.signature`,
+    );
     expect(states.at(-1)?.status).toBe('error');
     expect(states.at(-1)?.activeRoom).toBeNull();
   });
