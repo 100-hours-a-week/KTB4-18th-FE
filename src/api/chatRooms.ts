@@ -4,6 +4,8 @@ import {
   getAccessToken,
 } from '../features/auth-login/api/authSession';
 
+import { chatBanNotice } from '../features/chat-entry/services/chatMessages';
+
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
 interface ApiBody<T> {
@@ -107,8 +109,18 @@ async function request<T>(url: string, options: RequestInit): Promise<ApiBody<T>
 
   const body = (await response.json().catch(() => null)) as ApiBody<T> | null;
   if (!response.ok) {
+    const errorData: unknown = body?.data;
+    const bannedUntil =
+      errorData &&
+      typeof errorData === 'object' &&
+      'banned_until' in errorData &&
+      typeof errorData.banned_until === 'string'
+        ? errorData.banned_until
+        : undefined;
     throw new ChatRoomRequestError(
-      errorMessage(response.status, body?.message),
+      response.status === 403 && body?.message === 'chat use banned'
+        ? chatBanNotice(bannedUntil)
+        : errorMessage(response.status, body?.message),
       response.status,
       response.status === 403 && body?.message === 'chat use banned',
     );

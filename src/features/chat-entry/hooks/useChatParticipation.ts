@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   AUTH_EXPIRED_EVENT,
@@ -17,9 +17,11 @@ const INITIAL_STATE: ChatParticipationState = {
 
 export function useChatParticipation() {
   const [state, setState] = useState(INITIAL_STATE);
+  const current = useRef<ChatParticipation | null>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const participation = new ChatParticipation(setState);
+    current.current = participation;
     void participation.start();
     const end = () => {
       void participation.stop().catch(() => undefined);
@@ -47,8 +49,14 @@ export function useChatParticipation() {
       window.removeEventListener('pagehide', end);
       window.removeEventListener(AUTH_EXPIRED_EVENT, end);
       window.removeEventListener(ACCESS_TOKEN_CHANGED_EVENT, onToken);
+      current.current = null;
       void participation.stop().catch(() => undefined);
     };
   }, [attempt]);
-  return { ...state, retry: () => setAttempt((value) => value + 1) };
+  return {
+    ...state,
+    retry: () => setAttempt((value) => value + 1),
+    send: (content: string) => current.current?.send(content) ?? false,
+    retryMessage: (id: string) => current.current?.retryMessage(id) ?? false,
+  };
 }
