@@ -8,6 +8,7 @@ export interface ChatMessage {
   createdAt: string;
 }
 export type ChatEvent =
+  | { type: 'CHAT_PRESENCE'; roomId: number; connectedCount: number; version: number }
   | { type: 'CHAT_BANNED'; roomId: number; membershipId: number; bannedUntil: string }
   | { type: 'CHAT_MESSAGE'; message: ChatMessage }
   | { type: 'CHAT_ACK'; membershipId: number; message: ChatMessage }
@@ -55,6 +56,24 @@ export function parseChatEvent(body: string): ChatEvent | null {
     const event: unknown = JSON.parse(body);
     if (!object(event) || !object(event.data)) return null;
     const data = event.data;
+    if (
+      event.type === 'CHAT_PRESENCE' &&
+      number(data.room_id) &&
+      typeof data.connected_count === 'number' &&
+      Number.isSafeInteger(data.connected_count) &&
+      data.connected_count >= 0 &&
+      data.connected_count <= 25 &&
+      typeof data.version === 'number' &&
+      Number.isSafeInteger(data.version) &&
+      data.version >= 0
+    ) {
+      return {
+        type: 'CHAT_PRESENCE',
+        roomId: data.room_id,
+        connectedCount: data.connected_count,
+        version: data.version,
+      };
+    }
     if (
       event.type === 'CHAT_BANNED' &&
       number(data.room_id) &&

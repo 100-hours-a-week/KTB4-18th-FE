@@ -35,6 +35,18 @@ describe('채팅 메시지 이벤트 계약', () => {
     expect(parseChatEvent(body)).toBeNull();
   });
 
+  it('접속 인원 0은 유효하지만 음수·정원 초과·불완전한 버전은 거부한다', () => {
+    const encode = (connected_count: number, version: number) =>
+      JSON.stringify({
+        type: 'CHAT_PRESENCE',
+        data: { room_id: 700, connected_count, version },
+      });
+    expect(parseChatEvent(encode(0, 0))).toMatchObject({ connectedCount: 0, version: 0 });
+    expect(parseChatEvent(encode(-1, 1))).toBeNull();
+    expect(parseChatEvent(encode(26, 1))).toBeNull();
+    expect(parseChatEvent(encode(1, 1.5))).toBeNull();
+  });
+
   it('제재 종료 시각을 검증하고 로컬 시각으로 안내한다', () => {
     expect(
       parseChatEvent(

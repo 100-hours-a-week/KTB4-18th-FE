@@ -21,6 +21,7 @@ export function connectChatRoom(
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   let isStopped = false;
   let isReady = false;
+  let generation = 0;
   let receiptTimer: number | undefined;
   let reconnectDeadline: number | undefined;
   let hasConnected = false;
@@ -68,9 +69,11 @@ export function connectChatRoom(
     onConnect: () => {
       if (isStopped) return;
       isReady = false;
+      const connectionGeneration = ++generation;
+      onStatus('connecting', '채팅방에 연결하고 있어요.');
       let remaining = 2;
       const receive = (frame: { body: string }) => {
-        if (isStopped) return;
+        if (isStopped || generation !== connectionGeneration) return;
         const event = parseChatEvent(frame.body);
         if (event?.type === 'CHAT_BANNED') {
           terminal('banned', chatBanNotice(event.bannedUntil));
@@ -86,7 +89,7 @@ export function connectChatRoom(
       ]) {
         const receipt = `chat-ready-${membership.membershipId}-${crypto.randomUUID()}`;
         client.watchForReceipt(receipt, () => {
-          if (isStopped || --remaining !== 0) return;
+          if (isStopped || generation !== connectionGeneration || --remaining !== 0) return;
           clearTimers();
           hasConnected = true;
           isReady = true;
@@ -106,6 +109,7 @@ export function connectChatRoom(
     onWebSocketClose: (event) => {
       if (isStopped) return;
       isReady = false;
+      generation += 1;
       window.clearTimeout(receiptTimer);
       if (event.code === 4100) {
         terminal('left', '다른 탭 또는 기기에서 퇴장하여 채팅이 종료됐어요.');

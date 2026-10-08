@@ -99,6 +99,28 @@ describe('채팅 WebSocket 연결', () => {
     expect(client.deactivate).toHaveBeenCalledOnce();
   });
 
+  it('재연결 이전의 구독 콜백과 receipt는 새 연결 상태를 덮지 못한다', () => {
+    const event = vi.fn();
+    const status = vi.fn();
+    connectChatRoom(membership, status, event);
+    config?.onConnect?.({} as never);
+    const oldReceive = client.subscribe.mock.calls[0][1];
+    const oldReceipts = [...receipts];
+    config?.onWebSocketClose?.({ code: 1006 } as CloseEvent);
+    config?.onConnect?.({} as never);
+    oldReceive({
+      body: JSON.stringify({
+        type: 'CHAT_PRESENCE',
+        data: { room_id: 700, connected_count: 2, version: 10 },
+      }),
+    });
+    oldReceipts.forEach((callback) => callback());
+    expect(event).not.toHaveBeenCalled();
+    expect(status).not.toHaveBeenCalledWith('ready', expect.any(String));
+    receipts.slice(2).forEach((callback) => callback());
+    expect(status).toHaveBeenLastCalledWith('ready', expect.any(String));
+  });
+
   it('다른 기기의 실제 퇴장은 재연결 없이 종료한다', async () => {
     const status = vi.fn();
     connectChatRoom(membership, status);
