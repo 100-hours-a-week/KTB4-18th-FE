@@ -16,20 +16,22 @@ const membership = {
   joinedAt: '2026-10-07T00:00:00Z',
 };
 let config: ConstructorParameters<typeof Client>[0];
-let receipt: () => void;
+let receipts: (() => void)[] = [];
 const client = {
   connectHeaders: {},
   activate: vi.fn(),
   deactivate: vi.fn().mockResolvedValue(undefined),
   subscribe: vi.fn(),
+  publish: vi.fn(),
   watchForReceipt: vi.fn((_id, callback) => {
-    receipt = callback;
+    receipts.push(callback);
   }),
 };
 
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
+  receipts = [];
   vi.mocked(Client).mockImplementation(function (options) {
     config = options;
     return client as unknown as Client;
@@ -55,9 +57,46 @@ describe('채팅 WebSocket 연결', () => {
       expect.objectContaining({ receipt: expect.any(String) }),
     );
     expect(status).not.toHaveBeenCalledWith('ready', expect.any(String));
-    receipt();
+    receipts[0]();
+    expect(status).not.toHaveBeenCalledWith('ready', expect.any(String));
+    receipts[1]();
     expect(status).toHaveBeenLastCalledWith('ready', '채팅방에 입장했어요.');
     stop();
+  });
+
+  it('두 구독 완료 전에는 전송하지 않고 준비 후 이벤트와 JSON 전송을 연결한다', () => {
+    const event = vi.fn();
+    const connection = connectChatRoom(membership, vi.fn(), event);
+    expect(connection.send('id', 'hello')).toBe(false);
+    config?.onConnect?.({} as never);
+    receipts[0]();
+    expect(connection.send('id', 'hello')).toBe(false);
+    receipts[1]();
+    expect(connection.send('id', 'hello')).toBe(true);
+    expect(client.publish).toHaveBeenCalledWith({
+      destination: '/app/chat-rooms/700/messages',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ client_message_id: 'id', content: 'hello' }),
+    });
+    client.subscribe.mock.calls[1][1]({ body: '{invalid' });
+    expect(event).not.toHaveBeenCalled();
+    config?.onWebSocketClose?.({ code: 1006 } as CloseEvent);
+    expect(connection.send('id', 'hello')).toBe(false);
+    connection();
+  });
+
+  it('제재 close가 이벤트보다 먼저 와도 종료 시각을 안내하고 재연결을 중지한다', () => {
+    const status = vi.fn();
+    const connection = connectChatRoom(membership, status);
+    config?.onConnect?.({} as never);
+    receipts.forEach((receipt) => receipt());
+    config?.onWebSocketClose?.({
+      code: 4101,
+      reason: 'CHAT_BANNED|2026-10-15T00:00:00Z',
+    } as CloseEvent);
+    expect(status).toHaveBeenLastCalledWith('banned', expect.stringContaining('제한 종료:'));
+    expect(connection.send('id', 'hello')).toBe(false);
+    expect(client.deactivate).toHaveBeenCalledOnce();
   });
 
   it('다른 기기의 실제 퇴장은 재연결 없이 종료한다', async () => {

@@ -1,3 +1,5 @@
+import { chatBanNotice, parseChatEvent, type ChatEvent } from './chatMessages';
+
 import { Client } from '@stomp/stompjs';
 
 import type { ChatRoomMembership } from '../../../api/chatRooms';
@@ -13,10 +15,12 @@ export type ChatConnectionStatus =
 export function connectChatRoom(
   membership: ChatRoomMembership,
   onStatus: (status: ChatConnectionStatus, message: string) => void,
+  onEvent?: (event: ChatEvent) => void,
 ) {
   const url = new URL('/ws', import.meta.env.VITE_API_BASE_URL || window.location.origin);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   let isStopped = false;
+  let isReady = false;
   let receiptTimer: number | undefined;
   let reconnectDeadline: number | undefined;
   let hasConnected = false;
@@ -29,6 +33,7 @@ export function connectChatRoom(
   };
   const stop = () => {
     isStopped = true;
+    isReady = false;
     clearTimers();
     void client.deactivate({ force: true });
   };
@@ -62,24 +67,37 @@ export function connectChatRoom(
     },
     onConnect: () => {
       if (isStopped) return;
-      const receipt = `chat-ready-${membership.membershipId}-${crypto.randomUUID()}`;
-      client.watchForReceipt(receipt, () => {
+      isReady = false;
+      let remaining = 2;
+      const receive = (frame: { body: string }) => {
         if (isStopped) return;
-        clearTimers();
-        hasConnected = true;
-        onStatus('ready', '채팅방에 입장했어요.');
-      });
+        const event = parseChatEvent(frame.body);
+        if (event?.type === 'CHAT_BANNED') {
+          terminal('banned', chatBanNotice(event.bannedUntil));
+        } else if (event) onEvent?.(event);
+      };
       receiptTimer = window.setTimeout(
         () => terminal('error', '채팅방 구독을 확인하지 못했습니다. 다시 입장해 주세요.'),
         10_000,
       );
-      // #134 will attach the message consumer. The server receipt establishes readiness.
-      client.subscribe(`/topic/chat-rooms/${membership.roomId}`, () => {}, { receipt });
+      for (const destination of [
+        `/topic/chat-rooms/${membership.roomId}`,
+        '/user/queue/chat-events',
+      ]) {
+        const receipt = `chat-ready-${membership.membershipId}-${crypto.randomUUID()}`;
+        client.watchForReceipt(receipt, () => {
+          if (isStopped || --remaining !== 0) return;
+          clearTimers();
+          hasConnected = true;
+          isReady = true;
+          onStatus('ready', '채팅방에 입장했어요.');
+        });
+        client.subscribe(destination, receive, { receipt });
+      }
     },
     onStompError: (frame) => {
       const code = frame.headers.message;
-      if (code === 'CHAT_BANNED')
-        terminal('banned', '채팅 이용이 일주일간 제한되어 입장할 수 없습니다.');
+      if (code === 'CHAT_BANNED') terminal('banned', chatBanNotice(frame.headers.banned_until));
       else if (code === 'CHAT_FULL') terminal('full', '현재 지역 채팅방의 정원이 가득 찼습니다.');
       else if (code === 'CHAT_LEFT')
         terminal('left', '다른 탭 또는 기기에서 퇴장하여 채팅이 종료됐어요.');
@@ -87,11 +105,12 @@ export function connectChatRoom(
     },
     onWebSocketClose: (event) => {
       if (isStopped) return;
+      isReady = false;
       window.clearTimeout(receiptTimer);
       if (event.code === 4100) {
         terminal('left', '다른 탭 또는 기기에서 퇴장하여 채팅이 종료됐어요.');
       } else if (event.code === 4101) {
-        terminal('banned', '채팅 이용이 일주일간 제한되어 입장할 수 없습니다.');
+        terminal('banned', chatBanNotice(event.reason?.split('|')[1]));
       } else {
         onStatus('reconnecting', '연결이 끊겼어요. 채팅방에 다시 연결하고 있습니다.');
         reconnectDeadline ??= window.setTimeout(
@@ -109,5 +128,15 @@ export function connectChatRoom(
   });
   onStatus('connecting', '채팅방에 연결하고 있어요.');
   client.activate();
-  return stop;
+  return Object.assign(stop, {
+    send(clientMessageId: string, content: string) {
+      if (isStopped || !isReady) return false;
+      client.publish({
+        destination: `/app/chat-rooms/${membership.roomId}/messages`,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ client_message_id: clientMessageId, content }),
+      });
+      return true;
+    },
+  });
 }
