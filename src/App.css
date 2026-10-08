@@ -1347,7 +1347,7 @@ button {
   display: grid;
   min-height: 100dvh;
   padding: calc(max(1rem, env(safe-area-inset-top)) + 4rem) 1.25rem
-    max(1.5rem, env(safe-area-inset-bottom));
+    calc(7rem + env(safe-area-inset-bottom));
   place-items: center;
   background: var(--color-bg-secondary);
 }

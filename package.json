@@ -16,6 +16,7 @@
     "@karrotmarket/react-monochrome-icon": "^1.27.0",
     "@seed-design/react": "^2.5.0",
     "@sentry/react": "^11.2.0",
+    "@stomp/stompjs": "^7.3.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

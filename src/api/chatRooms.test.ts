@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { setAccessToken } from '../features/auth-login/api/authSession';
-import { ChatRoomRequestError, getRegionChatRoom, joinChatRoom } from './chatRooms';
+import { ChatRoomRequestError, getRegionChatRoom, joinChatRoom, leaveChatRoom } from './chatRooms';
 
 describe('chat room API', () => {
   beforeEach(() => setAccessToken('access-token'));
@@ -126,5 +126,32 @@ describe('chat room API', () => {
     expect(error).toBeInstanceOf(ChatRoomRequestError);
     expect(error).toMatchObject({ status: null });
     expect((error as Error).message).toContain('연결 상태');
+  });
+  it('퇴장은 참여 이력 ID와 캡처한 계정 토큰을 보내고 204를 처리한다', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    setAccessToken('another-account-token');
+    await leaveChatRoom(
+      { membershipId: 900, roomId: 700, regionId: 25, joinedAt: '2026-10-07T00:00:00Z' },
+      'original-account-token',
+    );
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/chat-rooms/700/members/me?membership_id=900');
+    expect(options).toMatchObject({ method: 'DELETE', keepalive: true });
+    expect(new Headers(options.headers).get('Authorization')).toBe('Bearer original-account-token');
+  });
+
+  it('제재된 계정의 403 응답은 일반 권한 오류와 구분한다', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ message: 'chat use banned' }), { status: 403 }),
+        ),
+    );
+    await expect(
+      joinChatRoom(700, 'location-token', new AbortController().signal),
+    ).rejects.toMatchObject({ isBanned: true, status: 403 });
   });
 });
