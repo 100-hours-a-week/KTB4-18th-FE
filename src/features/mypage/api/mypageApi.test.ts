@@ -6,7 +6,13 @@ import {
   resetAuthSessionForTests,
   setAccessToken,
 } from '../../auth-login/api/authSession';
-import { getAllRecommendationHistory, updateMyProfile, withdrawMyAccount } from './mypageApi';
+import {
+  getAllRecommendationHistory,
+  getMyProfileImage,
+  uploadMyProfileImage,
+  updateMyProfile,
+  withdrawMyAccount,
+} from './mypageApi';
 
 describe('mypageApi', () => {
   beforeEach(() => {
@@ -142,5 +148,126 @@ describe('mypageApi', () => {
 
     await expect(withdrawMyAccount('wrong-password')).rejects.toMatchObject({ status: 400 });
     expect(getAccessToken()).toBe('access-token');
+  });
+  it.each(['image/jpeg', 'image/png', 'image/webp'])(
+    'uploads %s multipart image with Bearer auth and browser Content-Type',
+    async (type) => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        Response.json({
+          message: 'saved',
+          data: { profile_image_url: '/api/v1/users/me/profile-image/new.png' },
+        }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      const file = new File(['image contents'], 'avatar', { type });
+      await expect(uploadMyProfileImage(file)).resolves.toEqual({
+        profile_image_url: '/api/v1/users/me/profile-image/new.png',
+      });
+      const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('/api/v1/users/me/profile-image');
+      expect(options.method).toBe('PUT');
+      expect(options.credentials).toBe('include');
+      expect((options.body as FormData).get('image')).toBe(file);
+      expect(((options.body as FormData).get('image') as File).type).toBe(type);
+      expect(((options.body as FormData).get('image') as File).size).toBe(14);
+      expect(new Headers(options.headers).get('Authorization')).toBe('Bearer access-token');
+      expect(new Headers(options.headers).has('Content-Type')).toBe(false);
+    },
+  );
+
+  it('loads protected images as blobs through authenticatedFetch without putting tokens in URLs', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response('png', { headers: { 'Content-Type': 'image/png' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const image = await getMyProfileImage('/api/v1/users/me/profile-image/new.png');
+    expect(image.type).toBe('image/png');
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/users/me/profile-image/new.png');
+    expect(options.cache).toBe('no-store');
+    expect(new Headers(options.headers).get('Authorization')).toBe('Bearer access-token');
+    await expect(getMyProfileImage('https://example.com/image.png')).rejects.toMatchObject({
+      status: null,
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('maps upload and protected image server errors into existing request errors', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          Response.json({ message: 'image too large', data: null }, { status: 413 }),
+        ),
+    );
+    await expect(uploadMyProfileImage(new File(['png'], 'avatar.png'))).rejects.toMatchObject({
+      status: 413,
+      messageFromServer: '10MB 이하의 이미지만 등록할 수 있어요.',
+    });
+    await expect(getMyProfileImage('/api/v1/users/me/profile-image/new.png')).rejects.toMatchObject(
+      { status: 413 },
+    );
+  });
+  it.each([null, 'image is too large', 'storage failure'])(
+    'maps any upload 413 message (%s) to the size guidance',
+    async (message) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(Response.json({ message, data: null }, { status: 413 })),
+      );
+      await expect(uploadMyProfileImage(new File(['webp'], 'avatar.webp'))).rejects.toMatchObject({
+        status: 413,
+        messageFromServer: '10MB 이하의 이미지만 등록할 수 있어요.',
+      });
+    },
+  );
+
+  it.each(['invalid image', 'JPG, PNG, WEBP 형식의 이미지만 등록할 수 있어요.'])(
+    'maps known upload format rejection %s',
+    async (message) => {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockImplementation(async () => Response.json({ message, data: null }, { status: 400 })),
+      );
+      await expect(uploadMyProfileImage(new File(['webp'], 'avatar.webp'))).rejects.toMatchObject({
+        status: 400,
+        messageFromServer: 'JPG, PNG, WEBP 형식의 이미지만 등록할 수 있어요.',
+      });
+      await expect(updateMyProfile({ nickname: '새 닉네임' })).rejects.toMatchObject({
+        status: 400,
+        messageFromServer: message,
+      });
+    },
+  );
+
+  it.each([
+    [400, 'storage failure'],
+    [500, 'invalid image'],
+    [403, 'forbidden'],
+  ])('preserves upload error %i %s', async (status, message) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(Response.json({ message, data: null }, { status })),
+    );
+    await expect(uploadMyProfileImage(new File(['webp'], 'avatar.webp'))).rejects.toMatchObject({
+      status,
+      messageFromServer: message,
+    });
+  });
+
+  it('preserves network and expired authentication upload errors', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network failure')));
+    await expect(uploadMyProfileImage(new File(['webp'], 'avatar.webp'))).rejects.toMatchObject({
+      status: null,
+      messageFromServer: null,
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
+    await expect(uploadMyProfileImage(new File(['webp'], 'avatar.webp'))).rejects.toMatchObject({
+      status: 401,
+      messageFromServer: null,
+    });
   });
 });

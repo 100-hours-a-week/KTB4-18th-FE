@@ -103,7 +103,7 @@ type GnbItem = {
   iconPath: string;
 };
 
-function Gnb({ currentDestination, isHidden, onNavigate }: GnbProps) {
+export function Gnb({ currentDestination, isHidden, onNavigate }: GnbProps) {
   const items: GnbItem[] = [
     { destination: 'map', label: '지도', iconPath: '/icons/map.svg' },
     { destination: 'records', label: '기록', iconPath: '/icons/records.svg' },

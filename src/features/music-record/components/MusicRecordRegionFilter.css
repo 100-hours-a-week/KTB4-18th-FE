@@ -1,0 +1,51 @@
+.music-record-region-filter-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.music-record-region-filter-row::-webkit-scrollbar {
+  display: none;
+}
+
+.music-record-region-filter-button {
+  box-sizing: border-box;
+  height: 36px;
+  min-width: 58px;
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border: 1px solid #e5e5ec;
+  border-radius: 100px;
+  background: #ffffff;
+  color: #111111;
+  font-family: Pretendard, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: -0.325px;
+  cursor: pointer;
+}
+
+.music-record-region-filter-button[aria-pressed='true'] {
+  border-color: #000000;
+  background: #171717;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.music-record-region-filter-button:disabled {
+  cursor: default;
+}
+
+.music-record-region-filter-button:focus-visible {
+  outline: 2px solid #111111;
+  outline-offset: -3px;
+}
+
+.music-record-region-filter-message {
+  margin: 0 0 12px;
+  font-size: 13px;
+}

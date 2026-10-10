@@ -613,11 +613,7 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
                   disabled={submitting}
                 >
                   <img
-                    src={
-                      isPasswordVisible
-                        ? '/icons/auth/View-on.svg'
-                        : '/icons/auth/View-off.svg'
-                    }
+                    src={isPasswordVisible ? '/icons/auth/View-on.svg' : '/icons/auth/View-off.svg'}
                     alt=""
                   />
                 </button>
