@@ -114,6 +114,44 @@ describe('지역 채팅 메시지 처리', () => {
     },
   );
 
+  it.each(['ack-first', 'broadcast-first'])(
+    '마스킹 ACK가 %s여도 원문 대기를 제거하고 서버 본문만 표시한다',
+    async (order) => {
+      const { event } = await ready();
+      participation.send('씨발');
+      const clientMessageId = states.at(-1)!.pendingMessages![0].clientMessageId;
+      const message = { ...saved, clientMessageId, content: '**' };
+      const ack = { type: 'CHAT_ACK' as const, membershipId: 900, message };
+      const broadcast = { type: 'CHAT_MESSAGE' as const, message };
+      event(order === 'ack-first' ? ack : broadcast);
+      event(order === 'ack-first' ? broadcast : ack);
+      event(broadcast);
+      expect(states.at(-1)?.messages).toEqual([message]);
+      expect(states.at(-1)?.pendingMessages).toEqual([]);
+    },
+  );
+
+  it('다른 방·참여·계정 또는 다른 UUID의 ACK로 내 전송을 완료하지 않는다', async () => {
+    const { event } = await ready();
+    participation.send('씨발');
+    const clientMessageId = states.at(-1)!.pendingMessages![0].clientMessageId;
+    const message = { ...saved, clientMessageId, content: '**' };
+    event({ type: 'CHAT_ACK', membershipId: 901, message });
+    event({ type: 'CHAT_ACK', membershipId: 900, message: { ...message, roomId: 701 } });
+    event({ type: 'CHAT_ACK', membershipId: 900, message: { ...message, userId: 8 } });
+    expect(states.at(-1)?.messages).toEqual([]);
+    event({
+      type: 'CHAT_ACK',
+      membershipId: 900,
+      message: { ...message, clientMessageId: 'other' },
+    });
+    expect(states.at(-1)?.pendingMessages?.[0].content).toBe('씨발');
+    event({ type: 'CHAT_ACK', membershipId: 900, message });
+    expect(states.at(-1)?.pendingMessages).toEqual([]);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(states.at(-1)?.pendingMessages).toEqual([]);
+  });
+
   it('ACK 미확인 재시도는 같은 UUID와 본문을 사용하고 차단된 메시지는 재시도하지 않는다', async () => {
     const { event } = await ready();
     participation.send('hello');
