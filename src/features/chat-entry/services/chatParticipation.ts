@@ -236,12 +236,14 @@ export class ChatParticipation {
     } else {
       if (
         event.message.roomId !== membership.roomId ||
-        (event.type === 'CHAT_ACK' && event.membershipId !== membership.membershipId)
+        (event.type === 'CHAT_ACK' &&
+          (event.membershipId !== membership.membershipId ||
+            event.message.userId !== this.currentUserId))
       )
         return;
       const pending = this.pending.get(event.message.clientMessageId);
-      // A broadcast can precede its ACK. A pending UUID is owned by this participation.
-      if (event.type === 'CHAT_ACK' && pending && pending.content === event.message.content) {
+      // ACK content is the stored server result and can differ after masking.
+      if (event.type === 'CHAT_ACK' && pending) {
         this.pending.delete(event.message.clientMessageId);
         window.clearTimeout(this.pendingTimers.get(event.message.clientMessageId));
         this.pendingTimers.delete(event.message.clientMessageId);
