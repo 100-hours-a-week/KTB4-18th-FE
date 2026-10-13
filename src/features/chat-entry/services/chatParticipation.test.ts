@@ -59,7 +59,7 @@ beforeEach(() => {
   vi.mocked(leaveChatRoom).mockResolvedValue();
   vi.mocked(connectChatRoom).mockImplementation((_membership, status) => {
     status('connecting', '연결 중');
-    return Object.assign(close, { send: vi.fn().mockReturnValue(true) });
+    return Object.assign(close, { send: vi.fn().mockReturnValue(true), retryRecovery: vi.fn() });
   });
 });
 afterEach(async () => {
@@ -173,6 +173,30 @@ describe('지역 채팅 메시지 처리', () => {
     });
     expect(states.at(-1)?.sendNotice).toContain('개인정보');
     expect(participation.retryMessage(id)).toBe(false);
+  });
+
+  it('누락된 ACK의 저장 메시지 복구로 원문 대기를 정리하고 ID 중복을 제거한다', async () => {
+    const { event, status } = await ready();
+    participation.send('씨발');
+    const clientMessageId = states.at(-1)!.pendingMessages![0].clientMessageId;
+    status('reconnecting', '단절');
+    status('recovering', '복구');
+    expect(participation.send('아직 전송 불가')).toBe(false);
+    const message = { ...saved, clientMessageId, content: '**' };
+    event({ type: 'CHAT_MESSAGE', message });
+    event({ type: 'CHAT_MESSAGE', message });
+    event({
+      type: 'CHAT_GAPS',
+      gaps: [{ reason: 'ABSENCE', beforeMessageId: 9, resumedAt: saved.createdAt }],
+    });
+    event({
+      type: 'CHAT_GAPS',
+      gaps: [{ reason: 'ABSENCE', beforeMessageId: 9, resumedAt: saved.createdAt }],
+    });
+    status('ready', '완료');
+    expect(states.at(-1)?.messages).toEqual([message]);
+    expect(states.at(-1)?.pendingMessages).toEqual([]);
+    expect(states.at(-1)?.gaps).toHaveLength(1);
   });
 
   it('퇴장 후 지연된 메시지를 무시하고 메시지와 전송 상태를 비운다', async () => {

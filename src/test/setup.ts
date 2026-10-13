@@ -1,9 +1,11 @@
 import '@testing-library/jest-dom/vitest';
 
-Object.defineProperty(Element.prototype, 'scrollIntoView', {
-  configurable: true,
-  value: () => undefined,
-});
+if (typeof Element !== 'undefined') {
+  Object.defineProperty(Element.prototype, 'scrollIntoView', {
+    configurable: true,
+    value: () => undefined,
+  });
+}
 
 class ResizeObserverMock {
   observe() {}
