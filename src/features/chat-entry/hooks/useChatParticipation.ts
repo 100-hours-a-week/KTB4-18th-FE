@@ -58,5 +58,6 @@ export function useChatParticipation() {
     retry: () => setAttempt((value) => value + 1),
     send: (content: string) => current.current?.send(content) ?? false,
     retryMessage: (id: string) => current.current?.retryMessage(id) ?? false,
+    retryRecovery: () => current.current?.retryRecovery(),
   };
 }
