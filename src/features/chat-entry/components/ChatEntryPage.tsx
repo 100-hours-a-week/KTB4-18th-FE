@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 
 import type { ChatRoomMembership, ChatRoomSummary } from '../../../api/chatRooms';
 import { useChatParticipation } from '../hooks/useChatParticipation';
@@ -102,6 +102,11 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
             다시 입장
           </button>
         )}
+        {chat.status === 'recovery-failed' && (
+          <button type="button" onClick={chat.retryRecovery}>
+            복구 다시 시도
+          </button>
+        )}
         {chat.isReady && (
           <button type="button" onClick={() => navigate('/')}>
             퇴장
@@ -122,24 +127,56 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
           aria-label="채팅 메시지"
           aria-live="polite"
         >
-          {(chat.messages ?? []).map((message) => (
-            <article
-              className={`region-chat-message${message.userId === chat.currentUserId ? ' region-chat-own' : ''}`}
-              key={message.messageId}
-            >
-              <strong>{message.userId === chat.currentUserId ? '나' : message.nickname}</strong>
-              <time dateTime={message.createdAt}>
-                {new Date(message.createdAt).toLocaleTimeString('ko-KR', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </time>
-              <p>{message.content}</p>
-              {message.userId === chat.currentUserId && (
-                <span className="region-chat-delivery">전송 완료</span>
-              )}
-            </article>
+          {(chat.messages ?? []).map((message, index, messages) => (
+            <Fragment key={message.messageId}>
+              {(chat.gaps ?? [])
+                .filter(
+                  (gap) =>
+                    gap.beforeMessageId < message.messageId &&
+                    (index === 0 || messages[index - 1].messageId <= gap.beforeMessageId),
+                )
+                .map((gap) => (
+                  <p
+                    className="region-chat-gap"
+                    role="status"
+                    key={`${gap.reason}:${gap.beforeMessageId}:${gap.resumedAt}`}
+                  >
+                    {gap.reason === 'ABSENCE'
+                      ? '연결이 끊겨 일부 대화가 표시되지 않아요'
+                      : '보관 기간이 지난 메시지는 표시되지 않아요'}
+                  </p>
+                ))}
+              <article
+                className={`region-chat-message${message.userId === chat.currentUserId ? ' region-chat-own' : ''}`}
+                key={message.messageId}
+              >
+                <strong>{message.userId === chat.currentUserId ? '나' : message.nickname}</strong>
+                <time dateTime={message.createdAt}>
+                  {new Date(message.createdAt).toLocaleTimeString('ko-KR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </time>
+                <p>{message.content}</p>
+                {message.userId === chat.currentUserId && (
+                  <span className="region-chat-delivery">전송 완료</span>
+                )}
+              </article>
+            </Fragment>
           ))}
+          {(chat.gaps ?? [])
+            .filter((gap) => gap.beforeMessageId >= (chat.messages?.at(-1)?.messageId ?? 0))
+            .map((gap) => (
+              <p
+                className="region-chat-gap"
+                role="status"
+                key={`${gap.reason}:${gap.beforeMessageId}:${gap.resumedAt}`}
+              >
+                {gap.reason === 'ABSENCE'
+                  ? '연결이 끊겨 일부 대화가 표시되지 않아요'
+                  : '보관 기간이 지난 메시지는 표시되지 않아요'}
+              </p>
+            ))}
           {(chat.pendingMessages ?? [])
             .filter(
               (pending) =>

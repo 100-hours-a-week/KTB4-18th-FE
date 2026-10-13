@@ -13,6 +13,7 @@ import {
   chatBanNotice,
   type ChatEvent,
   type ChatMessage,
+  type ChatGap,
 } from './chatMessages';
 import { resolveCurrentChatLocation } from './resolveCurrentChatLocation';
 
@@ -34,6 +35,7 @@ export interface ChatParticipationState {
   messages?: ChatMessage[];
   pendingMessages?: PendingChatMessage[];
   sendNotice?: string;
+  gaps?: ChatGap[];
 }
 
 // Serialize REST transitions across StrictMode, rapid tab changes, and late join responses.
@@ -55,8 +57,13 @@ export class ChatParticipation {
   private presenceStatus: NonNullable<ChatParticipationState['presenceStatus']> = 'loading';
   private presenceTimer: number | undefined;
   private closeConnection:
-    ((() => void) & { send?: (id: string, content: string) => boolean }) | null = null;
+    | ((() => void) & {
+        send?: (id: string, content: string) => boolean;
+        retryRecovery?: () => void;
+      })
+    | null = null;
   private messages: ChatMessage[] = [];
+  private gaps: ChatGap[] = [];
   private pending = new Map<string, PendingChatMessage>();
   private pendingTimers = new Map<string, number>();
   private status: ChatParticipationState['status'] = 'locating';
@@ -86,6 +93,7 @@ export class ChatParticipation {
         messages: [...this.messages],
         pendingMessages: [...this.pending.values()],
         sendNotice: this.sendNotice,
+        gaps: [...this.gaps],
       });
   }
 
@@ -136,11 +144,20 @@ export class ChatParticipation {
       this.closeConnection = connectChatRoom(
         membership,
         (status, message) => {
-          if (status === 'connecting' || status === 'reconnecting') {
+          if (
+            status === 'connecting' ||
+            status === 'reconnecting' ||
+            status === 'recovery-failed'
+          ) {
             window.clearTimeout(this.presenceTimer);
             this.connectedCount = null;
             this.presenceVersion = -1;
-            this.presenceStatus = status === 'reconnecting' ? 'disconnected' : 'loading';
+            this.presenceStatus =
+              status === 'recovery-failed'
+                ? 'error'
+                : status === 'reconnecting'
+                  ? 'disconnected'
+                  : 'loading';
           }
           if (status === 'ready' && this.connectedCount === null) {
             this.presenceTimer = window.setTimeout(() => {
@@ -195,6 +212,7 @@ export class ChatParticipation {
     this.pendingTimers.forEach((timer) => window.clearTimeout(timer));
     this.pendingTimers.clear();
     this.messages = [];
+    this.gaps = [];
     this.pending.clear();
     this.sendNotice = '';
   }
@@ -202,6 +220,22 @@ export class ChatParticipation {
   private receive(event: ChatEvent) {
     const membership = this.active?.membership;
     if (!membership) return;
+    if (event.type === 'CHAT_READY') return;
+    if (event.type === 'CHAT_GAPS') {
+      for (const gap of event.gaps) {
+        if (
+          !this.gaps.some(
+            (item) =>
+              item.reason === gap.reason &&
+              item.beforeMessageId === gap.beforeMessageId &&
+              item.resumedAt === gap.resumedAt,
+          )
+        )
+          this.gaps.push(gap);
+      }
+      this.update(this.status, this.statusMessage);
+      return;
+    }
     if (event.type === 'CHAT_PRESENCE') {
       if (event.roomId !== membership.roomId || event.version <= this.presenceVersion) return;
       window.clearTimeout(this.presenceTimer);
@@ -243,7 +277,7 @@ export class ChatParticipation {
         return;
       const pending = this.pending.get(event.message.clientMessageId);
       // ACK content is the stored server result and can differ after masking.
-      if (event.type === 'CHAT_ACK' && pending) {
+      if (pending && event.message.userId === this.currentUserId) {
         this.pending.delete(event.message.clientMessageId);
         window.clearTimeout(this.pendingTimers.get(event.message.clientMessageId));
         this.pendingTimers.delete(event.message.clientMessageId);
@@ -278,6 +312,11 @@ export class ChatParticipation {
     const pending = this.pending.get(id);
     if (!pending || pending.status !== 'uncertain' || this.status !== 'ready') return false;
     return this.transmit(id);
+  }
+
+  retryRecovery() {
+    if (!this.isStopped && this.status === 'recovery-failed')
+      this.closeConnection?.retryRecovery?.();
   }
 
   private transmit(id: string) {
