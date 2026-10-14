@@ -129,6 +129,20 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
         >
           {(chat.messages ?? []).map((message, index, messages) => (
             <Fragment key={message.messageId}>
+              {index === 0 &&
+                chat.restoredThroughMessageId !== undefined &&
+                message.messageId <= chat.restoredThroughMessageId && (
+                  <p className="region-chat-gap" role="status">
+                    이전에 봤던 대화
+                  </p>
+                )}
+              {chat.restoredThroughMessageId !== undefined &&
+                message.messageId > chat.restoredThroughMessageId &&
+                (index === 0 || messages[index - 1].messageId <= chat.restoredThroughMessageId) && (
+                  <p className="region-chat-gap" role="status">
+                    다시 입장한 이후 대화
+                  </p>
+                )}
               {(chat.gaps ?? [])
                 .filter(
                   (gap) =>
