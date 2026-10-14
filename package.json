@@ -10,7 +10,10 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "verify:chat:types": "tsc -p tsconfig.chatVerification.json",
+    "verify:chat:browser": "node scripts/startChatRecoveryBrowser.mjs",
+    "verify:chat:integration": "node scripts/runChatRecoveryIntegration.mjs"
   },
   "dependencies": {
     "@karrotmarket/react-monochrome-icon": "^1.27.0",
