@@ -7,6 +7,7 @@ import {
 } from '../../auth-login/api/authSession';
 import { ROUTE_CHANGE_EVENT } from '../../../shared/navigation';
 import { ChatParticipation, type ChatParticipationState } from '../services/chatParticipation';
+import { chatAccountId } from '../services/chatConversationCache';
 
 const INITIAL_STATE: ChatParticipationState = {
   status: 'locating',
@@ -21,6 +22,7 @@ export function useChatParticipation() {
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const participation = new ChatParticipation(setState);
+    const accountId = chatAccountId(getAccessToken());
     current.current = participation;
     void participation.start();
     const end = () => {
@@ -36,7 +38,7 @@ export function useChatParticipation() {
       if (window.location.pathname !== '/chat') end();
     };
     const onToken = () => {
-      if (!getAccessToken()) end();
+      if (chatAccountId(getAccessToken()) !== accountId || !getAccessToken()) end();
     };
     window.addEventListener(ROUTE_CHANGE_EVENT, onRoute);
     window.addEventListener('popstate', onRoute);
@@ -58,5 +60,6 @@ export function useChatParticipation() {
     retry: () => setAttempt((value) => value + 1),
     send: (content: string) => current.current?.send(content) ?? false,
     retryMessage: (id: string) => current.current?.retryMessage(id) ?? false,
+    retryRecovery: () => current.current?.retryRecovery(),
   };
 }

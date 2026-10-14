@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>같은 탭 대화 캐시 검증</title>
+  </head>
+  <body>
+    <h1>같은 탭 대화 캐시 검증</h1>
+    <p>합성 메시지로 sessionStorage 동작을 검증하는 개발용 화면입니다.</p>
+    <button id="save">합성 메시지 저장</button>
+    <button id="read">대화 읽기</button>
+    <button id="switch">다른 계정으로 전환</button>
+    <button id="clear">로그아웃 캐시 정리</button>
+    <a href="./chatCache.html" target="_blank" rel="opener">저장소 복사되는 새 탭 열기</a>
+    <p id="status" role="status"></p>
+    <script type="module">
+      import {
+        openChatConversation,
+        storeChatConversation,
+        clearChatConversationCache,
+      } from '/src/features/chat-entry/services/chatConversationCache.ts';
+      let account = 7;
+      const status = document.querySelector('#status');
+      function read() {
+        const value = openChatConversation(account, 25, 700);
+        status.textContent = `계정 ${account}: ${value.messages.length}개`;
+        return value;
+      }
+      document.querySelector('#save').onclick = () => {
+        const { context } = read();
+        storeChatConversation(context, 25, 700, [
+          {
+            messageId: 1,
+            roomId: 700,
+            userId: 7,
+            clientMessageId: 'test-only',
+            nickname: '합성 사용자',
+            content: '검증 ***',
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+        read();
+      };
+      document.querySelector('#read').onclick = read;
+      document.querySelector('#switch').onclick = () => {
+        account = 8;
+        read();
+      };
+      document.querySelector('#clear').onclick = () => {
+        clearChatConversationCache();
+        read();
+      };
+      read();
+    </script>
+  </body>
+</html>

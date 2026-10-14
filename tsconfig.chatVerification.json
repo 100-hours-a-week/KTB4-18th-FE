@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.chatVerification.tsbuildinfo",
+    "types": ["vite/client", "node"]
+  },
+  "include": [
+    "tests/fixtures/chatRecoveryBrowser.tsx",
+    "tests/integration/chatMultiClient.integration.test.ts"
+  ]
+}

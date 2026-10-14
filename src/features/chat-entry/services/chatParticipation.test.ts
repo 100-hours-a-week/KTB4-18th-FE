@@ -9,6 +9,11 @@ import {
 import { connectChatRoom } from './chatConnection';
 import { resolveCurrentChatLocation } from './resolveCurrentChatLocation';
 import { ChatParticipation, type ChatParticipationState } from './chatParticipation';
+import {
+  clearChatConversationCache,
+  openChatConversation,
+  CHAT_CACHE_KEY,
+} from './chatConversationCache';
 
 vi.mock('../../../api/chatRooms', async (original) => ({
   ...(await original<typeof import('../../../api/chatRooms')>()),
@@ -16,8 +21,9 @@ vi.mock('../../../api/chatRooms', async (original) => ({
   joinChatRoom: vi.fn(),
   leaveChatRoom: vi.fn(),
 }));
+const auth = vi.hoisted(() => ({ accountId: 7 }));
 vi.mock('../../auth-login/api/authSession', () => ({
-  getAccessToken: () => `header.${btoa(JSON.stringify({ sub: '7' }))}.signature`,
+  getAccessToken: () => `header.${btoa(JSON.stringify({ sub: String(auth.accountId) }))}.signature`,
 }));
 vi.mock('./chatConnection', () => ({ connectChatRoom: vi.fn() }));
 vi.mock('./resolveCurrentChatLocation', () => ({ resolveCurrentChatLocation: vi.fn() }));
@@ -50,6 +56,9 @@ let states: ChatParticipationState[];
 
 beforeEach(() => {
   vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-10-08T00:00:00Z'));
+  clearChatConversationCache();
+  auth.accountId = 7;
   vi.resetAllMocks();
   states = [];
   participation = new ChatParticipation((state) => states.push(state));
@@ -59,7 +68,7 @@ beforeEach(() => {
   vi.mocked(leaveChatRoom).mockResolvedValue();
   vi.mocked(connectChatRoom).mockImplementation((_membership, status) => {
     status('connecting', '연결 중');
-    return Object.assign(close, { send: vi.fn().mockReturnValue(true) });
+    return Object.assign(close, { send: vi.fn().mockReturnValue(true), retryRecovery: vi.fn() });
   });
 });
 afterEach(async () => {
@@ -83,6 +92,78 @@ describe('지역 채팅 메시지 처리', () => {
     status('ready', '준비 완료');
     return { status, event: event! };
   }
+
+  it('탭 이동 후 같은 방 새 참여에서 본 메시지만 복원하고 새 복구 문맥에 섞지 않는다', async () => {
+    const first = await ready();
+    first.event({ type: 'CHAT_MESSAGE', message: saved });
+    participation.send('미전송 원문');
+    await participation.stop();
+    participation = new ChatParticipation((state) => states.push(state));
+    vi.mocked(joinChatRoom).mockResolvedValue({ ...membership, membershipId: 901 });
+    await participation.start();
+    expect(states.at(-1)?.messages).toEqual([saved]);
+    expect(states.at(-1)?.restoredThroughMessageId).toBe(10);
+    expect(states.at(-1)?.pendingMessages).toEqual([]);
+    expect(vi.mocked(connectChatRoom).mock.calls.at(-1)![0].membershipId).toBe(901);
+    const event = vi.mocked(connectChatRoom).mock.calls.at(-1)![2]!;
+    first.event({
+      type: 'CHAT_MESSAGE',
+      message: { ...saved, messageId: 11, content: '퇴장 중 메시지' },
+    });
+    event({ type: 'CHAT_MESSAGE', message: saved });
+    event({
+      type: 'CHAT_MESSAGE',
+      message: { ...saved, messageId: 12, content: '새 참여 메시지' },
+    });
+    expect(states.at(-1)?.messages?.map((item) => item.messageId)).toEqual([10, 12]);
+    expect(sessionStorage.getItem(CHAT_CACHE_KEY)).not.toContain('미전송 원문');
+    expect(sessionStorage.getItem(CHAT_CACHE_KEY)).not.toContain('퇴장 중 메시지');
+  });
+
+  it('이전 대화는 실제 전송 시각의24시간 경계에 화면과 캐시에서 제거된다', async () => {
+    const { event } = await ready();
+    event({
+      type: 'CHAT_MESSAGE',
+      message: {
+        ...saved,
+        createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000 + 1).toISOString(),
+      },
+    });
+    expect(states.at(-1)?.messages).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(states.at(-1)?.messages).toEqual([]);
+    expect(openChatConversation(7, 25, 700).messages).toEqual([]);
+  });
+
+  it('현재 live·복구 목록도 최근200개만 유지한다', async () => {
+    const { event } = await ready();
+    for (let id = 1; id <= 205; id++)
+      event({ type: 'CHAT_MESSAGE', message: { ...saved, messageId: id } });
+    expect(states.at(-1)?.messages).toHaveLength(200);
+    expect(states.at(-1)?.messages?.[0].messageId).toBe(6);
+    expect(openChatConversation(7, 25, 700).messages).toHaveLength(200);
+  });
+
+  it('계정 전환 중 늦게 완료된 이전 입장은 원래 계정 토큰으로 정리하고 복원하지 않는다', async () => {
+    let complete!: (value: typeof membership) => void;
+    vi.mocked(joinChatRoom).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const starting = participation.start();
+    await vi.waitFor(() => expect(complete).toBeTypeOf('function'));
+    auth.accountId = 8;
+    complete(membership);
+    await starting;
+    expect(connectChatRoom).not.toHaveBeenCalled();
+    expect(leaveChatRoom).toHaveBeenCalledWith(
+      membership,
+      `header.${btoa(JSON.stringify({ sub: '7' }))}.signature`,
+    );
+    expect(states.at(-1)?.messages).toEqual([]);
+  });
 
   it('준비, trim, Unicode 길이를 검사하고 전송마다 UUID를 생성한다', async () => {
     await participation.start();
@@ -173,6 +254,30 @@ describe('지역 채팅 메시지 처리', () => {
     });
     expect(states.at(-1)?.sendNotice).toContain('개인정보');
     expect(participation.retryMessage(id)).toBe(false);
+  });
+
+  it('누락된 ACK의 저장 메시지 복구로 원문 대기를 정리하고 ID 중복을 제거한다', async () => {
+    const { event, status } = await ready();
+    participation.send('씨발');
+    const clientMessageId = states.at(-1)!.pendingMessages![0].clientMessageId;
+    status('reconnecting', '단절');
+    status('recovering', '복구');
+    expect(participation.send('아직 전송 불가')).toBe(false);
+    const message = { ...saved, clientMessageId, content: '**' };
+    event({ type: 'CHAT_MESSAGE', message });
+    event({ type: 'CHAT_MESSAGE', message });
+    event({
+      type: 'CHAT_GAPS',
+      gaps: [{ reason: 'ABSENCE', beforeMessageId: 9, resumedAt: saved.createdAt }],
+    });
+    event({
+      type: 'CHAT_GAPS',
+      gaps: [{ reason: 'ABSENCE', beforeMessageId: 9, resumedAt: saved.createdAt }],
+    });
+    status('ready', '완료');
+    expect(states.at(-1)?.messages).toEqual([message]);
+    expect(states.at(-1)?.pendingMessages).toEqual([]);
+    expect(states.at(-1)?.gaps).toHaveLength(1);
   });
 
   it('퇴장 후 지연된 메시지를 무시하고 메시지와 전송 상태를 비운다', async () => {

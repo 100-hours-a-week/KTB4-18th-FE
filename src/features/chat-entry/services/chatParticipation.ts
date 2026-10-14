@@ -13,8 +13,17 @@ import {
   chatBanNotice,
   type ChatEvent,
   type ChatMessage,
+  type ChatGap,
 } from './chatMessages';
 import { resolveCurrentChatLocation } from './resolveCurrentChatLocation';
+import {
+  chatAccountId,
+  openChatConversation,
+  retainChatMessages,
+  storeChatConversation,
+  CHAT_CACHE_TTL_MS,
+  type ChatCacheContext,
+} from './chatConversationCache';
 
 export interface PendingChatMessage {
   clientMessageId: string;
@@ -34,6 +43,8 @@ export interface ChatParticipationState {
   messages?: ChatMessage[];
   pendingMessages?: PendingChatMessage[];
   sendNotice?: string;
+  gaps?: ChatGap[];
+  restoredThroughMessageId?: number;
 }
 
 // Serialize REST transitions across StrictMode, rapid tab changes, and late join responses.
@@ -55,8 +66,13 @@ export class ChatParticipation {
   private presenceStatus: NonNullable<ChatParticipationState['presenceStatus']> = 'loading';
   private presenceTimer: number | undefined;
   private closeConnection:
-    ((() => void) & { send?: (id: string, content: string) => boolean }) | null = null;
+    | ((() => void) & {
+        send?: (id: string, content: string) => boolean;
+        retryRecovery?: () => void;
+      })
+    | null = null;
   private messages: ChatMessage[] = [];
+  private gaps: ChatGap[] = [];
   private pending = new Map<string, PendingChatMessage>();
   private pendingTimers = new Map<string, number>();
   private status: ChatParticipationState['status'] = 'locating';
@@ -64,6 +80,10 @@ export class ChatParticipation {
   private sendNotice = '';
   private interval: number | undefined;
   private isChecking = false;
+  private cacheContext: ChatCacheContext | null = null;
+  private restoredThroughMessageId: number | undefined;
+  private expirationTimer: number | undefined;
+  private startingAccountId: number | null = null;
 
   private readonly publish: (state: ChatParticipationState) => void;
 
@@ -72,6 +92,7 @@ export class ChatParticipation {
   }
 
   private update(status: ChatParticipationState['status'], message: string) {
+    this.messages = retainChatMessages(this.messages);
     this.status = status;
     this.statusMessage = message;
     if (!this.isStopped)
@@ -86,10 +107,13 @@ export class ChatParticipation {
         messages: [...this.messages],
         pendingMessages: [...this.pending.values()],
         sendNotice: this.sendNotice,
+        gaps: [...this.gaps],
+        restoredThroughMessageId: this.restoredThroughMessageId,
       });
   }
 
   async start() {
+    this.startingAccountId = chatAccountId(getAccessToken());
     this.update('locating', '현재 위치를 확인하고 있어요. 위치 권한을 허용해 주세요.');
     try {
       const location = await resolveCurrentChatLocation(this.controller.signal);
@@ -107,6 +131,7 @@ export class ChatParticipation {
     const room = await getRegionChatRoom(location.region.sigungu.regionId, this.controller.signal);
     await transition(async () => {
       if (this.isStopped) return;
+      const entryToken = getAccessToken();
       // Do not abort a sent join: obtain its membership_id and explicitly end a late success.
       const membership = await joinChatRoom(
         room.roomId,
@@ -114,33 +139,38 @@ export class ChatParticipation {
         new AbortController().signal,
       );
       const token = getAccessToken();
-      if (this.isStopped) {
-        await leaveChatRoom(membership, token);
+      if (this.isStopped || chatAccountId(token) !== this.startingAccountId) {
+        await leaveChatRoom(membership, entryToken);
         return;
       }
       this.active = { room, membership };
       this.token = token;
-      try {
-        const claims = JSON.parse(
-          atob((token ?? '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/')),
-        ) as { sub?: unknown };
-        const userId =
-          typeof claims.sub === 'string' && /^[1-9][0-9]*$/.test(claims.sub)
-            ? Number(claims.sub)
-            : null;
-        this.currentUserId = userId !== null && Number.isSafeInteger(userId) ? userId : null;
-      } catch {
-        this.currentUserId = null;
-      }
+      this.currentUserId = chatAccountId(token);
       this.clearMessages();
+      if (this.currentUserId !== null) {
+        const restored = openChatConversation(this.currentUserId, room.regionId, room.roomId);
+        this.cacheContext = restored.context;
+        this.messages = restored.messages;
+        this.restoredThroughMessageId = this.messages.at(-1)?.messageId;
+        this.rememberMessages();
+      }
       this.closeConnection = connectChatRoom(
         membership,
         (status, message) => {
-          if (status === 'connecting' || status === 'reconnecting') {
+          if (
+            status === 'connecting' ||
+            status === 'reconnecting' ||
+            status === 'recovery-failed'
+          ) {
             window.clearTimeout(this.presenceTimer);
             this.connectedCount = null;
             this.presenceVersion = -1;
-            this.presenceStatus = status === 'reconnecting' ? 'disconnected' : 'loading';
+            this.presenceStatus =
+              status === 'recovery-failed'
+                ? 'error'
+                : status === 'reconnecting'
+                  ? 'disconnected'
+                  : 'loading';
           }
           if (status === 'ready' && this.connectedCount === null) {
             this.presenceTimer = window.setTimeout(() => {
@@ -188,6 +218,9 @@ export class ChatParticipation {
   }
 
   private clearMessages() {
+    window.clearTimeout(this.expirationTimer);
+    this.cacheContext = null;
+    this.restoredThroughMessageId = undefined;
     window.clearTimeout(this.presenceTimer);
     this.connectedCount = null;
     this.presenceVersion = -1;
@@ -195,13 +228,53 @@ export class ChatParticipation {
     this.pendingTimers.forEach((timer) => window.clearTimeout(timer));
     this.pendingTimers.clear();
     this.messages = [];
+    this.gaps = [];
     this.pending.clear();
     this.sendNotice = '';
+  }
+
+  private rememberMessages() {
+    this.messages = retainChatMessages(this.messages);
+    if (this.active && this.cacheContext)
+      storeChatConversation(
+        this.cacheContext,
+        this.active.room.regionId,
+        this.active.room.roomId,
+        this.messages,
+      );
+    window.clearTimeout(this.expirationTimer);
+    if (!this.isStopped && this.messages.length) {
+      const earliest = Math.min(...this.messages.map((item) => Date.parse(item.createdAt)));
+      this.expirationTimer = window.setTimeout(
+        () => {
+          if (this.isStopped) return;
+          this.rememberMessages();
+          this.update(this.status, this.statusMessage);
+        },
+        Math.max(1, earliest + CHAT_CACHE_TTL_MS - Date.now()),
+      );
+    }
   }
 
   private receive(event: ChatEvent) {
     const membership = this.active?.membership;
     if (!membership) return;
+    if (event.type === 'CHAT_READY') return;
+    if (event.type === 'CHAT_GAPS') {
+      for (const gap of event.gaps) {
+        if (
+          !this.gaps.some(
+            (item) =>
+              item.reason === gap.reason &&
+              item.beforeMessageId === gap.beforeMessageId &&
+              item.resumedAt === gap.resumedAt,
+          )
+        )
+          this.gaps.push(gap);
+      }
+      this.update(this.status, this.statusMessage);
+      return;
+    }
     if (event.type === 'CHAT_PRESENCE') {
       if (event.roomId !== membership.roomId || event.version <= this.presenceVersion) return;
       window.clearTimeout(this.presenceTimer);
@@ -243,7 +316,7 @@ export class ChatParticipation {
         return;
       const pending = this.pending.get(event.message.clientMessageId);
       // ACK content is the stored server result and can differ after masking.
-      if (event.type === 'CHAT_ACK' && pending) {
+      if (pending && event.message.userId === this.currentUserId) {
         this.pending.delete(event.message.clientMessageId);
         window.clearTimeout(this.pendingTimers.get(event.message.clientMessageId));
         this.pendingTimers.delete(event.message.clientMessageId);
@@ -252,6 +325,7 @@ export class ChatParticipation {
         this.messages.push(event.message);
         this.messages.sort((a, b) => a.messageId - b.messageId);
       }
+      this.rememberMessages();
     }
     this.update(this.status, this.statusMessage);
   }
@@ -278,6 +352,11 @@ export class ChatParticipation {
     const pending = this.pending.get(id);
     if (!pending || pending.status !== 'uncertain' || this.status !== 'ready') return false;
     return this.transmit(id);
+  }
+
+  retryRecovery() {
+    if (!this.isStopped && this.status === 'recovery-failed')
+      this.closeConnection?.retryRecovery?.();
   }
 
   private transmit(id: string) {

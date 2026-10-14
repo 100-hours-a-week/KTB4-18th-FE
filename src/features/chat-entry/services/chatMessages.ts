@@ -8,6 +8,15 @@ export interface ChatMessage {
   createdAt: string;
 }
 export type ChatEvent =
+  | {
+      type: 'CHAT_READY';
+      roomId: number;
+      membershipId: number;
+      viewSessionId: string;
+      recoveryCursor: string;
+      snapshotMessageId: number;
+    }
+  | { type: 'CHAT_GAPS'; gaps: ChatGap[] }
   | { type: 'CHAT_PRESENCE'; roomId: number; connectedCount: number; version: number }
   | { type: 'CHAT_BANNED'; roomId: number; membershipId: number; bannedUntil: string }
   | { type: 'CHAT_MESSAGE'; message: ChatMessage }
@@ -27,7 +36,13 @@ const string = (value: unknown): value is string => typeof value === 'string';
 const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
-function message(value: unknown): ChatMessage | null {
+export interface ChatGap {
+  reason: 'ABSENCE' | 'RETENTION';
+  beforeMessageId: number;
+  resumedAt: string;
+}
+
+export function parseChatMessage(value: unknown): ChatMessage | null {
   if (
     !object(value) ||
     !number(value.message_id) ||
@@ -56,6 +71,28 @@ export function parseChatEvent(body: string): ChatEvent | null {
     const event: unknown = JSON.parse(body);
     if (!object(event) || !object(event.data)) return null;
     const data = event.data;
+    if (
+      event.type === 'CHAT_READY' &&
+      number(data.room_id) &&
+      number(data.membership_id) &&
+      string(data.view_session_id) &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(data.view_session_id) &&
+      string(data.recovery_cursor) &&
+      data.recovery_cursor.length > 0 &&
+      data.recovery_cursor.length <= 4096 &&
+      typeof data.snapshot_message_id === 'number' &&
+      Number.isSafeInteger(data.snapshot_message_id) &&
+      data.snapshot_message_id >= 0
+    ) {
+      return {
+        type: 'CHAT_READY',
+        roomId: data.room_id,
+        membershipId: data.membership_id,
+        viewSessionId: data.view_session_id,
+        recoveryCursor: data.recovery_cursor,
+        snapshotMessageId: data.snapshot_message_id,
+      };
+    }
     if (
       event.type === 'CHAT_PRESENCE' &&
       number(data.room_id) &&
@@ -89,11 +126,11 @@ export function parseChatEvent(body: string): ChatEvent | null {
       };
     }
     if (event.type === 'CHAT_MESSAGE') {
-      const parsed = message(data);
+      const parsed = parseChatMessage(data);
       return parsed ? { type: event.type, message: parsed } : null;
     }
     if (event.type === 'CHAT_ACK' && number(data.membership_id)) {
-      const parsed = message(data.message);
+      const parsed = parseChatMessage(data.message);
       return parsed
         ? { type: event.type, membershipId: data.membership_id, message: parsed }
         : null;

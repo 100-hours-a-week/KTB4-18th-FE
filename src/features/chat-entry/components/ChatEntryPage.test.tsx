@@ -21,6 +21,7 @@ describe('ChatEntryPage', () => {
       retry,
       send: vi.fn().mockReturnValue(true),
       retryMessage: vi.fn().mockReturnValue(true),
+      retryRecovery: vi.fn(),
     });
   });
 
@@ -49,6 +50,27 @@ describe('ChatEntryPage', () => {
     expect(screen.getByRole('textbox', { name: '메시지' })).toBeDisabled();
     expect(screen.getByRole('log')).toHaveTextContent('<img src=x onerror=alert(1)>');
     expect(screen.getByRole('log').querySelector('img')).toBeNull();
+  });
+
+  it('복원한 이전 대화와 새 참여 대화를 구분하고 복원만으로 전송을 허용하지 않는다', () => {
+    const state = useChatParticipation();
+    vi.mocked(useChatParticipation).mockReturnValue({
+      ...state,
+      restoredThroughMessageId: 1,
+      messages: [1, 3].map((messageId) => ({
+        messageId,
+        clientMessageId: String(messageId),
+        roomId: 700,
+        userId: 7,
+        nickname: '작성자',
+        content: `대화${messageId}`,
+        createdAt: '2026-10-08T00:00:00Z',
+      })),
+    });
+    render(<ChatEntryPage />);
+    expect(screen.getByText('이전에 봤던 대화')).toHaveAttribute('role', 'status');
+    expect(screen.getByText('다시 입장한 이후 대화')).toHaveAttribute('role', 'status');
+    expect(screen.getByRole('textbox', { name: '메시지' })).toBeDisabled();
   });
 
   it('Enter는 전송하고 Shift+Enter와 한글 조합 중 Enter는 전송하지 않는다', () => {
@@ -169,6 +191,7 @@ describe('ChatEntryPage', () => {
       retry,
       send: vi.fn().mockReturnValue(true),
       retryMessage: vi.fn().mockReturnValue(true),
+      retryRecovery: vi.fn(),
       activeRoom: {
         room: {
           roomId: 700,
@@ -201,6 +224,7 @@ describe('ChatEntryPage', () => {
       retry,
       send: vi.fn().mockReturnValue(true),
       retryMessage: vi.fn().mockReturnValue(true),
+      retryRecovery: vi.fn(),
     });
     render(<ChatEntryPage />);
     expect(screen.getByRole('status')).toHaveTextContent('정원이 가득 찼습니다.');
@@ -218,9 +242,28 @@ describe('ChatEntryPage', () => {
       retry,
       send: vi.fn().mockReturnValue(true),
       retryMessage: vi.fn().mockReturnValue(true),
+      retryRecovery: vi.fn(),
     });
     render(<ChatEntryPage />);
     expect(screen.queryByRole('button', { name: '다시 입장' })).not.toBeInTheDocument();
+    expect(retry).not.toHaveBeenCalled();
+  });
+  it('복구 중 입력을 막고 부재 구분선·복구 재시도를 안내한다', () => {
+    const state = useChatParticipation();
+    const retryRecovery = vi.fn();
+    vi.mocked(useChatParticipation).mockReturnValue({
+      ...state,
+      status: 'recovery-failed',
+      isReady: false,
+      message: '메시지를 복구하지 못했어요.',
+      retryRecovery,
+      gaps: [{ reason: 'ABSENCE', beforeMessageId: 0, resumedAt: '2026-10-13T00:00:00Z' }],
+    });
+    render(<ChatEntryPage />);
+    expect(screen.getByRole('textbox', { name: '메시지' })).toBeDisabled();
+    expect(screen.getByText('연결이 끊겨 일부 대화가 표시되지 않아요')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '복구 다시 시도' }));
+    expect(retryRecovery).toHaveBeenCalledOnce();
     expect(retry).not.toHaveBeenCalled();
   });
 });

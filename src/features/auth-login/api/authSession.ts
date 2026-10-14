@@ -1,3 +1,9 @@
+import {
+  chatAccountId,
+  clearChatConversationCache,
+  syncChatCacheAccount,
+} from '../../chat-entry/services/chatConversationCache';
+
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 const ACCESS_TOKEN_KEY = 'access_token';
 export const ACCESS_TOKEN_REFRESH_EARLY_MS = 10 * 60 * 1000;
@@ -173,6 +179,7 @@ function persistAccessToken(token: string, invalidateRequests: boolean, refreshe
   accessTokenInMemory = token;
   if (changed && invalidateRequests) generation += 1;
   if (refreshed) lastAccessTokenRefreshAt = Date.now();
+  syncChatCacheAccount(chatAccountId(token));
   announceAccessTokenChange();
 }
 
@@ -183,6 +190,7 @@ export function setAccessToken(token: string): void {
 }
 
 export function clearAccessToken(): void {
+  clearChatConversationCache();
   const storage = sessionTokenStorage();
   let previousToken = accessTokenInMemory;
   if (storage) {
@@ -506,6 +514,7 @@ export async function authenticatedFetchWithinAuthTransition(
 
 // Login, logout, and account changes hold a cross-tab lock while the refresh cookie changes.
 export function runAuthTransition<T>(action: () => Promise<T>): Promise<T> {
+  clearChatConversationCache();
   generation += 1;
   authTransitionGeneration += 1;
   pendingTransitions += 1;
