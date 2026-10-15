@@ -1,6 +1,7 @@
 import {
   AuthRequestError,
   authenticatedFetch,
+  authenticatedFetchWithCurrentToken,
   getAccessToken,
 } from '../features/auth-login/api/authSession';
 
@@ -194,6 +195,7 @@ export async function joinChatRoom(
 export async function leaveChatRoom(membership: ChatRoomMembership, token = getAccessToken()) {
   if (!token) return;
   const current = getAccessToken();
+  if (!current) return;
   try {
     const identity = (value: string) =>
       JSON.parse(atob(value.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))) as {
@@ -201,20 +203,20 @@ export async function leaveChatRoom(membership: ChatRoomMembership, token = getA
         sid?: string;
       };
     const previous = identity(token);
-    const next = current ? identity(current) : null;
-    if (next && previous.sub && next.sub === previous.sub && next.sid === previous.sid)
-      token = current;
+    const next = identity(current);
+    if (!previous.sub || previous.sub !== next.sub || previous.sid !== next.sid) return;
+    token = current;
   } catch {
-    /* Preserve the captured token when its identity cannot be decoded. */
+    return;
   }
-  const response = await fetch(
+  const response = await authenticatedFetchWithCurrentToken(
     `${baseUrl}/api/v1/chat-rooms/${membership.roomId}/members/me?membership_id=${membership.membershipId}`,
     {
       method: 'DELETE',
       credentials: 'include',
       keepalive: true,
-      headers: { Authorization: `Bearer ${token}` },
     },
+    token,
   );
   if (!response.ok && response.status !== 401 && response.status !== 403) {
     throw new ChatRoomRequestError(

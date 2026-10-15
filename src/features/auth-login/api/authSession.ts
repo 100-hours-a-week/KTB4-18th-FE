@@ -3,6 +3,7 @@ import {
   clearChatConversationCache,
   syncChatCacheAccount,
 } from '../../chat-entry/services/chatConversationCache';
+import { probeAuthCapabilities } from './authCapabilities';
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 const ACCESS_TOKEN_KEY = 'access_token';
@@ -10,22 +11,35 @@ export const ACCESS_TOKEN_REFRESH_EARLY_MS = 10 * 60 * 1000;
 const AUTH_LOCK_NAME = 'meomuneum:auth-transition';
 const AUTH_CHANNEL_NAME = 'meomuneum:auth-state';
 const AUTH_EPOCH_KEY = 'meomuneum:auth-epoch';
+const ACCESS_TOKEN_EPOCH_KEY = 'access_token_epoch';
+const REFRESH_OPERATION_KEY = 'meomuneum:pending-refresh-operation';
+const AUTH_REQUEST_TIMEOUT_MS = 15_000;
+const AUTH_RESPONSE_MAX_BYTES = 64 * 1024;
+// Keep client retries 15 seconds inside the backend's 60-second replay window.
+const REFRESH_RETRY_CUTOFF_MS = 45_000;
 
 type AuthBroadcastMessage = { type: 'auth-changed' };
 
 export type AuthStatus =
   'restoring' | 'authenticated' | 'guest' | 'retryable-error' | 'logging-in' | 'logging-out';
 export const AUTH_EXPIRED_EVENT = 'meomuneum:auth-expired';
+export const AUTH_SESSION_AVAILABLE_EVENT = 'meomuneum:session-available';
 export const ACCESS_TOKEN_CHANGED_EVENT = 'meomuneum:access-token-changed';
 
 export class AuthRequestError extends Error {
   readonly status: number | null;
   readonly requestWasSent: boolean;
-  constructor(status: number | null, requestWasSent = false) {
+  readonly retryCutoffExceeded: boolean;
+  constructor(
+    status: number | null,
+    requestWasSent = false,
+    options: { retryCutoffExceeded?: boolean } = {},
+  ) {
     super('Authentication request failed');
     this.name = 'AuthRequestError';
     this.status = status;
     this.requestWasSent = requestWasSent;
+    this.retryCutoffExceeded = options.retryCutoffExceeded ?? false;
   }
 }
 
@@ -39,6 +53,11 @@ let storageUnavailable = false;
 let storageNeedsClear = false;
 let authTransitionActionDepth = 0;
 let lastAccessTokenRefreshAt = 0;
+
+function assertAuthCapabilities(): void {
+  const result = probeAuthCapabilities();
+  if (!result.supported) throw new AuthRequestError(null);
+}
 
 export function getLastAccessTokenRefreshAt(): number {
   return lastAccessTokenRefreshAt;
@@ -60,6 +79,8 @@ function advanceSharedAuthEpoch(): void {
   try {
     const nextEpoch = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     window.localStorage.setItem(AUTH_EPOCH_KEY, nextEpoch);
+    const token = sessionTokenStorage()?.getItem(ACCESS_TOKEN_KEY);
+    if (token) sessionTokenStorage()?.setItem(ACCESS_TOKEN_EPOCH_KEY, nextEpoch);
   } catch {
     throw new AuthRequestError(null);
   }
@@ -69,12 +90,17 @@ function invalidateForPeerAuthChange(): void {
   authTransitionGeneration += 1;
   clearAccessToken();
   window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+  window.dispatchEvent(new Event(AUTH_SESSION_AVAILABLE_EVENT));
 }
 
-const authChannel =
-  typeof window !== 'undefined' && typeof window.BroadcastChannel === 'function'
-    ? new window.BroadcastChannel(AUTH_CHANNEL_NAME)
-    : null;
+let authChannel: BroadcastChannel | null = null;
+try {
+  if (typeof window !== 'undefined' && typeof window.BroadcastChannel === 'function') {
+    authChannel = new window.BroadcastChannel(AUTH_CHANNEL_NAME);
+  }
+} catch {
+  authChannel = null;
+}
 
 authChannel?.addEventListener('message', (event: MessageEvent<AuthBroadcastMessage>) => {
   if (event.data?.type !== 'auth-changed') return;
@@ -83,7 +109,9 @@ authChannel?.addEventListener('message', (event: MessageEvent<AuthBroadcastMessa
 
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event: StorageEvent) => {
-    if (event.key === AUTH_EPOCH_KEY) invalidateForPeerAuthChange();
+    if (event.key === AUTH_EPOCH_KEY) {
+      invalidateForPeerAuthChange();
+    }
   });
 }
 
@@ -107,6 +135,7 @@ export function getAccessToken(): string | null {
   if (storageNeedsClear) {
     try {
       storage.removeItem(ACCESS_TOKEN_KEY);
+      storage.removeItem(ACCESS_TOKEN_EPOCH_KEY);
       storageNeedsClear = false;
       storageUnavailable = false;
     } catch {
@@ -119,6 +148,24 @@ export function getAccessToken(): string | null {
 
   try {
     const token = storage.getItem(ACCESS_TOKEN_KEY);
+    if (token) {
+      const epoch = sharedAuthEpoch();
+      const tokenEpoch = storage.getItem(ACCESS_TOKEN_EPOCH_KEY);
+      if (tokenEpoch && tokenEpoch !== epoch) {
+        storage.removeItem(ACCESS_TOKEN_KEY);
+        storage.removeItem(ACCESS_TOKEN_EPOCH_KEY);
+        accessTokenInMemory = null;
+        generation += 1;
+        window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+        return null;
+      }
+      if (!tokenEpoch) {
+        storage.removeItem(ACCESS_TOKEN_KEY);
+        accessTokenInMemory = null;
+        generation += 1;
+        return null;
+      }
+    }
     storageUnavailable = false;
     if (token !== accessTokenInMemory) {
       accessTokenInMemory = token;
@@ -165,6 +212,7 @@ function persistAccessToken(token: string, invalidateRequests: boolean, refreshe
 
   try {
     storage.setItem(ACCESS_TOKEN_KEY, token);
+    storage.setItem(ACCESS_TOKEN_EPOCH_KEY, sharedAuthEpoch());
   } catch {
     storageUnavailable = true;
     accessTokenInMemory = null;
@@ -201,6 +249,7 @@ export function clearAccessToken(): void {
     }
     try {
       storage.removeItem(ACCESS_TOKEN_KEY);
+      storage.removeItem(ACCESS_TOKEN_EPOCH_KEY);
       storageUnavailable = false;
       storageNeedsClear = false;
     } catch {
@@ -259,13 +308,95 @@ function isCurrentAuth(generationAtStart: number, accessToken: string | null): b
   return generation === generationAtStart && getAccessToken() === accessToken;
 }
 
-export async function getCsrfToken(): Promise<string> {
-  let response: Response;
+async function fetchAuthLifecycle(
+  input: string,
+  init: RequestInit,
+  parentSignal?: AbortSignal,
+): Promise<Response> {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const abortFromParent = () => controller.abort();
+  if (parentSignal?.aborted) controller.abort();
+  else parentSignal?.addEventListener('abort', abortFromParent, { once: true });
+  const timer = window.setTimeout(() => controller.abort(), AUTH_REQUEST_TIMEOUT_MS);
+  const wasSent = init.method?.toUpperCase() !== 'GET';
   try {
-    response = await fetch(`${baseUrl}/api/v1/auth/token/csrf`, { credentials: 'include' });
-  } catch {
-    throw new AuthRequestError(null);
+    const response = await fetch(input, { ...init, signal: controller.signal });
+    const contentLength = Number(response.headers.get('Content-Length'));
+    if (Number.isFinite(contentLength) && contentLength > AUTH_RESPONSE_MAX_BYTES) {
+      controller.abort();
+      throw new AuthRequestError(null, wasSent);
+    }
+    if (!response.body) return response;
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let byteLength = 0;
+    while (true) {
+      const { done, value } = await readLifecycleChunk(reader, controller.signal, wasSent);
+      if (done) break;
+      byteLength += value.byteLength;
+      if (byteLength > AUTH_RESPONSE_MAX_BYTES) {
+        await reader.cancel();
+        controller.abort();
+        throw new AuthRequestError(null, wasSent);
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(byteLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const bounded = new Response(bytes, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+    const parseJson = bounded.json.bind(bounded);
+    bounded.json = async () => {
+      const body = await parseJson();
+      if (Date.now() - startedAt > AUTH_REQUEST_TIMEOUT_MS) {
+        throw new AuthRequestError(null, wasSent);
+      }
+      return body;
+    };
+    return bounded;
+  } catch (error) {
+    if (error instanceof AuthRequestError) throw error;
+    throw new AuthRequestError(null, wasSent);
+  } finally {
+    window.clearTimeout(timer);
+    parentSignal?.removeEventListener('abort', abortFromParent);
   }
+}
+
+function readLifecycleChunk(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal: AbortSignal,
+  requestWasSent: boolean,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  if (signal.aborted) return Promise.reject(new AuthRequestError(null, requestWasSent));
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      void reader.cancel().catch(() => undefined);
+      reject(new AuthRequestError(null, requestWasSent));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    reader
+      .read()
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
+export async function getCsrfToken(signal?: AbortSignal): Promise<string> {
+  assertAuthCapabilities();
+  const response = await fetchAuthLifecycle(
+    `${baseUrl}/api/v1/auth/token/csrf`,
+    { credentials: 'include' },
+    signal,
+  );
   const body = await response.json().catch(() => null);
   if (!response.ok || typeof body?.data?.csrf_token !== 'string') {
     throw new AuthRequestError(response.status);
@@ -274,26 +405,63 @@ export async function getCsrfToken(): Promise<string> {
 }
 
 async function refreshOnce(retryCsrf: boolean, requestEpoch: string): Promise<string> {
+  const refreshOperation = readRefreshOperation();
   const csrf = await getCsrfToken();
+  if (Date.now() >= refreshOperation.retryCutoffAt) throw new AuthRequestError(null, true);
   if (sharedAuthEpoch() !== requestEpoch) {
     throw new AuthRequestError(null);
   }
-  let response: Response;
+  const response = await fetchAuthLifecycle(`${baseUrl}/api/v1/auth/token/refresh`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'X-CSRF-TOKEN': csrf, 'X-Refresh-Operation-Id': refreshOperation.id },
+  });
+  if (response.status === 403 && retryCsrf) return refreshOnce(false, requestEpoch);
+  if (response.status === 403) clearRefreshOperation();
+  const body = await response.json().catch(() => null);
+  if (!response.ok || typeof body?.data?.access_token !== 'string') {
+    if (response.status === 401) clearRefreshOperation();
+    throw new AuthRequestError(response.status);
+  }
+  clearRefreshOperation();
+  return body.data.access_token;
+}
+
+function readRefreshOperation(): { id: string; createdAt: number; retryCutoffAt: number } {
   try {
-    response = await fetch(`${baseUrl}/api/v1/auth/token/refresh`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'X-CSRF-TOKEN': csrf },
-    });
+    const raw = window.localStorage.getItem(REFRESH_OPERATION_KEY);
+    if (raw) {
+      const stored = JSON.parse(raw) as {
+        id: string;
+        createdAt: number;
+        retryCutoffAt?: number;
+        expiresAt?: number;
+      };
+      const retryCutoffAt = stored.retryCutoffAt ?? stored.createdAt + REFRESH_RETRY_CUTOFF_MS;
+      if (stored.id && Date.now() < retryCutoffAt) return { ...stored, retryCutoffAt };
+      // Keep unresolved identity so a later action cannot mint a new operation after cutoff.
+      throw new AuthRequestError(null, true, { retryCutoffExceeded: true });
+    }
+    const createdAt = Date.now();
+    const marker = {
+      id: crypto.randomUUID(),
+      createdAt,
+      retryCutoffAt: createdAt + REFRESH_RETRY_CUTOFF_MS,
+    };
+    window.localStorage.setItem(REFRESH_OPERATION_KEY, JSON.stringify(marker));
+    return marker;
+  } catch (error) {
+    if (error instanceof AuthRequestError) throw error;
+    throw new AuthRequestError(null);
+  }
+}
+
+function clearRefreshOperation(): void {
+  try {
+    window.localStorage.removeItem(REFRESH_OPERATION_KEY);
   } catch {
     throw new AuthRequestError(null);
   }
-  if (response.status === 403 && retryCsrf) return refreshOnce(false, requestEpoch);
-  const body = await response.json().catch(() => null);
-  if (!response.ok || typeof body?.data?.access_token !== 'string') {
-    throw new AuthRequestError(response.status);
-  }
-  return body.data.access_token;
 }
 
 export async function refreshAccessToken(
@@ -301,6 +469,7 @@ export async function refreshAccessToken(
   expectedTransitionGeneration?: number,
   expectedSharedAuthEpoch?: string,
 ): Promise<string> {
+  assertAuthCapabilities();
   await waitForAuthTransition();
   const startSharedAuthEpoch = sharedAuthEpoch();
   if (expectedSharedAuthEpoch !== undefined && startSharedAuthEpoch !== expectedSharedAuthEpoch) {
@@ -343,7 +512,7 @@ export async function refreshAccessToken(
       generation === requestGeneration &&
       sharedAuthEpoch() === startSharedAuthEpoch &&
       caught instanceof AuthRequestError &&
-      caught.status === 401
+      (caught.status === 401 || caught.retryCutoffExceeded)
     ) {
       if (tokenAtStart !== null && getAccessToken() === tokenAtStart) clearAccessToken();
       window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
@@ -379,13 +548,46 @@ async function sendProtectedRequest(
   return fetch(input, { ...init, headers: requestHeaders(init, token) });
 }
 
+async function dispatchWithEpochGuard(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  token: string | null,
+  expectedEpoch: string,
+  expectedTransitionGeneration: number,
+): Promise<Response> {
+  const pending = await requestAuthLock(async () => {
+    if (
+      authTransitionGeneration !== expectedTransitionGeneration ||
+      sharedAuthEpoch() !== expectedEpoch ||
+      (token !== null && getAccessToken() !== token)
+    ) {
+      throw new AuthRequestError(null);
+    }
+    return { response: sendProtectedRequest(input, init, token) };
+  });
+  const response = await pending.response;
+  if (
+    authTransitionGeneration !== expectedTransitionGeneration ||
+    sharedAuthEpoch() !== expectedEpoch
+  ) {
+    throw new AuthRequestError(null, true);
+  }
+  return response;
+}
+
 async function sendAnonymousFallback(
   input: RequestInfo | URL,
   init: RequestInit,
   transitionGeneration: number,
   requestEpoch: string,
 ): Promise<Response> {
-  const response = await sendProtectedRequest(input, init, null);
+  const response = await dispatchWithEpochGuard(
+    input,
+    init,
+    null,
+    requestEpoch,
+    transitionGeneration,
+  );
   if (authTransitionGeneration !== transitionGeneration || sharedAuthEpoch() !== requestEpoch) {
     throw new AuthRequestError(null, true);
   }
@@ -398,6 +600,7 @@ export async function authenticatedFetch(
   init: RequestInit = {},
   options: AuthenticatedFetchOptions = {},
 ): Promise<Response> {
+  assertAuthCapabilities();
   if (typeof Request !== 'undefined' && input instanceof Request) {
     throw new AuthRequestError(null);
   }
@@ -437,6 +640,12 @@ export async function authenticatedFetch(
           requestSharedAuthEpoch,
         );
       }
+      if (caught instanceof AuthRequestError) {
+        // Refresh transport ambiguity does not mean the protected mutation was dispatched.
+        throw new AuthRequestError(caught.status, false, {
+          retryCutoffExceeded: caught.retryCutoffExceeded,
+        });
+      }
       throw caught;
     }
   }
@@ -444,7 +653,13 @@ export async function authenticatedFetch(
     throw new AuthRequestError(null);
   }
 
-  const response = await sendProtectedRequest(input, init, accessToken);
+  const response = await dispatchWithEpochGuard(
+    input,
+    init,
+    accessToken,
+    requestSharedAuthEpoch,
+    requestTransitionGeneration,
+  );
   if (
     authTransitionGeneration !== requestTransitionGeneration ||
     sharedAuthEpoch() !== requestSharedAuthEpoch
@@ -460,7 +675,13 @@ export async function authenticatedFetch(
   abortIfNeeded(init.signal);
 
   if (currentToken && currentToken !== accessToken && generation === requestGeneration) {
-    const latestResponse = await sendProtectedRequest(input, init, currentToken);
+    const latestResponse = await dispatchWithEpochGuard(
+      input,
+      init,
+      currentToken,
+      requestSharedAuthEpoch,
+      requestTransitionGeneration,
+    );
     if (
       authTransitionGeneration !== requestTransitionGeneration ||
       sharedAuthEpoch() !== requestSharedAuthEpoch ||
@@ -485,7 +706,13 @@ export async function authenticatedFetch(
   }
   abortIfNeeded(init.signal);
 
-  const retryResponse = await sendProtectedRequest(input, init, refreshedAccessToken);
+  const retryResponse = await dispatchWithEpochGuard(
+    input,
+    init,
+    refreshedAccessToken,
+    requestSharedAuthEpoch,
+    requestTransitionGeneration,
+  );
   if (
     authTransitionGeneration !== requestTransitionGeneration ||
     sharedAuthEpoch() !== requestSharedAuthEpoch ||
@@ -500,11 +727,54 @@ export async function authenticatedFetch(
   return retryResponse;
 }
 
+/** Dispatches a protected teardown request only while its captured tab token is still current. */
+export async function authenticatedFetchWithCurrentToken(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  expectedToken: string,
+): Promise<Response> {
+  assertAuthCapabilities();
+  if (!expectedToken || (typeof Request !== 'undefined' && input instanceof Request)) {
+    throw new AuthRequestError(null);
+  }
+  if (!isReplayableBody(init.body)) throw new AuthRequestError(null);
+  abortIfNeeded(init.signal);
+  const requestEpoch = sharedAuthEpoch();
+  const requestTransitionGeneration = authTransitionGeneration;
+  await waitForAuthTransition();
+  if (
+    requestTransitionGeneration !== authTransitionGeneration ||
+    requestEpoch !== sharedAuthEpoch() ||
+    getAccessToken() !== expectedToken
+  ) {
+    throw new AuthRequestError(null);
+  }
+  const pending = await requestAuthLock(async () => {
+    if (
+      requestTransitionGeneration !== authTransitionGeneration ||
+      requestEpoch !== sharedAuthEpoch() ||
+      getAccessToken() !== expectedToken
+    ) {
+      throw new AuthRequestError(null);
+    }
+    return { response: sendProtectedRequest(input, init, expectedToken) };
+  });
+  const response = await pending.response;
+  if (
+    requestTransitionGeneration !== authTransitionGeneration ||
+    requestEpoch !== sharedAuthEpoch()
+  ) {
+    throw new AuthRequestError(null, true);
+  }
+  return response;
+}
+
 export async function authenticatedFetchWithinAuthTransition(
   input: RequestInfo | URL,
   init: RequestInit,
   accessToken: string,
 ): Promise<Response> {
+  assertAuthCapabilities();
   if (authTransitionActionDepth === 0 || !accessToken) throw new AuthRequestError(null);
   if (typeof Request !== 'undefined' && input instanceof Request) throw new AuthRequestError(null);
   if (!isReplayableBody(init.body)) throw new AuthRequestError(null);
@@ -515,6 +785,7 @@ export async function authenticatedFetchWithinAuthTransition(
 // Login, logout, and account changes hold a cross-tab lock while the refresh cookie changes.
 export function runAuthTransition<T>(action: () => Promise<T>): Promise<T> {
   clearChatConversationCache();
+  assertAuthCapabilities();
   generation += 1;
   authTransitionGeneration += 1;
   pendingTransitions += 1;
@@ -559,6 +830,7 @@ export function resetAuthSessionForTests(): void {
   lastAccessTokenRefreshAt = 0;
   try {
     window.localStorage.removeItem(AUTH_EPOCH_KEY);
+    window.localStorage.removeItem(REFRESH_OPERATION_KEY);
   } catch {
     // A test reset must not mask a storage failure under test.
   }
