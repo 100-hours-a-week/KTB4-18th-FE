@@ -58,6 +58,38 @@ vi.mock('./features/auth-login/api/loginApi', () => ({
   login: vi.fn(),
   LoginRequestError: class LoginRequestError extends Error {},
 }));
+vi.mock('./features/auth-login/api/loginQueueApi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./features/auth-login/api/loginQueueApi')>()),
+  startOrResumeLoginQueue: vi.fn(async () => ({
+    status: 'READY',
+    loginOutcome: null,
+    usersAhead: 0,
+    nextPollSeconds: 10,
+  })),
+  getLoginQueueStatus: vi.fn(async () => ({
+    status: 'READY',
+    loginOutcome: null,
+    usersAhead: 0,
+    nextPollSeconds: 10,
+  })),
+  getLoginOperationId: vi.fn(() => 'test-login-operation-id'),
+  clearLoginOperationId: vi.fn(),
+  submitQueuedLogin: vi.fn(async () => {
+    const { setAccessToken: storeToken } = await import('./features/auth-login/api/authSession');
+    storeToken('test-access-token');
+    return {
+      message: 'login success' as const,
+      data: { access_token: 'test-access-token', expires_in: 3600 },
+    };
+  }),
+  recoverQueuedLogin: vi.fn(async () => ({
+    message: 'login success' as const,
+    data: { access_token: 'test-access-token', expires_in: 3600 },
+  })),
+  cancelLoginQueue: vi.fn(async () => undefined),
+  publishQueueSignal: vi.fn(),
+  subscribeQueueSignals: vi.fn(() => () => undefined),
+}));
 vi.mock('./features/auth-login/api/logoutApi', () => ({
   logout: vi.fn(),
   LogoutRequestError: class LogoutRequestError extends Error {
@@ -336,7 +368,7 @@ describe('access token 사전 재발급 스케줄러', () => {
     expect(refreshCount).toBe(1);
   });
 
-  it('일시 오류는 60초 후 재시도하고 terminal 4xx는 자동 재시도하지 않는다', async () => {
+  it('refresh 응답 불명확 상태가 replay window를 넘으면 stale token을 재전송하지 않는다', async () => {
     let refreshCount = 0;
     vi.stubGlobal(
       'fetch',
@@ -370,7 +402,8 @@ describe('access token 사전 재발급 스케줄러', () => {
     await act(async () => vi.advanceTimersByTimeAsync(59_000));
     expect(refreshCount).toBe(1);
     await act(async () => vi.advanceTimersByTimeAsync(1_000));
-    expect(refreshCount).toBe(2);
+    expect(refreshCount).toBe(1);
+    expect(getAccessToken()).toBeNull();
 
     cleanup();
     resetAuthSessionForTests();

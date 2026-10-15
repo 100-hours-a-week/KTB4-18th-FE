@@ -16,6 +16,7 @@ import {
   ACCESS_TOKEN_CHANGED_EVENT,
   ACCESS_TOKEN_REFRESH_EARLY_MS,
   AUTH_EXPIRED_EVENT,
+  AUTH_SESSION_AVAILABLE_EVENT,
   AuthRequestError,
   clearAccessToken,
   getAccessToken,
@@ -25,6 +26,10 @@ import {
   shouldRefreshAccessToken,
   type AuthStatus,
 } from './features/auth-login/api/authSession';
+import {
+  getAuthCapabilityMessage,
+  probeAuthCapabilities,
+} from './features/auth-login/api/authCapabilities';
 import { ChatEntryPage } from './features/chat-entry/components/ChatEntryPage';
 import { SignupPage } from './features/user-signup/components/SignupPage';
 import { useVoiceInput } from './hooks/useVoiceInput';
@@ -67,6 +72,7 @@ function App() {
   const [routeLocation, setRouteLocation] = useState(() => readRouteLocation());
   const pathname = routeLocation.pathname;
   const [authStatus, setAuthStatus] = useState<AuthStatus>('restoring');
+  const [authCapability] = useState(() => probeAuthCapabilities());
   const [passwordChangedNotice, setPasswordChangedNotice] = useState(false);
   const authIntent = useRef(0);
   const [authIntentVersion, setAuthIntentVersion] = useState(0);
@@ -101,6 +107,10 @@ function App() {
 
   const restore = useCallback(async () => {
     const currentIntent = authIntent.current;
+    if (!authCapability.supported) {
+      setAuthStatus('retryable-error');
+      return;
+    }
     setAuthStatus('restoring');
     try {
       if (getAccessToken() && !shouldRefreshAccessToken()) {
@@ -117,10 +127,20 @@ function App() {
         setAuthStatus('retryable-error');
       }
     }
-  }, []);
+  }, [authCapability]);
 
   useEffect(() => {
+    if (!authCapability.supported) return;
     queueMicrotask(() => void restore());
+  }, [authCapability, restore]);
+
+  useEffect(() => {
+    const onPeerSessionAvailable = () => {
+      advanceAuthIntent();
+      void restore();
+    };
+    window.addEventListener(AUTH_SESSION_AVAILABLE_EVENT, onPeerSessionAvailable);
+    return () => window.removeEventListener(AUTH_SESSION_AVAILABLE_EVENT, onPeerSessionAvailable);
   }, [restore]);
 
   useEffect(() => {
@@ -320,6 +340,9 @@ function App() {
   if (pathname === LOGIN_PATH) {
     return (
       <LoginPage
+        authCapabilityMessage={
+          authCapability.supported ? undefined : getAuthCapabilityMessage(authCapability.reason)
+        }
         passwordChangedNotice={passwordChangedNotice}
         onPasswordChangedNoticeDismiss={() => setPasswordChangedNotice(false)}
         onLoginSuccess={handleLoginSuccess}
@@ -345,7 +368,11 @@ function App() {
   if (isProtectedRoute && authStatus === 'retryable-error' && !getAccessToken()) {
     return (
       <main role="alert">
-        <p>인증 서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.</p>
+        <p>
+          {authCapability.supported
+            ? '인증 서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.'
+            : getAuthCapabilityMessage(authCapability.reason)}
+        </p>
         {manualLogoutError && <p>{manualLogoutError}</p>}
         <button
           type="button"
