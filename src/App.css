@@ -305,6 +305,38 @@
   accent-color: var(--color-bg-interactive-primary);
 }
 
+.mypage-device-sessions > p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-body3-normal);
+}
+
+.mypage-device-sessions ul {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mypage-device-sessions li {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 0.75rem;
+}
+
+.mypage-device-sessions li strong {
+  color: var(--color-text-primary);
+  font-size: var(--text-body2-normal);
+}
+
+.mypage-device-sessions li small {
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+}
+
 .mypage-link,
 .mypage-text-button {
   display: flex;
