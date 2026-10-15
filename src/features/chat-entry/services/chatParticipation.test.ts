@@ -21,9 +21,10 @@ vi.mock('../../../api/chatRooms', async (original) => ({
   joinChatRoom: vi.fn(),
   leaveChatRoom: vi.fn(),
 }));
-const auth = vi.hoisted(() => ({ accountId: 7 }));
+const auth = vi.hoisted(() => ({ accountId: 7, sid: '550e8400-e29b-41d4-a716-446655440000' }));
 vi.mock('../../auth-login/api/authSession', () => ({
-  getAccessToken: () => `header.${btoa(JSON.stringify({ sub: String(auth.accountId) }))}.signature`,
+  getAccessToken: () =>
+    `header.${btoa(JSON.stringify({ sub: String(auth.accountId), sid: auth.sid }))}.signature`,
 }));
 vi.mock('./chatConnection', () => ({ connectChatRoom: vi.fn() }));
 vi.mock('./resolveCurrentChatLocation', () => ({ resolveCurrentChatLocation: vi.fn() }));
@@ -59,6 +60,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date('2026-10-08T00:00:00Z'));
   clearChatConversationCache();
   auth.accountId = 7;
+  auth.sid = '550e8400-e29b-41d4-a716-446655440000';
   vi.resetAllMocks();
   states = [];
   participation = new ChatParticipation((state) => states.push(state));
@@ -77,6 +79,24 @@ afterEach(async () => {
 });
 
 describe('지역 채팅 메시지 처리', () => {
+  it('같은 계정의 세션이 입장 응답 대기 중 변경되면 이전 참여로 연결하지 않는다', async () => {
+    let finish!: (value: typeof membership) => void;
+    vi.mocked(joinChatRoom).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const starting = participation.start();
+    await vi.waitFor(() => expect(joinChatRoom).toHaveBeenCalledOnce());
+    auth.sid = '550e8400-e29b-41d4-a716-446655440001';
+    finish(membership);
+    await starting;
+    expect(connectChatRoom).not.toHaveBeenCalled();
+    expect(leaveChatRoom).toHaveBeenCalledWith(membership, expect.any(String));
+    expect(states.at(-1)?.isReady).toBe(false);
+  });
+
   const saved = {
     messageId: 10,
     clientMessageId: '',
@@ -160,7 +180,7 @@ describe('지역 채팅 메시지 처리', () => {
     expect(connectChatRoom).not.toHaveBeenCalled();
     expect(leaveChatRoom).toHaveBeenCalledWith(
       membership,
-      `header.${btoa(JSON.stringify({ sub: '7' }))}.signature`,
+      `header.${btoa(JSON.stringify({ sub: '7', sid: '550e8400-e29b-41d4-a716-446655440000' }))}.signature`,
     );
     expect(states.at(-1)?.messages).toEqual([]);
   });
@@ -330,7 +350,7 @@ describe('지역 채팅 참여 흐름', () => {
     await stopped;
     expect(leaveChatRoom).toHaveBeenCalledWith(
       membership,
-      `header.${btoa(JSON.stringify({ sub: '7' }))}.signature`,
+      `header.${btoa(JSON.stringify({ sub: '7', sid: '550e8400-e29b-41d4-a716-446655440000' }))}.signature`,
     );
   });
 
@@ -350,7 +370,7 @@ describe('지역 채팅 참여 흐름', () => {
     expect(connectChatRoom).not.toHaveBeenCalled();
     expect(leaveChatRoom).toHaveBeenCalledWith(
       membership,
-      `header.${btoa(JSON.stringify({ sub: '7' }))}.signature`,
+      `header.${btoa(JSON.stringify({ sub: '7', sid: '550e8400-e29b-41d4-a716-446655440000' }))}.signature`,
     );
   });
 
@@ -400,7 +420,7 @@ describe('지역 채팅 참여 흐름', () => {
     expect(close).toHaveBeenCalledOnce();
     expect(leaveChatRoom).toHaveBeenCalledWith(
       membership,
-      `header.${btoa(JSON.stringify({ sub: '7' }))}.signature`,
+      `header.${btoa(JSON.stringify({ sub: '7', sid: '550e8400-e29b-41d4-a716-446655440000' }))}.signature`,
     );
     expect(states.at(-1)?.status).toBe('error');
     expect(states.at(-1)?.activeRoom).toBeNull();
