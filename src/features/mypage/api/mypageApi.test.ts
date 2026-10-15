@@ -8,6 +8,7 @@ import {
 } from '../../auth-login/api/authSession';
 import {
   getAllRecommendationHistory,
+  getMyAuthSessions,
   getMyProfileImage,
   uploadMyProfileImage,
   updateMyProfile,
@@ -24,6 +25,25 @@ describe('mypageApi', () => {
     vi.restoreAllMocks();
     resetAuthSessionForTests();
     sessionStorage.clear();
+  });
+
+  it('loads auth sessions from the authenticated sessions endpoint', async () => {
+    const session = {
+      sid: 'session-1',
+      current: true,
+      device_label: 'Chrome · macOS',
+      created_at: '2026-10-01T10:00:00Z',
+      last_refreshed_at: '2026-10-10T10:00:00Z',
+    };
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ data: [session] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getMyAuthSessions()).resolves.toEqual([session]);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/auth/sessions');
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('Authorization')).toBe(
+      'Bearer access-token',
+    );
   });
 
   it('collects nested recommendation items from every cursor page', async () => {
