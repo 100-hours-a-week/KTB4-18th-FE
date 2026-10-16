@@ -1,3 +1,5 @@
+import { consumeLogoutQueueReset } from './loginQueuePersistence';
+
 export const QUEUE_FLOW_LOCK = 'meomuneum:queue-flow';
 const QUEUE_CHANNEL = 'meomuneum:queue-state';
 
@@ -7,8 +9,10 @@ export type QueueSignal = {
     | 'queue-attempt-consumed'
     | 'queue-cancel-requested'
     | 'queue-cancel-unconfirmed'
-    | 'queue-create-cancelled';
+    | 'queue-create-cancelled'
+    | 'queue-logout-reset';
   queueGeneration: string;
+  resetEventId?: string;
 };
 
 let activeCreateController: AbortController | null = null;
@@ -46,6 +50,10 @@ export function publishQueueSignal(signal: QueueSignal): void {
 export function subscribeQueueSignals(handler: (signal: QueueSignal) => void): () => void {
   const deliver = (signal: QueueSignal) => {
     if (signal.type === 'queue-cancel-requested' || signal.type === 'queue-create-cancelled') {
+      abortActiveCreate();
+    }
+    if (signal.type === 'queue-logout-reset') {
+      if (!consumeLogoutQueueReset(signal.resetEventId, signal.queueGeneration)) return;
       abortActiveCreate();
     }
     handler(signal);

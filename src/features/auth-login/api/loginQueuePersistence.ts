@@ -3,6 +3,7 @@ import { QueueRequestError } from './loginQueueErrors';
 export const CREATE_KEY_STORAGE = 'meomuneum:queue-create-idempotency';
 export const QUEUE_GENERATION_STORAGE = 'meomuneum:queue-generation';
 export const LOGIN_OPERATION_STORAGE = 'meomuneum:queue-login-operation';
+export const LOGOUT_QUEUE_RESET_STORAGE = 'meomuneum:queue-logout-reset';
 export const LOGIN_OPERATION_TTL_MS = 15 * 60 * 1000;
 export const MAX_AUTOMATIC_CREATE_RETRIES = 3;
 export const RETRY_AFTER_FALLBACK_MS = 5_000;
@@ -15,6 +16,7 @@ export type PersistedMarker = {
   expiresAt?: number;
   generation?: string;
   status?: 'ACTIVE' | 'CANCEL_REQUESTED';
+  cancelTarget?: 'CURRENT_TICKET' | 'IDEMPOTENCY_KEY';
   retryCount?: number;
   capacityWaitCount?: number;
   lastFailureKind?: 'CAPACITY' | 'TRANSIENT';
@@ -22,6 +24,10 @@ export type PersistedMarker = {
   nextAttemptAt?: number;
   retryAfterMs?: number;
 };
+
+export type LogoutQueueResetMarker = { eventId: string; generation: string };
+
+const handledLogoutResetIds = new Set<string>();
 
 export const retryBaselines = new Map<string, { startedAt: number; delayMs: number }>();
 
@@ -56,6 +62,46 @@ export function beginQueueGeneration(): void {
     storage().removeItem(LOGIN_OPERATION_STORAGE);
   } catch {
     throw new QueueRequestError(null);
+  }
+}
+
+export function invalidateLogoutQueueReset(): void {
+  try {
+    storage().removeItem(LOGOUT_QUEUE_RESET_STORAGE);
+  } catch {
+    throw new QueueRequestError(null);
+  }
+}
+
+export function persistLogoutQueueReset(generation: string): LogoutQueueResetMarker {
+  const event = { eventId: crypto.randomUUID(), generation };
+  try {
+    storage().setItem(LOGOUT_QUEUE_RESET_STORAGE, JSON.stringify(event));
+  } catch {
+    throw new QueueRequestError(null);
+  }
+  return event;
+}
+
+export function consumeLogoutQueueReset(
+  eventId: string | undefined,
+  generation: string,
+): boolean {
+  if (!eventId || handledLogoutResetIds.has(eventId)) return false;
+  try {
+    const pending = JSON.parse(storage().getItem(LOGOUT_QUEUE_RESET_STORAGE) ?? 'null') as
+      | LogoutQueueResetMarker
+      | null;
+    if (
+      pending?.eventId !== eventId ||
+      pending.generation !== generation ||
+      storage().getItem(QUEUE_GENERATION_STORAGE) !== generation
+    )
+      return false;
+    handledLogoutResetIds.add(eventId);
+    return true;
+  } catch {
+    return false;
   }
 }
 

@@ -20,6 +20,7 @@ import {
   calculateQueueCreateRetryDelayMs,
   calculateQueueStatusRetryDelayMs,
   getLoginQueueStatus,
+  resetLoginQueueAfterLogout,
 } from './loginQueueApi';
 
 function ticket(status: 'READY' | 'CONSUMED') {
@@ -186,6 +187,281 @@ describe('queue create retry policy', () => {
 });
 
 describe('login queue response contract', () => {
+  it('checks current status before creating and retries rate-limited status checks at most three times', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'navigator',
+      Object.assign(Object.create(Object.getPrototypeOf(navigator)), navigator, {
+        locks: {
+          request: async (_name: string, _options: unknown, callback: (lock: object) => unknown) =>
+            callback({}),
+        },
+      }),
+    );
+    let statusRequests = 0;
+    const requests: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        requests.push(`${init?.method ?? 'GET'} ${url}`);
+        if (url.endsWith('/current')) {
+          statusRequests += 1;
+          return statusRequests < 3
+            ? Response.json({ code: 'RATE_LIMITED' }, { status: 429 })
+            : new Response(null, { status: 404 });
+        }
+        if (url.endsWith('/tickets') && init?.method === 'POST') {
+          return Response.json({
+            message: 'created',
+            data: { status: 'WAITING', loginOutcome: null, usersAhead: 0, nextPollSeconds: 10 },
+          });
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }),
+    );
+
+    const pending = startOrResumeLoginQueue();
+    await vi.runAllTimersAsync();
+    await expect(pending).resolves.toMatchObject({ status: 'WAITING' });
+
+    expect(statusRequests).toBe(3);
+    expect(requests.at(-1)).toMatch(/^POST .*\/tickets$/);
+  });
+
+  it('pauses on a Retry-After beyond the reconciliation window without creating a ticket', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'navigator',
+      Object.assign(Object.create(Object.getPrototypeOf(navigator)), navigator, {
+        locks: {
+          request: async (_name: string, _options: unknown, callback: (lock: object) => unknown) =>
+            callback({}),
+        },
+      }),
+    );
+    const requestedUrls: string[] = [];
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      requestedUrls.push(String(input));
+      return Response.json(
+        { code: 'RATE_LIMITED' },
+        { status: 429, headers: { 'Retry-After': '120' } },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(startOrResumeLoginQueue()).rejects.toMatchObject({
+      code: 'QUEUE_STATUS_RETRY_PAUSED',
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(requestedUrls[0]).toContain('/tickets/current');
+  });
+
+  it('reuses an ambiguous create key when no current ticket exists', async () => {
+    vi.stubGlobal(
+      'navigator',
+      Object.assign(Object.create(Object.getPrototypeOf(navigator)), navigator, {
+        locks: {
+          request: async (_name: string, _options: unknown, callback: (lock: object) => unknown) =>
+            callback({}),
+        },
+      }),
+    );
+    const generation = getLoginQueueGeneration();
+    vi.mocked(getCsrfToken).mockResolvedValue('csrf-token');
+    const run = async (cancelTarget: 'IDEMPOTENCY_KEY' | 'CURRENT_TICKET') => {
+      const originalKey = `original-${cancelTarget}`;
+      localStorage.setItem(
+        'meomuneum:queue-create-idempotency',
+        JSON.stringify({
+          id: originalKey,
+          createdAt: Date.now(),
+          generation,
+          status: 'CANCEL_REQUESTED',
+          cancelTarget,
+          retryCount: 3,
+          lastAttemptAt: Date.now(),
+        }),
+      );
+      let createKey: string | null = null;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: string | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (url.endsWith('/current')) return new Response(null, { status: 404 });
+          createKey = new Headers(init?.headers).get('Idempotency-Key');
+          return Response.json({
+            message: 'created',
+            data: { status: 'WAITING', loginOutcome: null, usersAhead: 0, nextPollSeconds: 10 },
+          });
+        }),
+      );
+      await startOrResumeLoginQueue();
+      return { originalKey, createKey };
+    };
+
+    const ambiguous = await run('IDEMPOTENCY_KEY');
+    const known = await run('CURRENT_TICKET');
+    expect(ambiguous.createKey).toBe(ambiguous.originalKey);
+    expect(known.createKey).not.toBe(known.originalKey);
+  });
+
+  it('persists the live-ticket cancel target before DELETE and uses a fresh key after ambiguous cancellation', async () => {
+    vi.stubGlobal(
+      'navigator',
+      Object.assign(Object.create(Object.getPrototypeOf(navigator)), navigator, {
+        locks: {
+          request: async (_name: string, _options: unknown, callback: (lock: object) => unknown) =>
+            callback({}),
+        },
+      }),
+    );
+    vi.mocked(getCsrfToken).mockResolvedValue('csrf-token');
+    const originalKey = 'cancelled-live-ticket-key';
+    localStorage.setItem(
+      'meomuneum:queue-create-idempotency',
+      JSON.stringify({
+        id: originalKey,
+        createdAt: Date.now(),
+        generation: getLoginQueueGeneration(),
+        status: 'CANCEL_REQUESTED',
+        cancelTarget: 'IDEMPOTENCY_KEY',
+      }),
+    );
+    const requests: string[] = [];
+    let currentReads = 0;
+    let replacementKey: string | null = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        requests.push(`${init?.method ?? 'GET'} ${url}`);
+        if (url.endsWith('/current')) {
+          if (init?.method === 'DELETE') {
+            expect(
+              JSON.parse(localStorage.getItem('meomuneum:queue-create-idempotency') ?? '{}'),
+            ).toMatchObject({ cancelTarget: 'CURRENT_TICKET' });
+            return Response.json({ code: 'CANCEL_OUTCOME_UNKNOWN' }, { status: 503 });
+          }
+          currentReads += 1;
+          return currentReads === 1
+            ? Response.json(ticket('READY'))
+            : new Response(null, { status: 404 });
+        }
+        replacementKey = new Headers(init?.headers).get('Idempotency-Key');
+        return Response.json({
+          message: 'created',
+          data: { status: 'WAITING', loginOutcome: null, usersAhead: 0, nextPollSeconds: 10 },
+        });
+      }),
+    );
+
+    await expect(startOrResumeLoginQueue()).rejects.toMatchObject({ status: 503 });
+    expect(
+      JSON.parse(localStorage.getItem('meomuneum:queue-create-idempotency') ?? '{}'),
+    ).toMatchObject({ cancelTarget: 'CURRENT_TICKET' });
+    await expect(startOrResumeLoginQueue()).resolves.toMatchObject({ status: 'WAITING' });
+
+    expect(requests.map((request) => request.split(' ')[0])).toEqual([
+      'GET',
+      'DELETE',
+      'GET',
+      'POST',
+    ]);
+    expect(replacementKey).toBeTruthy();
+    expect(replacementKey).not.toBe(originalKey);
+  });
+
+  it('resets local queue state after logout without sending a remote request and preserves ambiguous create identity', async () => {
+    vi.stubGlobal(
+      'navigator',
+      Object.assign(Object.create(Object.getPrototypeOf(navigator)), navigator, {
+        locks: {
+          request: async (_name: string, _options: unknown, callback: (lock: object) => unknown) =>
+            callback({}),
+        },
+      }),
+    );
+    const now = Date.now();
+    localStorage.setItem(
+      'meomuneum:queue-create-idempotency',
+      JSON.stringify({
+        id: 'ambiguous-key',
+        createdAt: now,
+        deadlineAt: now + 60_000,
+        generation: getLoginQueueGeneration(),
+        status: 'CANCEL_REQUESTED',
+        cancelTarget: 'IDEMPOTENCY_KEY',
+        retryCount: 2,
+        nextAttemptAt: now + 10_000,
+        retryAfterMs: 10_000,
+        lastFailureKind: 'TRANSIENT',
+      }),
+    );
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await resetLoginQueueAfterLogout();
+
+    const marker = JSON.parse(localStorage.getItem('meomuneum:queue-create-idempotency') ?? '{}');
+    const reset = JSON.parse(localStorage.getItem('meomuneum:queue-logout-reset') ?? '{}');
+    expect(marker).toMatchObject({
+      id: 'ambiguous-key',
+      status: 'CANCEL_REQUESTED',
+      cancelTarget: 'IDEMPOTENCY_KEY',
+      retryCount: 2,
+    });
+    expect(marker.nextAttemptAt).toBeUndefined();
+    expect(marker.retryAfterMs).toBeUndefined();
+    expect(reset.generation).toBe(marker.generation);
+    expect(reset.eventId).toBeTruthy();
+    expect(localStorage.getItem('meomuneum:queue-login-operation')).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('resolves an ambiguous create with the same key without calling an unsupported by-key route', async () => {
+    vi.stubGlobal(
+      'navigator',
+      Object.assign(Object.create(Object.getPrototypeOf(navigator)), navigator, {
+        locks: {
+          request: async (_name: string, _options: unknown, callback: (lock: object) => unknown) =>
+            callback({}),
+        },
+      }),
+    );
+    vi.mocked(getCsrfToken).mockResolvedValue('csrf-token');
+    localStorage.setItem(
+      'meomuneum:queue-create-idempotency',
+      JSON.stringify({
+        id: 'cancel-unknown',
+        createdAt: Date.now(),
+        generation: getLoginQueueGeneration(),
+        status: 'CANCEL_REQUESTED',
+        cancelTarget: 'IDEMPOTENCY_KEY',
+      }),
+    );
+    const requests: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        requests.push(`${init?.method ?? 'GET'} ${String(input)}`);
+        if (String(input).endsWith('/current')) return new Response(null, { status: 404 });
+        if (init?.method === 'POST')
+          return Response.json({ code: 'INVALID_REQUEST' }, { status: 400 });
+        throw new Error(`Unexpected request: ${String(input)}`);
+      }),
+    );
+
+    await expect(startOrResumeLoginQueue()).rejects.toMatchObject({ status: 400 });
+
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toMatch(/^POST .*\/tickets$/);
+    expect(JSON.parse(localStorage.getItem('meomuneum:queue-create-idempotency') ?? '{}')).toMatchObject({
+      id: 'cancel-unknown',
+      status: 'ACTIVE',
+    });
+  });
+
   it.each(['WAITING', 'READY', 'VERIFYING', 'RETRYABLE', 'CANCELLED', 'EXPIRED'] as const)(
     'accepts %s with an explicit null outcome',
     async (status) => {
@@ -312,7 +588,7 @@ describe('login queue response contract', () => {
     expect(createKey).not.toBe('expired-create-key');
   });
 
-  it('clears a stale create marker when a direct status poll receives HTTP 410', async () => {
+  it('preserves a stale create marker when a direct status poll receives HTTP 410', async () => {
     localStorage.setItem(
       'meomuneum:queue-create-idempotency',
       JSON.stringify({ id: 'expired-poll-key', createdAt: Date.now(), status: 'ACTIVE' }),
@@ -326,7 +602,9 @@ describe('login queue response contract', () => {
       status: 410,
       code: 'TICKET_EXPIRED',
     });
-    expect(localStorage.getItem('meomuneum:queue-create-idempotency')).toBeNull();
+    expect(JSON.parse(localStorage.getItem('meomuneum:queue-create-idempotency') ?? '{}').id).toBe(
+      'expired-poll-key',
+    );
   });
 
   it.each(['CANCELLED', 'EXPIRED'] as const)(
@@ -347,6 +625,36 @@ describe('login queue response contract', () => {
       expect(localStorage.getItem('meomuneum:queue-create-idempotency')).toBeNull();
     },
   );
+
+  it('does not let a stale terminal status response clear a newer create marker', async () => {
+    const generation = getLoginQueueGeneration();
+    localStorage.setItem(
+      'meomuneum:queue-create-idempotency',
+      JSON.stringify({ id: 'old-key', createdAt: Date.now(), generation, status: 'ACTIVE' }),
+    );
+    let resolveFetch!: (response: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFetch = resolve;
+          }),
+      ),
+    );
+
+    const statusRequest = getLoginQueueStatus();
+    localStorage.setItem(
+      'meomuneum:queue-create-idempotency',
+      JSON.stringify({ id: 'new-key', createdAt: Date.now(), generation, status: 'ACTIVE' }),
+    );
+    resolveFetch(Response.json({ data: { status: 'CANCELLED', loginOutcome: null } }));
+    await statusRequest;
+
+    expect(JSON.parse(localStorage.getItem('meomuneum:queue-create-idempotency') ?? '{}').id).toBe(
+      'new-key',
+    );
+  });
 });
 
 describe('login operation markers', () => {
@@ -930,7 +1238,7 @@ describe('login operation markers', () => {
     expect(getLoginQueueGeneration()).not.toBe(generation);
   });
 
-  it('cancels by persisted key, retries one CSRF rejection, and backs off on 503', async () => {
+  it('does not call an unavailable by-key cancellation route for an ambiguous create', async () => {
     vi.useFakeTimers();
     const key = 'persisted-ambiguous-key';
     const generation = getLoginQueueGeneration();
@@ -945,8 +1253,7 @@ describe('login operation markers', () => {
       }),
     );
     const lockObservations: string[] = [];
-    let deleteAttempts = 0;
-    vi.mocked(getCsrfToken).mockResolvedValue('csrf-token');
+    const requests: string[] = [];
     vi.stubGlobal(
       'navigator',
       Object.assign(Object.create(Object.getPrototypeOf(navigator)), navigator, {
@@ -964,37 +1271,28 @@ describe('login operation markers', () => {
         },
       }),
     );
-    const keys: string[] = [];
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: string | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith('/login-queue/tickets/current'))
-          return new Response(null, { status: 404 });
-        if (url.endsWith('/login-queue/tickets/by-idempotency-key') && init?.method === 'DELETE') {
-          keys.push(new Headers(init.headers).get('Idempotency-Key') ?? '');
-          deleteAttempts += 1;
-          if (deleteAttempts === 1)
-            return Response.json({ code: 'CSRF_REJECTED' }, { status: 403 });
-          return deleteAttempts === 2
-            ? Response.json(
-                { code: 'RECOVERY_UNAVAILABLE' },
-                { status: 503, headers: { 'Retry-After': '2' } },
-              )
-            : Response.json({ data: { status: 'CANCELLED' } });
-        }
+        requests.push(`${init?.method ?? 'GET'} ${url}`);
+        if (url.endsWith('/login-queue/tickets/current')) return new Response(null, { status: 404 });
         throw new Error(`Unexpected request: ${url}`);
       }),
     );
 
-    const pending = cancelLoginQueue();
-    await vi.advanceTimersByTimeAsync(2_000);
-    await pending;
+    await expect(cancelLoginQueue()).rejects.toMatchObject({
+      code: 'QUEUE_CANCEL_UNCONFIRMED',
+    });
 
-    expect(lockObservations).toEqual(['ACTIVE', 'CANCEL_REQUESTED', 'CANCEL_REQUESTED']);
-    expect(keys).toEqual([key, key, key]);
-    expect(getCsrfToken).toHaveBeenCalledTimes(3);
-    expect(localStorage.getItem('meomuneum:queue-create-idempotency')).toBeNull();
+    expect(lockObservations).toEqual(['ACTIVE']);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatch(/^GET .*\/current$/);
+    expect(JSON.parse(localStorage.getItem('meomuneum:queue-create-idempotency') ?? '{}')).toMatchObject({
+      id: key,
+      status: 'CANCEL_REQUESTED',
+      cancelTarget: 'IDEMPOTENCY_KEY',
+    });
   });
 
   it.each([201, 202])(
@@ -1025,9 +1323,9 @@ describe('login operation markers', () => {
       );
       vi.stubGlobal(
         'fetch',
-        vi.fn(async (input: string | URL) =>
-          String(input).endsWith('/tickets/current')
-            ? new Response(null, { status: 404 })
+        vi.fn(async (input: string | URL, init?: RequestInit) =>
+          String(input).endsWith('/tickets/current') && init?.method !== 'DELETE'
+            ? Response.json(ticket('READY'))
             : Response.json({ data: { status: 'CANCELLED' } }, { status }),
         ),
       );
@@ -1052,10 +1350,12 @@ describe('login operation markers', () => {
     );
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (_input: string | URL, init?: RequestInit) =>
-        init?.method === 'DELETE'
-          ? Response.json({ data: { status: 'CANCELLED' } }, { status: 201 })
-          : Response.json(ticket('READY')),
+      vi.fn(async (_input: string | URL, init?: RequestInit) => {
+        if (init?.method !== 'DELETE') return Response.json(ticket('READY'));
+        const marker = JSON.parse(localStorage.getItem('meomuneum:queue-create-idempotency') ?? '{}');
+        expect(marker.cancelTarget).toBe('CURRENT_TICKET');
+        return Response.json({ data: { status: 'CANCELLED' } }, { status: 201 });
+      },
       ),
     );
 
@@ -1081,7 +1381,8 @@ describe('login operation markers', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: string | URL, init?: RequestInit) => {
-        if (String(input).endsWith('/tickets/current')) return new Response(null, { status: 404 });
+        if (String(input).endsWith('/tickets/current') && init?.method !== 'DELETE')
+          return Response.json(ticket('READY'));
         if (init?.method === 'DELETE') return new Response(null, { status: 204 });
         throw new Error(`Unexpected request: ${String(input)}`);
       }),
