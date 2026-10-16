@@ -1946,6 +1946,26 @@ button {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.image-message-row {
+  width: calc(100% + 2px);
+  margin-inline: -1px;
+}
+.image-message-group {
+  width: 100%;
+  max-width: none;
+  gap: 8px;
+}
+.chat-image-message {
+  display: block;
+  width: min(270px, 100%);
+  aspect-ratio: 1;
+  align-self: flex-end;
+  border-radius: 8px;
+  object-fit: cover;
+}
+.image-message-group time {
+  align-self: flex-end;
+}
 .recommendation-bubble {
   width: min(100%, 480px);
 }
@@ -2117,9 +2137,9 @@ button {
   cursor: pointer;
 }
 .voice-button {
-  margin-right: 12px;
-  color: var(--color-text-interactive-inverse);
-  background: linear-gradient(138deg, #7400e8 24%, #ff7518 88%);
+  margin-right: 0;
+  color: var(--color-text-primary);
+  background: var(--color-bg-primary);
 }
 .voice-button.recording {
   box-shadow: 0 0 0 3px rgb(255 117 24 / 24%);
@@ -2130,15 +2150,19 @@ button {
   width: 20px;
   height: 20px;
 }
+.prompt-field .voice-button img {
+  filter: brightness(0);
+}
 .input-bar textarea {
   box-sizing: border-box;
   min-width: 0;
+  height: 44px;
   min-height: 44px;
   max-height: 120px;
   flex: 1 1 auto;
   resize: none;
-  margin-right: 8px;
-  padding: 10px 16px;
+  margin: 0;
+  padding: 9px 52px 9px 16px;
   border: 1px solid var(--color-border-tertiary);
   border-radius: 24px;
   color: var(--color-text-primary);
@@ -2158,7 +2182,41 @@ button {
 .voice-button:disabled,
 .send-button:disabled {
   cursor: not-allowed;
+}
+.voice-button:disabled {
   opacity: 0.45;
+}
+.prompt-field {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  margin-right: 8px;
+}
+.prompt-field .voice-button {
+  position: absolute;
+  right: 4px;
+  margin: 0;
+}
+.prompt-field textarea {
+  width: 100%;
+}
+.image-message-row {
+  width: calc(100% + 10px);
+  margin-inline: -5px;
+}
+.chat-image-message {
+  width: min(400px, 100%);
+}
+@media (max-width: 600px) {
+  .image-message-row {
+    width: calc(100% + 2px);
+    margin-inline: -1px;
+  }
+  .chat-image-message {
+    width: min(270px, 100%);
+  }
 }
 .voice-status,
 .voice-review-notice,
@@ -3341,16 +3399,6 @@ button {
     height: auto;
     min-height: 20.625rem;
   }
-}
-
-.prompt-feedback {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 0.25rem 0.75rem;
-  margin: 0.25rem 1rem 0;
-  color: var(--color-text-secondary);
-  font-size: 0.75rem;
 }
 
 .prompt-feedback p {
