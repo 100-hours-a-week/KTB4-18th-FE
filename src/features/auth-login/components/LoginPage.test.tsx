@@ -2,25 +2,277 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { login, LoginRequestError, type LoginSuccessResponse } from '../api/loginApi';
+import { QueueRequestError, type LoginQueueTicket } from '../api/loginQueueApi';
+import type { LoginSuccessResponse } from '../api/loginApi';
+import * as authSession from '../api/authSession';
 import { LoginPage } from './LoginPage';
 
-vi.mock('../api/loginApi', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../api/loginApi')>()),
-  login: vi.fn(),
+const queueSignals = vi.hoisted(() => ({
+  listener: null as null | ((signal: { type: string; queueGeneration: string }) => void),
 }));
+
+vi.mock('../api/loginQueueApi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/loginQueueApi')>()),
+  startOrResumeLoginQueue: vi.fn(),
+  submitQueuedLogin: vi.fn(),
+  getLoginQueueStatus: vi.fn(),
+  reconcileLoginQueueStatus: vi.fn(),
+  subscribeQueueSignals: vi.fn((listener) => {
+    queueSignals.listener = listener;
+    return () => {
+      queueSignals.listener = null;
+    };
+  }),
+  getLoginOperationId: vi.fn(() => 'operation-id'),
+  getLoginQueueGeneration: vi.fn(() => 'live-generation'),
+  clearLoginOperationId: vi.fn(),
+  publishQueueSignal: vi.fn(),
+  cancelLoginQueue: vi.fn(),
+  recoverQueuedLogin: vi.fn(),
+}));
+
+import {
+  clearLoginOperationId,
+  getLoginQueueGeneration,
+  getLoginQueueStatus,
+  reconcileLoginQueueStatus,
+  recoverQueuedLogin,
+  startOrResumeLoginQueue,
+  submitQueuedLogin,
+  cancelLoginQueue,
+} from '../api/loginQueueApi';
 
 const successResponse: LoginSuccessResponse = {
   message: 'login success',
   data: { access_token: 'test-token', expires_in: 3600 },
 };
+const readyTicket: LoginQueueTicket = {
+  status: 'READY',
+  loginOutcome: null,
+  usersAhead: 0,
+  nextPollSeconds: 10,
+};
 
 beforeEach(() => {
-  vi.mocked(login).mockReset().mockResolvedValue(successResponse);
+  vi.mocked(startOrResumeLoginQueue)
+    .mockReset()
+    .mockResolvedValue({ ...readyTicket });
+  vi.mocked(submitQueuedLogin).mockReset().mockResolvedValue(successResponse);
+  vi.mocked(getLoginQueueStatus).mockReset().mockRejectedValue(new QueueRequestError(404));
+  vi.mocked(clearLoginOperationId).mockReset();
+  vi.mocked(recoverQueuedLogin).mockReset();
+  vi.mocked(cancelLoginQueue).mockReset().mockResolvedValue(undefined);
+  vi.mocked(getLoginQueueGeneration).mockReturnValue('live-generation');
+  queueSignals.listener = null;
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe('LoginPage email input', () => {
+  it('submits retained credentials after the queue becomes RETRYABLE', async () => {
+    vi.useFakeTimers();
+    const retryableTicket: LoginQueueTicket = {
+      status: 'RETRYABLE',
+      loginOutcome: null,
+      usersAhead: 0,
+      nextPollSeconds: 10,
+    };
+    vi.mocked(startOrResumeLoginQueue).mockResolvedValueOnce({
+      status: 'WAITING',
+      loginOutcome: null,
+      usersAhead: 1,
+      nextPollSeconds: 10,
+    });
+    vi.mocked(getLoginQueueStatus)
+      .mockRejectedValueOnce(new QueueRequestError(404))
+      .mockResolvedValueOnce({
+        status: 'WAITING',
+        loginOutcome: null,
+        usersAhead: 1,
+        nextPollSeconds: 10,
+        statusFetchedAt: Date.now(),
+      })
+      .mockResolvedValueOnce(retryableTicket);
+    const onLoginSuccess = vi.fn();
+    render(<LoginPage onLoginSuccess={onLoginSuccess} />);
+    fireEvent.change(screen.getByLabelText('이메일'), { target: { value: 'user@example.com' } });
+    fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'secret' } });
+    fireEvent.click(screen.getByRole('button', { name: '로그인' }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(submitQueuedLogin).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    await vi.waitFor(() => expect(getLoginQueueStatus).toHaveBeenCalledTimes(2));
+    await act(async () => vi.advanceTimersByTimeAsync(10_000));
+
+    expect(submitQueuedLogin).toHaveBeenCalledTimes(1);
+    expect(submitQueuedLogin).toHaveBeenCalledWith(
+      { email: 'user@example.com', password: 'secret' },
+      'live-generation',
+    );
+    expect(onLoginSuccess).toHaveBeenCalledWith(successResponse);
+  });
+
+  it.each([
+    ['CANCELLED', '대기를 취소했어요. 다시 로그인해 주세요.'],
+    ['EXPIRED', '대기 시간이 만료되었어요. 다시 로그인해 주세요.'],
+  ] as const)('ends a terminal %s ticket without posting credentials', async (status, message) => {
+    vi.mocked(startOrResumeLoginQueue).mockResolvedValueOnce({
+      status,
+      loginOutcome: null,
+      usersAhead: 0,
+      nextPollSeconds: 10,
+    });
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'secret');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(submitQueuedLogin).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('비밀번호')).toHaveValue('');
+  });
+
+  it('clears credentials when exhausted-ticket reconciliation receives HTTP 410', async () => {
+    vi.mocked(startOrResumeLoginQueue).mockRejectedValueOnce(
+      new QueueRequestError(null, 'CREATE_RETRIES_EXHAUSTED'),
+    );
+    vi.mocked(reconcileLoginQueueStatus).mockRejectedValueOnce(
+      new QueueRequestError(410, 'TICKET_EXPIRED'),
+    );
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'secret');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+    await user.click(await screen.findByRole('button', { name: '상태 확인' }));
+
+    expect(
+      await screen.findByText('대기 시간이 만료되었어요. 다시 로그인해 주세요.'),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('비밀번호')).toHaveValue('');
+    expect(submitQueuedLogin).not.toHaveBeenCalled();
+  });
+
+  it('ignores an initial ticket response made stale while the user re-enters credentials', async () => {
+    let resolveStatus!: (ticket: LoginQueueTicket) => void;
+    vi.mocked(getLoginQueueStatus).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveStatus = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+
+    await act(async () => {
+      resolveStatus({
+        status: 'RETRYABLE',
+        loginOutcome: null,
+        usersAhead: 0,
+        nextPollSeconds: 10,
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByLabelText('이메일')).toHaveValue('user@example.com');
+    expect(screen.getByLabelText('비밀번호')).toHaveValue('password');
+    expect(screen.queryByText(/비밀번호를 다시 입력해/)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { usersAhead: null, shouldOpen: false },
+    { usersAhead: 0, shouldOpen: false },
+    { usersAhead: 150, shouldOpen: false },
+    { usersAhead: 151, shouldOpen: true },
+  ])(
+    'shows the waiting dialog only when more than 150 people are ahead',
+    async ({ usersAhead, shouldOpen }) => {
+      let resolveStatus!: (ticket: LoginQueueTicket) => void;
+      const statusPromise = new Promise<LoginQueueTicket>((resolve) => {
+        resolveStatus = resolve;
+      });
+      vi.mocked(getLoginQueueStatus).mockReturnValueOnce(statusPromise);
+      render(<LoginPage />);
+
+      await vi.waitFor(() => expect(getLoginQueueStatus).toHaveBeenCalledOnce());
+      await act(async () => {
+        resolveStatus({
+          status: 'WAITING',
+          loginOutcome: null,
+          usersAhead,
+          nextPollSeconds: 10,
+        });
+        await statusPromise;
+      });
+      if (shouldOpen) {
+        expect(await screen.findByRole('dialog')).toBeInTheDocument();
+      } else {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      }
+    },
+  );
+
+  it('skips automatic prior-session restore after logout but reconciles the queue on submit', async () => {
+    const user = userEvent.setup();
+    render(<LoginPage skipInitialQueueRestore />);
+    await act(async () => Promise.resolve());
+    expect(getLoginQueueStatus).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    expect(await screen.findByText('로그인에 성공했어요.')).toBeInTheDocument();
+    expect(cancelLoginQueue).not.toHaveBeenCalled();
+    expect(startOrResumeLoginQueue).toHaveBeenCalledOnce();
+  });
+
+  it('restores the existing refresh-cookie session when selected after an ambiguous login', async () => {
+    vi.mocked(submitQueuedLogin).mockRejectedValueOnce(new QueueRequestError(null));
+    vi.mocked(getLoginQueueStatus).mockRejectedValue(new QueueRequestError(404));
+    vi.spyOn(authSession, 'refreshAccessToken').mockResolvedValue('restored-token');
+    vi.spyOn(authSession, 'getAccessTokenExpiresAt').mockReturnValue(Date.now() + 60_000);
+    const onLoginSuccess = vi.fn();
+    const user = userEvent.setup();
+    render(<LoginPage onLoginSuccess={onLoginSuccess} />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+    await user.click(await screen.findByRole('button', { name: '이전 로그인 상태 계속하기' }));
+
+    expect(authSession.refreshAccessToken).toHaveBeenCalledOnce();
+    expect(onLoginSuccess).toHaveBeenCalledOnce();
+    expect(onLoginSuccess.mock.calls[0][0]).toMatchObject({
+      message: 'login success',
+      data: { access_token: 'restored-token', expires_in: expect.any(Number) },
+    });
+    expect(onLoginSuccess.mock.calls[0][0].data.expires_in).toBeGreaterThan(0);
+    expect(onLoginSuccess.mock.calls[0][0].data.expires_in).toBeLessThanOrEqual(60);
+  });
+
+  it('retains the login operation ID when restarting an ambiguous attempt', async () => {
+    vi.mocked(submitQueuedLogin).mockRejectedValueOnce(new QueueRequestError(null));
+    vi.mocked(getLoginQueueStatus).mockRejectedValue(new QueueRequestError(404));
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+    await user.click(await screen.findByRole('button', { name: '새로 로그인하기' }));
+
+    expect(clearLoginOperationId).not.toHaveBeenCalled();
+  });
+
   it('keeps Korean characters as typed', async () => {
     const user = userEvent.setup();
     render(<LoginPage />);
@@ -74,10 +326,12 @@ describe('LoginPage email input', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     await user.type(screen.getByLabelText('비밀번호'), 'password');
     fireEvent.submit(emailInput.closest('form')!);
-    expect(login).toHaveBeenCalledExactlyOnceWith({
-      email: 'user@한글.com',
-      password: 'password',
-    });
+    await vi.waitFor(() =>
+      expect(submitQueuedLogin).toHaveBeenCalledExactlyOnceWith(
+        { email: 'user@한글.com', password: 'password' },
+        'live-generation',
+      ),
+    );
   });
 
   it('keeps Korean characters before submitting even if composition has not blurred', async () => {
@@ -92,10 +346,12 @@ describe('LoginPage email input', () => {
     fireEvent.submit(emailInput.closest('form')!);
 
     expect(emailInput).toHaveValue('user@한글.com');
-    expect(login).toHaveBeenCalledExactlyOnceWith({
-      email: 'user@한글.com',
-      password: 'password',
-    });
+    await vi.waitFor(() =>
+      expect(submitQueuedLogin).toHaveBeenCalledExactlyOnceWith(
+        { email: 'user@한글.com', password: 'password' },
+        'live-generation',
+      ),
+    );
   });
 
   it('blocks login when the Korean email remains malformed', async () => {
@@ -114,7 +370,7 @@ describe('LoginPage email input', () => {
 
     await user.type(screen.getByLabelText('비밀번호'), 'password');
     fireEvent.submit(emailInput.closest('form')!);
-    expect(login).not.toHaveBeenCalled();
+    expect(startOrResumeLoginQueue).not.toHaveBeenCalled();
   });
 
   it('keeps Korean characters from input events marked as composing', async () => {
@@ -155,14 +411,14 @@ describe('LoginPage email input', () => {
     expect(emailInput).not.toHaveAttribute('aria-describedby');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     fireEvent.blur(emailInput);
-    expect(login).not.toHaveBeenCalled();
+    expect(startOrResumeLoginQueue).not.toHaveBeenCalled();
 
     await user.type(screen.getByLabelText('비밀번호'), 'password');
     await user.click(screen.getByRole('button', { name: '로그인' }));
-    expect(login).toHaveBeenCalledExactlyOnceWith({
-      email: longEmail.toLowerCase(),
-      password: 'password',
-    });
+    expect(submitQueuedLogin).toHaveBeenCalledExactlyOnceWith(
+      { email: longEmail.toLowerCase(), password: 'password' },
+      'live-generation',
+    );
   });
 
   it('shows format feedback while typing and clears it as soon as the email becomes valid', async () => {
@@ -206,7 +462,7 @@ describe('LoginPage email input', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('이메일 형식을 확인해 주세요.');
     expect(emailInput).toHaveAttribute('aria-invalid', 'true');
     expect(emailInput).toHaveAttribute('aria-describedby', 'email-error');
-    expect(login).not.toHaveBeenCalled();
+    expect(startOrResumeLoginQueue).not.toHaveBeenCalled();
   });
 
   it('handles cancellation to an empty value and allows a subsequent normal input', async () => {
@@ -232,11 +488,24 @@ describe('LoginPage email input', () => {
     await user.type(screen.getByLabelText('이메일'), 'abc@Example.com');
     await user.type(screen.getByLabelText('비밀번호'), ' PaSs한글! ');
     await user.click(screen.getByRole('button', { name: '로그인' }));
-    expect(login).toHaveBeenCalledExactlyOnceWith({
-      email: 'abc@example.com',
-      password: ' PaSs한글! ',
-    });
+    expect(submitQueuedLogin).toHaveBeenCalledExactlyOnceWith(
+      { email: 'abc@example.com', password: ' PaSs한글! ' },
+      'live-generation',
+    );
     expect(onLoginSuccess).toHaveBeenCalledExactlyOnceWith(successResponse);
+  });
+
+  it('rejects a whitespace-only password before starting a login queue', async () => {
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), '   ');
+
+    fireEvent.submit(screen.getByLabelText('이메일').closest('form')!);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('비밀번호를 입력해 주세요.');
+    expect(startOrResumeLoginQueue).not.toHaveBeenCalled();
+    expect(submitQueuedLogin).not.toHaveBeenCalled();
   });
 
   it('enables the login button only after the email and password are valid', async () => {
@@ -249,7 +518,7 @@ describe('LoginPage email input', () => {
     await user.type(screen.getByLabelText('비밀번호'), 'password');
     expect(loginButton).toBeDisabled();
     fireEvent.submit(screen.getByLabelText('이메일').closest('form')!);
-    expect(login).not.toHaveBeenCalled();
+    expect(startOrResumeLoginQueue).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent('이메일 형식을 확인해 주세요.');
     await user.clear(screen.getByLabelText('이메일'));
     await user.type(screen.getByLabelText('이메일'), 'user@example.com');
@@ -257,7 +526,9 @@ describe('LoginPage email input', () => {
   });
 
   it('keeps normalized ASCII input and the existing authentication error on login failure', async () => {
-    vi.mocked(login).mockRejectedValueOnce(new LoginRequestError(401));
+    vi.mocked(submitQueuedLogin).mockRejectedValueOnce(
+      new QueueRequestError(401, 'INVALID_CREDENTIALS'),
+    );
     const user = userEvent.setup();
     render(<LoginPage />);
     await user.type(screen.getByLabelText('이메일'), 'abc@Example.com');
@@ -267,13 +538,13 @@ describe('LoginPage email input', () => {
       '이메일 또는 비밀번호를 확인해 주세요.',
     );
     expect(screen.getByLabelText('이메일')).toHaveValue('abc@example.com');
-    expect(screen.getByLabelText('비밀번호')).toHaveValue('password');
-    expect(screen.getByRole('button', { name: '로그인' })).toBeEnabled();
+    expect(screen.getByLabelText('비밀번호')).toHaveValue('');
+    expect(screen.getByRole('button', { name: '로그인' })).toBeDisabled();
   });
 
   it('blocks duplicate submits while the login request is pending', async () => {
     let finishLogin!: (response: LoginSuccessResponse) => void;
-    vi.mocked(login).mockImplementationOnce(
+    vi.mocked(submitQueuedLogin).mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           finishLogin = resolve;
@@ -287,8 +558,421 @@ describe('LoginPage email input', () => {
     await user.click(screen.getByRole('button', { name: '로그인' }));
     expect(screen.getByRole('button', { name: '로그인' })).toBeDisabled();
     fireEvent.submit(emailInput.closest('form')!);
-    expect(login).toHaveBeenCalledTimes(1);
+    expect(submitQueuedLogin).toHaveBeenCalledTimes(1);
     await act(async () => finishLogin(successResponse));
-    expect(screen.getByRole('button', { name: '로그인' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '로그인' })).toBeDisabled();
+  });
+
+  it('does not show the waiting dialog while an immediately READY login is being submitted', async () => {
+    let finishLogin!: (response: LoginSuccessResponse) => void;
+    vi.mocked(submitQueuedLogin).mockImplementationOnce(
+      () => new Promise((resolve) => (finishLogin = resolve)),
+    );
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    await vi.waitFor(() => expect(submitQueuedLogin).toHaveBeenCalledOnce());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await act(async () => finishLogin(successResponse));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('continues a RETRYABLE ticket without showing the waiting dialog', async () => {
+    vi.mocked(startOrResumeLoginQueue).mockResolvedValueOnce({
+      status: 'RETRYABLE',
+      loginOutcome: null,
+      usersAhead: 0,
+      nextPollSeconds: 10,
+    });
+    let finishLogin!: (response: LoginSuccessResponse) => void;
+    vi.mocked(submitQueuedLogin).mockImplementationOnce(
+      () => new Promise((resolve) => (finishLogin = resolve)),
+    );
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    await vi.waitFor(() => expect(submitQueuedLogin).toHaveBeenCalledOnce());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await act(async () => finishLogin(successResponse));
+  });
+
+  it('checks queue admission quickly and submits login when READY', async () => {
+    vi.mocked(startOrResumeLoginQueue).mockResolvedValueOnce({
+      status: 'WAITING',
+      loginOutcome: null,
+      usersAhead: 7,
+      nextPollSeconds: 10,
+    });
+    vi.mocked(getLoginQueueStatus)
+      .mockReset()
+      .mockRejectedValueOnce(new QueueRequestError(404))
+      .mockResolvedValueOnce({ ...readyTicket });
+    render(<LoginPage />);
+    const email = screen.getByLabelText('이메일');
+    fireEvent.change(email, { target: { value: 'user@example.com' } });
+    fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: ' exact ' } });
+    await act(async () => {
+      fireEvent.submit(email.closest('form')!);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(submitQueuedLogin).not.toHaveBeenCalled();
+
+    await vi.waitFor(() => expect(getLoginQueueStatus).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(submitQueuedLogin).toHaveBeenCalledOnce());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(submitQueuedLogin).toHaveBeenCalledWith(
+      { email: 'user@example.com', password: ' exact ' },
+      'live-generation',
+    );
+  });
+
+  it('does not show the waiting dialog when status lookup fails after a login conflict', async () => {
+    vi.mocked(submitQueuedLogin).mockRejectedValueOnce(
+      new QueueRequestError(409, 'QUEUE_LOGIN_IN_PROGRESS'),
+    );
+    vi.mocked(getLoginQueueStatus).mockRejectedValue(new QueueRequestError(503));
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    expect(
+      await screen.findByText('로그인 상태를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('asks for explicit login-state recovery when a login-in-progress conflict reports READY', async () => {
+    vi.mocked(submitQueuedLogin).mockRejectedValueOnce(
+      new QueueRequestError(409, 'QUEUE_LOGIN_IN_PROGRESS'),
+    );
+    vi.mocked(getLoginQueueStatus)
+      .mockReset()
+      .mockRejectedValueOnce(new QueueRequestError(404))
+      .mockResolvedValueOnce({ ...readyTicket });
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    expect(await screen.findByRole('group', { name: '로그인 결과 선택' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(submitQueuedLogin).toHaveBeenCalledOnce();
+  });
+
+  it('does not show the waiting dialog when a capacity retry resumes a READY ticket', async () => {
+    vi.useFakeTimers();
+    vi.mocked(startOrResumeLoginQueue).mockRejectedValueOnce(
+      new QueueRequestError(503, 'QUEUE_FULL', 1),
+    );
+    let finishLogin!: (response: LoginSuccessResponse) => void;
+    vi.mocked(submitQueuedLogin).mockImplementationOnce(
+      () => new Promise((resolve) => (finishLogin = resolve)),
+    );
+    render(<LoginPage />);
+    fireEvent.change(screen.getByLabelText('이메일'), { target: { value: 'user@example.com' } });
+    fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password' } });
+    fireEvent.submit(screen.getByLabelText('이메일').closest('form')!);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+
+    await vi.waitFor(() => expect(submitQueuedLogin).toHaveBeenCalledOnce());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await act(async () => finishLogin(successResponse));
+  });
+
+  it('does not show the waiting dialog when reconciliation finds a READY ticket', async () => {
+    vi.mocked(startOrResumeLoginQueue).mockRejectedValueOnce(
+      new QueueRequestError(503, 'CREATE_RETRIES_EXHAUSTED'),
+    );
+    vi.mocked(reconcileLoginQueueStatus)
+      .mockReset()
+      .mockResolvedValueOnce({ ...readyTicket });
+    let finishLogin!: (response: LoginSuccessResponse) => void;
+    vi.mocked(submitQueuedLogin).mockImplementationOnce(
+      () => new Promise((resolve) => (finishLogin = resolve)),
+    );
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+    await screen.findByRole('heading', { name: '대기 요청을 확인해 주세요' });
+
+    await user.click(screen.getByRole('button', { name: '상태 확인' }));
+    await vi.waitFor(() => expect(submitQueuedLogin).toHaveBeenCalledOnce());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await act(async () => finishLogin(successResponse));
+  });
+
+  it('restarts the GET-first login flow when manual reconciliation confirms no current ticket', async () => {
+    vi.mocked(startOrResumeLoginQueue)
+      .mockRejectedValueOnce(new QueueRequestError(503, 'CREATE_RETRIES_EXHAUSTED'))
+      .mockResolvedValueOnce({ ...readyTicket });
+    vi.mocked(reconcileLoginQueueStatus).mockRejectedValueOnce(
+      new QueueRequestError(404, 'TICKET_UNKNOWN'),
+    );
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+    await user.click(await screen.findByRole('button', { name: '상태 확인' }));
+
+    await vi.waitFor(() => expect(submitQueuedLogin).toHaveBeenCalledOnce());
+    expect(startOrResumeLoginQueue).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('keeps QUEUE_FULL on the login page with an accessible cancel action', async () => {
+    vi.mocked(startOrResumeLoginQueue).mockRejectedValueOnce(
+      new QueueRequestError(503, 'QUEUE_FULL', 4),
+    );
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    expect(await screen.findByRole('heading', { name: '접속 대기 중이에요' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('대기열이 가득 찼어요');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(submitQueuedLogin).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '대기 취소' })).toBeEnabled();
+  });
+
+  it('keeps checking a VERIFYING ticket without opening the long-wait dialog', async () => {
+    vi.mocked(submitQueuedLogin).mockRejectedValueOnce(
+      new QueueRequestError(409, 'QUEUE_LOGIN_IN_PROGRESS'),
+    );
+    vi.mocked(getLoginQueueStatus)
+      .mockRejectedValueOnce(new QueueRequestError(404))
+      .mockResolvedValueOnce({
+        status: 'VERIFYING',
+        loginOutcome: null,
+        usersAhead: 0,
+        nextPollSeconds: 10,
+      });
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    expect(submitQueuedLogin).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('keeps Escape cancellation pending until confirmed, then focuses email', async () => {
+    vi.mocked(startOrResumeLoginQueue).mockResolvedValueOnce({
+      status: 'WAITING',
+      loginOutcome: null,
+      usersAhead: 151,
+      nextPollSeconds: 10,
+    });
+    vi.mocked(getLoginQueueStatus)
+      .mockRejectedValueOnce(new QueueRequestError(404))
+      .mockResolvedValueOnce({
+        status: 'WAITING',
+        loginOutcome: null,
+        usersAhead: 151,
+        nextPollSeconds: 10,
+      });
+    let confirmCancel!: () => void;
+    vi.mocked(cancelLoginQueue).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (confirmCancel = resolve)),
+    );
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+    const dialog = await screen.findByRole('dialog');
+
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(await screen.findByRole('button', { name: '취소 중…' })).toBeDisabled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    await act(async () => confirmCancel());
+    await vi.waitFor(() => expect(screen.getByLabelText('이메일')).toHaveFocus());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('clears sibling canceling state after an unconfirmed result and allows retry', async () => {
+    vi.mocked(getLoginQueueStatus).mockResolvedValueOnce({
+      status: 'WAITING',
+      loginOutcome: null,
+      usersAhead: 151,
+      nextPollSeconds: 10,
+    });
+    render(<LoginPage />);
+    const dialog = await screen.findByRole('dialog');
+
+    await act(async () => {
+      queueSignals.listener?.({
+        type: 'queue-cancel-requested',
+        queueGeneration: 'live-generation',
+      });
+    });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '취소 중…' })).toBeDisabled();
+    expect(dialog).toHaveTextContent('다른 탭에서 취소를 요청했어요');
+
+    // Cancellation failure keeps the queue visible while re-enabling the retry action.
+    await act(async () => {
+      queueSignals.listener?.({
+        type: 'queue-cancel-unconfirmed',
+        queueGeneration: 'live-generation',
+      });
+    });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '대기 취소' })).toBeEnabled();
+    expect(screen.getByRole('status')).toHaveTextContent('취소 결과를 확인하지 못했어요');
+
+    vi.mocked(cancelLoginQueue).mockResolvedValueOnce(undefined);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '대기 취소' }));
+    await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(cancelLoginQueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps inline capacity cancellation pending, then focuses email after confirmation', async () => {
+    vi.mocked(startOrResumeLoginQueue).mockRejectedValueOnce(
+      new QueueRequestError(503, 'QUEUE_FULL', 120),
+    );
+    let confirmCancel!: () => void;
+    vi.mocked(cancelLoginQueue).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (confirmCancel = resolve)),
+    );
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+    await screen.findByRole('heading', { name: '접속 대기 중이에요' });
+
+    await user.click(screen.getByRole('button', { name: '대기 취소' }));
+    expect(await screen.findByRole('button', { name: '취소 중…' })).toBeDisabled();
+    expect(screen.getByRole('heading', { name: '접속 대기 중이에요' })).toBeInTheDocument();
+
+    await act(async () => confirmCancel());
+    await vi.waitFor(() => expect(screen.getByLabelText('이메일')).toHaveFocus());
+    expect(screen.queryByRole('heading', { name: '접속 대기 중이에요' })).not.toBeInTheDocument();
+  });
+
+  it('resumes a shared READY ticket without another tab credentials and asks for local re-entry', async () => {
+    vi.mocked(getLoginQueueStatus)
+      .mockReset()
+      .mockResolvedValueOnce({ ...readyTicket });
+    render(<LoginPage />);
+
+    expect(
+      await screen.findByText(
+        '차례가 되었어요. 이메일과 비밀번호를 입력해 로그인을 이어가 주세요.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('비밀번호')).toHaveValue('');
+    expect(submitQueuedLogin).not.toHaveBeenCalled();
+  });
+
+  it('ignores an old queue signal and keeps keyboard focus inside the waiting dialog', async () => {
+    vi.mocked(startOrResumeLoginQueue).mockResolvedValueOnce({
+      status: 'WAITING',
+      loginOutcome: null,
+      usersAhead: 2,
+      nextPollSeconds: 10,
+    });
+    vi.mocked(getLoginQueueStatus)
+      .mockRejectedValueOnce(new QueueRequestError(404))
+      .mockResolvedValueOnce({
+        status: 'WAITING',
+        loginOutcome: null,
+        usersAhead: 151,
+        nextPollSeconds: 10,
+      });
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    const dialog = await screen.findByRole('dialog');
+    const cancelButton = screen.getByRole('button', { name: '대기 취소' });
+    await vi.waitFor(() => expect(cancelButton).toHaveFocus());
+    expect(screen.getByLabelText('이메일').closest('.login-layout')).toHaveAttribute('inert');
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    await vi.waitFor(() => expect(cancelButton).toHaveFocus());
+
+    expect(queueSignals.listener).not.toBeNull();
+    await act(async () => {
+      queueSignals.listener?.({ type: 'queue-login-complete', queueGeneration: 'old-generation' });
+    });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    await act(async () => {
+      queueSignals.listener?.({ type: 'queue-login-complete', queueGeneration: 'live-generation' });
+    });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('does not submit credentials from a poll response after another tab replaces the queue', async () => {
+    vi.useFakeTimers();
+    vi.mocked(startOrResumeLoginQueue).mockResolvedValueOnce({
+      status: 'WAITING',
+      loginOutcome: null,
+      usersAhead: 3,
+      nextPollSeconds: 10,
+    });
+    vi.mocked(getLoginQueueStatus)
+      .mockRejectedValueOnce(new QueueRequestError(404))
+      .mockResolvedValueOnce({
+        status: 'WAITING',
+        loginOutcome: null,
+        usersAhead: 3,
+        nextPollSeconds: 10,
+        statusFetchedAt: Date.now(),
+      })
+      .mockImplementationOnce(async () => {
+        vi.mocked(getLoginQueueGeneration).mockReturnValue('successor-generation');
+        return { ...readyTicket };
+      });
+    vi.mocked(getLoginQueueGeneration).mockReturnValue('live-generation');
+    render(<LoginPage />);
+    const email = screen.getByLabelText('이메일');
+    fireEvent.change(email, { target: { value: 'user@example.com' } });
+    fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password' } });
+    await act(async () => {
+      fireEvent.submit(email.closest('form')!);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    await vi.waitFor(() => expect(getLoginQueueStatus).toHaveBeenCalledTimes(2));
+    await act(async () => vi.advanceTimersByTimeAsync(10_000));
+    expect(submitQueuedLogin).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('비밀번호')).toHaveValue('');
   });
 });

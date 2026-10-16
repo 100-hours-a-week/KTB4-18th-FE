@@ -28,6 +28,14 @@ export type UserSettings = {
   is_unrecorded_dot_recommendation_enabled: boolean;
 };
 
+export type AuthDeviceSession = {
+  sid: string;
+  current: boolean;
+  device_label: string;
+  created_at: string;
+  last_refreshed_at: string;
+};
+
 type UpdatedUserSettings = UserSettings & {
   updated_at: string;
 };
@@ -116,13 +124,25 @@ export const updateMyProfile = (
 
 export const getMySettings = () => request<UserSettings>('/api/v1/users/me/settings');
 
+export const getMyAuthSessions = () => request<AuthDeviceSession[]>('/api/v1/auth/sessions');
+
 export const updateMySettings = (settings: UserSettings) =>
   mutation<UpdatedUserSettings>('/api/v1/users/me/settings', 'PATCH', settings);
 
 export const changeMyPassword = (currentPassword: string, newPassword: string) =>
-  mutation<void>('/api/v1/users/me/password', 'PATCH', {
-    current_password: currentPassword,
-    new_password: newPassword,
+  runAuthTransition(async () => {
+    const accessToken = getAccessToken();
+    if (!accessToken) throw new MyPageRequestError(401);
+    await request<void>(
+      '/api/v1/users/me/password',
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      },
+      accessToken,
+    );
+    clearAccessToken();
   });
 
 export const verifyMyCurrentPassword = (currentPassword: string) =>

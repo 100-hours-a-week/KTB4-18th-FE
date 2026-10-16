@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   getMyProfile,
+  getMyAuthSessions,
   getMyProfileImage,
   uploadMyProfileImage,
   getMySettings,
@@ -18,6 +19,7 @@ import { MyPage } from './MyPage';
 vi.mock('../api/mypageApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/mypageApi')>()),
   getMyProfile: vi.fn(),
+  getMyAuthSessions: vi.fn(),
   getMySettings: vi.fn(),
   getRecommendationHistoryPage: vi.fn().mockResolvedValue({
     groups: [],
@@ -85,6 +87,15 @@ describe('MyPage profile validation', () => {
       })),
     });
     vi.mocked(getMyProfile).mockResolvedValue(profile);
+    vi.mocked(getMyAuthSessions).mockResolvedValue([
+      {
+        sid: 'session-1',
+        current: true,
+        device_label: 'Chrome · macOS',
+        created_at: '2026-10-01T10:00:00Z',
+        last_refreshed_at: '2026-10-10T10:00:00Z',
+      },
+    ]);
     vi.mocked(updateMyProfile).mockResolvedValue({ user_id: 1, updated_at: '2026-10-07' });
     vi.mocked(uploadMyProfileImage).mockReset();
     vi.mocked(getMyProfileImage).mockResolvedValue(new Blob(['png']));
@@ -187,6 +198,17 @@ describe('MyPage profile validation', () => {
     await user.click(screen.getByRole('button', { name: '마이페이지로 돌아가기' }));
 
     expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  it('shows this user’s active device sessions in MyPage', async () => {
+    const user = userEvent.setup();
+    render(<MyPage onLogin={vi.fn()} onBack={vi.fn()} onLogout={vi.fn()} onWithdrawn={vi.fn()} />);
+    await screen.findByText('기존닉');
+    await user.click(screen.getByText('로그인된 기기'));
+
+    expect(await screen.findByRole('heading', { name: '로그인된 기기' })).toBeTruthy();
+    expect(await screen.findByText('Chrome · macOS')).toBeTruthy();
+    expect(screen.getByText(/현재 기기/)).toBeTruthy();
   });
 
   it('verifies the current password on blur and enables save only after all password rules pass', async () => {

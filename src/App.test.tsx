@@ -4,6 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { recommend, streamRecommendation } from './api/recommendations';
 import { login } from './features/auth-login/api/loginApi';
+import {
+  cancelLoginQueue,
+  resetLoginQueueAfterLogout,
+} from './features/auth-login/api/loginQueueApi';
 import { logout, LogoutRequestError } from './features/auth-login/api/logoutApi';
 import { getMyProfile, getMySettings, withdrawMyAccount } from './features/mypage/api/mypageApi';
 import {
@@ -86,6 +90,7 @@ vi.mock('./features/auth-login/api/loginQueueApi', async (importOriginal) => ({
     message: 'login success' as const,
     data: { access_token: 'test-access-token', expires_in: 3600 },
   })),
+  resetLoginQueueAfterLogout: vi.fn(),
   cancelLoginQueue: vi.fn(async () => undefined),
   publishQueueSignal: vi.fn(),
   subscribeQueueSignals: vi.fn(() => () => undefined),
@@ -1150,6 +1155,8 @@ describe('로그인과 회원가입 화면 연결', () => {
 
     await waitFor(() => {
       expect(logout).toHaveBeenCalledOnce();
+      expect(resetLoginQueueAfterLogout).toHaveBeenCalledOnce();
+      expect(cancelLoginQueue).not.toHaveBeenCalled();
       expect(screen.getByRole('heading', { name: '머문음' })).toBeInTheDocument();
     });
   });
@@ -1300,6 +1307,21 @@ describe('로그인과 회원가입 화면 연결', () => {
       logoutRequest.resolve(undefined);
       await logoutRequest.promise;
     });
+    expect(getAccessToken()).toBeNull();
+    expect(await screen.findByLabelText('이메일')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/login');
+  });
+
+  it('로그아웃 후 로컬 대기열 저장소 오류가 나도 토큰을 지우고 로그인 페이지로 이동한다', async () => {
+    const user = userEvent.setup();
+    vi.mocked(logout).mockResolvedValue(undefined);
+    vi.mocked(resetLoginQueueAfterLogout).mockImplementationOnce(() => {
+      throw new Error('local queue storage unavailable');
+    });
+    const logoutButton = await renderAuthenticatedMyPage();
+
+    await user.click(logoutButton);
+
     expect(getAccessToken()).toBeNull();
     expect(await screen.findByLabelText('이메일')).toBeInTheDocument();
     expect(window.location.pathname).toBe('/login');
