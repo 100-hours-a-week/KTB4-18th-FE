@@ -5,7 +5,9 @@ import {
   getAccessToken,
   refreshAccessToken,
   shouldRefreshAccessToken,
+  ACCESS_TOKEN_CHANGED_EVENT,
 } from '../../auth-login/api/authSession';
+import { chatAuthContext, sameChatAuthContext } from './chatAuthContext';
 import { chatBanNotice, parseChatEvent, type ChatEvent, type ChatGap } from './chatMessages';
 import { ChatRecoveryError, fetchChatRecovery } from './chatRecovery';
 
@@ -39,6 +41,12 @@ export function connectChatRoom(
   let lastMessageId = 0;
   let recovery: AbortController | undefined;
   let buffered: ChatEvent[] = [];
+  const owner = chatAuthContext(getAccessToken());
+  const ownsCurrentAuth = () => sameChatAuthContext(owner, chatAuthContext(getAccessToken()));
+  const onAuthChange = () => {
+    if (!ownsCurrentAuth())
+      terminal('error', '로그인 상태가 변경됐어요. 채팅 탭에 다시 입장해 주세요.');
+  };
 
   const cancelRecovery = () => {
     recovery?.abort();
@@ -53,6 +61,7 @@ export function connectChatRoom(
     generation += 1;
     cancelRecovery();
     window.clearTimeout(initialDeadline);
+    window.removeEventListener?.(ACCESS_TOKEN_CHANGED_EVENT, onAuthChange);
     void client.deactivate({ force: true });
   };
   const terminal = (status: ChatConnectionStatus, message: string) => {
@@ -71,6 +80,7 @@ export function connectChatRoom(
     onStatus('recovery-failed', '이전 메시지를 복구하지 못했어요. 복구를 다시 시도해 주세요.');
   };
   const deliver = (event: ChatEvent) => {
+    if (isStopped || !ownsCurrentAuth()) return;
     onEvent?.(event);
     if (event.type === 'CHAT_MESSAGE' || event.type === 'CHAT_ACK') {
       lastMessageId = Math.max(lastMessageId, event.message.messageId);
@@ -100,7 +110,8 @@ export function connectChatRoom(
           isStopped ||
           isPaused ||
           generation !== connectionGeneration ||
-          controller.signal.aborted
+          controller.signal.aborted ||
+          !ownsCurrentAuth()
         )
           return;
         if (page.snapshotMessageId !== ready.snapshotMessageId) throw new ChatRecoveryError(502);
@@ -110,7 +121,13 @@ export function connectChatRoom(
           gaps.set(`${gap.reason}:${gap.beforeMessageId}:${gap.resumedAt}`, gap);
         cursor = page.nextCursor;
       }
-      if (isStopped || isPaused || generation !== connectionGeneration || controller.signal.aborted)
+      if (
+        isStopped ||
+        isPaused ||
+        generation !== connectionGeneration ||
+        controller.signal.aborted ||
+        !ownsCurrentAuth()
+      )
         return;
       deliver({ type: 'CHAT_GAPS', gaps: [...gaps.values()] });
       [...recovered.values()]
@@ -119,11 +136,18 @@ export function connectChatRoom(
       const live = buffered;
       buffered = [];
       live.forEach(deliver);
+      if (isStopped || !ownsCurrentAuth()) return;
       recovery = undefined;
       isReady = true;
       onStatus('ready', '채팅방에 입장했어요.');
     } catch (error) {
-      if (isStopped || isPaused || generation !== connectionGeneration || controller.signal.aborted)
+      if (
+        isStopped ||
+        isPaused ||
+        generation !== connectionGeneration ||
+        controller.signal.aborted ||
+        !ownsCurrentAuth()
+      )
         return;
       if (error instanceof ChatRecoveryError && error.code === 'CHAT_ROOM_403_BANNED') {
         terminal('banned', chatBanNotice(error.bannedUntil));
@@ -142,12 +166,13 @@ export function connectChatRoom(
       try {
         const token = shouldRefreshAccessToken() ? await refreshAccessToken() : getAccessToken();
         if (isStopped || isPaused) return;
-        if (!token) {
+        if (!token || !sameChatAuthContext(owner, chatAuthContext(token)) || !ownsCurrentAuth()) {
           terminal('error', '다시 로그인한 후 채팅 탭에 입장해 주세요.');
           return;
         }
         client.connectHeaders = {
           Authorization: `Bearer ${token}`,
+          auth_session_id: owner!.sessionId,
           room_id: String(membership.roomId),
           membership_id: String(membership.membershipId),
           ...(viewSessionId
@@ -159,7 +184,7 @@ export function connectChatRoom(
       }
     },
     onConnect: () => {
-      if (isStopped || isPaused) return;
+      if (isStopped || isPaused || !ownsCurrentAuth()) return;
       isReady = false;
       cancelRecovery();
       const connectionGeneration = ++generation;
@@ -181,7 +206,8 @@ export function connectChatRoom(
         void recover(ready, connectionGeneration);
       };
       const receive = (frame: { body: string }) => {
-        if (isStopped || isPaused || generation !== connectionGeneration) return;
+        if (isStopped || isPaused || generation !== connectionGeneration || !ownsCurrentAuth())
+          return;
         const event = parseChatEvent(frame.body);
         if (!event) return;
         if (event.type === 'CHAT_BANNED') {
@@ -254,16 +280,17 @@ export function connectChatRoom(
     },
   });
   onStatus('connecting', '채팅방에 연결하고 있어요.');
+  window.addEventListener?.(ACCESS_TOKEN_CHANGED_EVENT, onAuthChange);
   client.activate();
   return Object.assign(stop, {
     retryRecovery() {
-      if (isStopped || !isPaused) return;
+      if (isStopped || !isPaused || !ownsCurrentAuth()) return;
       isPaused = false;
       onStatus('reconnecting', '메시지 복구를 다시 시도하고 있어요.');
       client.activate();
     },
     send(clientMessageId: string, content: string) {
-      if (isStopped || !isReady) return false;
+      if (isStopped || !isReady || !ownsCurrentAuth()) return false;
       client.publish({
         destination: `/app/chat-rooms/${membership.roomId}/messages`,
         headers: { 'content-type': 'application/json' },

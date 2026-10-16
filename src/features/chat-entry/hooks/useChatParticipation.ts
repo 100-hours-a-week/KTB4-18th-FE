@@ -8,6 +8,7 @@ import {
 import { ROUTE_CHANGE_EVENT } from '../../../shared/navigation';
 import { ChatParticipation, type ChatParticipationState } from '../services/chatParticipation';
 import { chatAccountId } from '../services/chatConversationCache';
+import { chatAuthContext, sameChatAuthContext } from '../services/chatAuthContext';
 
 const INITIAL_STATE: ChatParticipationState = {
   status: 'locating',
@@ -23,6 +24,7 @@ export function useChatParticipation() {
   useEffect(() => {
     const participation = new ChatParticipation(setState);
     const accountId = chatAccountId(getAccessToken());
+    const authContext = chatAuthContext(getAccessToken());
     current.current = participation;
     void participation.start();
     const end = () => {
@@ -38,7 +40,11 @@ export function useChatParticipation() {
       if (window.location.pathname !== '/chat') end();
     };
     const onToken = () => {
-      if (chatAccountId(getAccessToken()) !== accountId || !getAccessToken()) end();
+      if (
+        chatAccountId(getAccessToken()) !== accountId ||
+        !sameChatAuthContext(authContext, chatAuthContext(getAccessToken()))
+      )
+        end();
     };
     window.addEventListener(ROUTE_CHANGE_EVENT, onRoute);
     window.addEventListener('popstate', onRoute);
