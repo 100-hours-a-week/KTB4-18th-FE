@@ -14,6 +14,12 @@ vi.mock('../../../api/chatRooms', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../api/chatRooms')>()),
   getRegionChatRoom: vi.fn(),
   joinChatRoom: vi.fn(),
+  leaveChatRoom: vi.fn(),
+}));
+
+vi.mock('../../auth-login/api/authSession', () => ({
+  getAccessToken: () =>
+    `header.${btoa(JSON.stringify({ sub: '7', sid: '550e8400-e29b-41d4-a716-446655440000' }))}.signature`,
 }));
 
 const activeChatRoom: ActiveChatRoom = {
@@ -113,7 +119,12 @@ describe('useChatRoomLocationRevalidation', () => {
     await act(async () => vi.advanceTimersByTimeAsync(15_000));
 
     expect(resolveCurrentChatLocation).toHaveBeenCalledTimes(2);
-    expect(joinChatRoom).toHaveBeenCalledWith(701, 'confirmed-token', expect.any(AbortSignal));
+    expect(joinChatRoom).toHaveBeenCalledWith(
+      701,
+      'confirmed-token',
+      expect.any(AbortSignal),
+      expect.any(String),
+    );
     expect(onMoved).toHaveBeenCalledWith({ room: movedRoom, membership: movedMembership });
     expect(result.current.status).toBe('moved');
   });

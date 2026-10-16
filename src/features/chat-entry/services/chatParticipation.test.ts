@@ -340,7 +340,12 @@ describe('접속 인원 동기화', () => {
 describe('지역 채팅 참여 흐름', () => {
   it('위치, 방 조회, 입장을 순서대로 진행하고 구독 확인 전 준비 상태가 되지 않는다', async () => {
     await participation.start();
-    expect(joinChatRoom).toHaveBeenCalledWith(700, 'location-token', expect.any(AbortSignal));
+    expect(joinChatRoom).toHaveBeenCalledWith(
+      700,
+      'location-token',
+      expect.any(AbortSignal),
+      expect.any(String),
+    );
     expect(states.at(-1)?.isReady).toBe(false);
     const onStatus = vi.mocked(connectChatRoom).mock.calls[0][1];
     onStatus('ready', '입장 완료');
@@ -437,5 +442,78 @@ describe('지역 채팅 참여 흐름', () => {
     });
     await vi.advanceTimersByTimeAsync(10 * 60 * 1_000 + 15_000);
     expect(leaveChatRoom).not.toHaveBeenCalled();
+  });
+  it('이동 후보 판정 중 sid가 바뀌면 현재나 새 세션을 퇴장시키지 않는다', async () => {
+    await participation.start();
+    vi.mocked(resolveCurrentChatLocation).mockImplementationOnce(async () => {
+      auth.sid = '550e8400-e29b-41d4-a716-446655440001';
+      return {
+        ...location,
+        region: { ...location.region, sigungu: { regionId: 30, code: '11680', name: '강남구' } },
+      };
+    });
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1_000 + 15_000);
+    expect(joinChatRoom).toHaveBeenCalledOnce();
+    expect(leaveChatRoom).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it('15초 확인 대기 중 sid가 바뀌면 두 번째 GPS 판정을 요청하지 않는다', async () => {
+    await participation.start();
+    vi.mocked(resolveCurrentChatLocation).mockResolvedValue({
+      ...location,
+      region: { ...location.region, sigungu: { regionId: 30, code: '11680', name: '강남구' } },
+    });
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1_000);
+    auth.sid = '550e8400-e29b-41d4-a716-446655440001';
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(resolveCurrentChatLocation).toHaveBeenCalledTimes(2);
+    expect(leaveChatRoom).not.toHaveBeenCalled();
+    expect(joinChatRoom).toHaveBeenCalledOnce();
+  });
+
+  it('최종 위치 판정 뒤 sid가 바뀌면 이전 참여를 종료하지 않는다', async () => {
+    await participation.start();
+    const moved = {
+      ...location,
+      region: { ...location.region, sigungu: { regionId: 30, code: '11680', name: '강남구' } },
+    };
+    vi.mocked(resolveCurrentChatLocation)
+      .mockResolvedValueOnce(moved)
+      .mockImplementationOnce(async () => {
+        auth.sid = '550e8400-e29b-41d4-a716-446655440001';
+        return moved;
+      });
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1_000 + 15_000);
+    expect(leaveChatRoom).not.toHaveBeenCalled();
+    expect(joinChatRoom).toHaveBeenCalledOnce();
+  });
+  it('이동이 확인되면 이전 참여만 종료하고 최종 판정 토큰으로 새 방에 연결한다', async () => {
+    await participation.start();
+    const moved = {
+      ...location,
+      region: { ...location.region, sigungu: { regionId: 30, code: '11680', name: '강남구' } },
+    };
+    vi.mocked(resolveCurrentChatLocation)
+      .mockResolvedValueOnce({ ...moved, locationResolutionToken: 'candidate-token' })
+      .mockResolvedValueOnce({ ...moved, locationResolutionToken: 'confirmed-token' });
+    vi.mocked(getRegionChatRoom).mockResolvedValue({ ...room, roomId: 701, regionId: 30 });
+    vi.mocked(joinChatRoom).mockResolvedValue({
+      ...membership,
+      membershipId: 901,
+      roomId: 701,
+      regionId: 30,
+    });
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1_000 + 15_000);
+    expect(close).toHaveBeenCalledOnce();
+    expect(leaveChatRoom).toHaveBeenCalledWith(membership, expect.any(String));
+    expect(joinChatRoom).toHaveBeenLastCalledWith(
+      701,
+      'confirmed-token',
+      expect.any(AbortSignal),
+      expect.any(String),
+    );
+    expect(connectChatRoom).toHaveBeenCalledTimes(2);
+    expect(states.at(-1)?.activeRoom?.membership.membershipId).toBe(901);
   });
 });
