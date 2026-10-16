@@ -1,0 +1,6 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Camera">
+<path id="Vector" d="M17.5352 6C17.2008 6 16.8886 5.8329 16.7031 5.5547L15.2969 3.4453C15.1114 3.1671 14.7992 3 14.4648 3H9.53518C9.20083 3 8.8886 3.1671 8.70313 3.4453L7.29687 5.5547C7.1114 5.8329 6.79917 6 6.46482 6H3C2.44772 6 2 6.44772 2 7V18C2 18.5523 2.44772 19 3 19H21C21.5523 19 22 18.5523 22 18V7C22 6.44772 21.5523 6 21 6H17.5352Z" stroke="#FAFAFA" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_2" d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z" stroke="#FAFAFA" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</svg>
