@@ -12,6 +12,7 @@ export type LoginQueueTicket = {
   loginOutcome: LoginOutcome;
   usersAhead: number | null;
   nextPollSeconds: number;
+  statusFetchedAt?: number;
   diagnosticCorrId?: string;
 };
 

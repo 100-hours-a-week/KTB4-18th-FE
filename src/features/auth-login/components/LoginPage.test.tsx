@@ -87,6 +87,13 @@ describe('LoginPage email input', () => {
     });
     vi.mocked(getLoginQueueStatus)
       .mockRejectedValueOnce(new QueueRequestError(404))
+      .mockResolvedValueOnce({
+        status: 'WAITING',
+        loginOutcome: null,
+        usersAhead: 1,
+        nextPollSeconds: 10,
+        statusFetchedAt: Date.now(),
+      })
       .mockResolvedValueOnce(retryableTicket);
     const onLoginSuccess = vi.fn();
     render(<LoginPage onLoginSuccess={onLoginSuccess} />);
@@ -100,8 +107,10 @@ describe('LoginPage email input', () => {
     expect(submitQueuedLogin).not.toHaveBeenCalled();
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(250);
     });
+    await vi.waitFor(() => expect(getLoginQueueStatus).toHaveBeenCalledTimes(2));
+    await act(async () => vi.advanceTimersByTimeAsync(10_000));
 
     expect(submitQueuedLogin).toHaveBeenCalledTimes(1);
     expect(submitQueuedLogin).toHaveBeenCalledWith(
@@ -178,6 +187,54 @@ describe('LoginPage email input', () => {
     expect(screen.getByLabelText('이메일')).toHaveValue('user@example.com');
     expect(screen.getByLabelText('비밀번호')).toHaveValue('password');
     expect(screen.queryByText(/비밀번호를 다시 입력해/)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { usersAhead: null, shouldOpen: false },
+    { usersAhead: 0, shouldOpen: false },
+    { usersAhead: 150, shouldOpen: false },
+    { usersAhead: 151, shouldOpen: true },
+  ])(
+    'shows the waiting dialog only when more than 150 people are ahead',
+    async ({ usersAhead, shouldOpen }) => {
+      let resolveStatus!: (ticket: LoginQueueTicket) => void;
+      const statusPromise = new Promise<LoginQueueTicket>((resolve) => {
+        resolveStatus = resolve;
+      });
+      vi.mocked(getLoginQueueStatus).mockReturnValueOnce(statusPromise);
+      render(<LoginPage />);
+
+      await vi.waitFor(() => expect(getLoginQueueStatus).toHaveBeenCalledOnce());
+      await act(async () => {
+        resolveStatus({
+          status: 'WAITING',
+          loginOutcome: null,
+          usersAhead,
+          nextPollSeconds: 10,
+        });
+        await statusPromise;
+      });
+      if (shouldOpen) {
+        expect(await screen.findByRole('dialog')).toBeInTheDocument();
+      } else {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      }
+    },
+  );
+
+  it('skips automatic prior-session restore after logout but reconciles the queue on submit', async () => {
+    const user = userEvent.setup();
+    render(<LoginPage skipInitialQueueRestore />);
+    await act(async () => Promise.resolve());
+    expect(getLoginQueueStatus).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    expect(await screen.findByText('로그인에 성공했어요.')).toBeInTheDocument();
+    expect(cancelLoginQueue).not.toHaveBeenCalled();
+    expect(startOrResumeLoginQueue).toHaveBeenCalledOnce();
   });
 
   it('restores the existing refresh-cookie session when selected after an ambiguous login', async () => {
@@ -438,6 +495,19 @@ describe('LoginPage email input', () => {
     expect(onLoginSuccess).toHaveBeenCalledExactlyOnceWith(successResponse);
   });
 
+  it('rejects a whitespace-only password before starting a login queue', async () => {
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), '   ');
+
+    fireEvent.submit(screen.getByLabelText('이메일').closest('form')!);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('비밀번호를 입력해 주세요.');
+    expect(startOrResumeLoginQueue).not.toHaveBeenCalled();
+    expect(submitQueuedLogin).not.toHaveBeenCalled();
+  });
+
   it('enables the login button only after the email and password are valid', async () => {
     const user = userEvent.setup();
     render(<LoginPage />);
@@ -493,8 +563,48 @@ describe('LoginPage email input', () => {
     expect(screen.getByRole('button', { name: '로그인' })).toBeDisabled();
   });
 
-  it('waits for READY and refreshes the approximate position every ten seconds', async () => {
-    vi.useFakeTimers();
+  it('does not show the waiting dialog while an immediately READY login is being submitted', async () => {
+    let finishLogin!: (response: LoginSuccessResponse) => void;
+    vi.mocked(submitQueuedLogin).mockImplementationOnce(
+      () => new Promise((resolve) => (finishLogin = resolve)),
+    );
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    await vi.waitFor(() => expect(submitQueuedLogin).toHaveBeenCalledOnce());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await act(async () => finishLogin(successResponse));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('continues a RETRYABLE ticket without showing the waiting dialog', async () => {
+    vi.mocked(startOrResumeLoginQueue).mockResolvedValueOnce({
+      status: 'RETRYABLE',
+      loginOutcome: null,
+      usersAhead: 0,
+      nextPollSeconds: 10,
+    });
+    let finishLogin!: (response: LoginSuccessResponse) => void;
+    vi.mocked(submitQueuedLogin).mockImplementationOnce(
+      () => new Promise((resolve) => (finishLogin = resolve)),
+    );
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    await vi.waitFor(() => expect(submitQueuedLogin).toHaveBeenCalledOnce());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await act(async () => finishLogin(successResponse));
+  });
+
+  it('checks queue admission quickly and submits login when READY', async () => {
     vi.mocked(startOrResumeLoginQueue).mockResolvedValueOnce({
       status: 'WAITING',
       loginOutcome: null,
@@ -512,21 +622,125 @@ describe('LoginPage email input', () => {
     await act(async () => {
       fireEvent.submit(email.closest('form')!);
       await Promise.resolve();
+      await Promise.resolve();
     });
 
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText('내 앞 대기 인원')).toBeInTheDocument();
-    expect(screen.getByText('약 7명')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(submitQueuedLogin).not.toHaveBeenCalled();
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
-    });
+    await vi.waitFor(() => expect(getLoginQueueStatus).toHaveBeenCalledOnce());
     await vi.waitFor(() => expect(submitQueuedLogin).toHaveBeenCalledOnce());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(submitQueuedLogin).toHaveBeenCalledWith(
       { email: 'user@example.com', password: ' exact ' },
       'live-generation',
     );
+  });
+
+  it('does not show the waiting dialog when status lookup fails after a login conflict', async () => {
+    vi.mocked(submitQueuedLogin).mockRejectedValueOnce(
+      new QueueRequestError(409, 'QUEUE_LOGIN_IN_PROGRESS'),
+    );
+    vi.mocked(getLoginQueueStatus).mockRejectedValue(new QueueRequestError(503));
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    expect(
+      await screen.findByText('로그인 상태를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('asks for explicit login-state recovery when a login-in-progress conflict reports READY', async () => {
+    vi.mocked(submitQueuedLogin).mockRejectedValueOnce(
+      new QueueRequestError(409, 'QUEUE_LOGIN_IN_PROGRESS'),
+    );
+    vi.mocked(getLoginQueueStatus)
+      .mockReset()
+      .mockRejectedValueOnce(new QueueRequestError(404))
+      .mockResolvedValueOnce({ ...readyTicket });
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    expect(await screen.findByRole('group', { name: '로그인 결과 선택' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(submitQueuedLogin).toHaveBeenCalledOnce();
+  });
+
+  it('does not show the waiting dialog when a capacity retry resumes a READY ticket', async () => {
+    vi.useFakeTimers();
+    vi.mocked(startOrResumeLoginQueue).mockRejectedValueOnce(
+      new QueueRequestError(503, 'QUEUE_FULL', 1),
+    );
+    let finishLogin!: (response: LoginSuccessResponse) => void;
+    vi.mocked(submitQueuedLogin).mockImplementationOnce(
+      () => new Promise((resolve) => (finishLogin = resolve)),
+    );
+    render(<LoginPage />);
+    fireEvent.change(screen.getByLabelText('이메일'), { target: { value: 'user@example.com' } });
+    fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password' } });
+    fireEvent.submit(screen.getByLabelText('이메일').closest('form')!);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+
+    await vi.waitFor(() => expect(submitQueuedLogin).toHaveBeenCalledOnce());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await act(async () => finishLogin(successResponse));
+  });
+
+  it('does not show the waiting dialog when reconciliation finds a READY ticket', async () => {
+    vi.mocked(startOrResumeLoginQueue).mockRejectedValueOnce(
+      new QueueRequestError(503, 'CREATE_RETRIES_EXHAUSTED'),
+    );
+    vi.mocked(reconcileLoginQueueStatus)
+      .mockReset()
+      .mockResolvedValueOnce({ ...readyTicket });
+    let finishLogin!: (response: LoginSuccessResponse) => void;
+    vi.mocked(submitQueuedLogin).mockImplementationOnce(
+      () => new Promise((resolve) => (finishLogin = resolve)),
+    );
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+    await screen.findByRole('heading', { name: '대기 요청을 확인해 주세요' });
+
+    await user.click(screen.getByRole('button', { name: '상태 확인' }));
+    await vi.waitFor(() => expect(submitQueuedLogin).toHaveBeenCalledOnce());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await act(async () => finishLogin(successResponse));
+  });
+
+  it('restarts the GET-first login flow when manual reconciliation confirms no current ticket', async () => {
+    vi.mocked(startOrResumeLoginQueue)
+      .mockRejectedValueOnce(new QueueRequestError(503, 'CREATE_RETRIES_EXHAUSTED'))
+      .mockResolvedValueOnce({ ...readyTicket });
+    vi.mocked(reconcileLoginQueueStatus).mockRejectedValueOnce(
+      new QueueRequestError(404, 'TICKET_UNKNOWN'),
+    );
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+    await user.click(await screen.findByRole('button', { name: '상태 확인' }));
+
+    await vi.waitFor(() => expect(submitQueuedLogin).toHaveBeenCalledOnce());
+    expect(startOrResumeLoginQueue).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('keeps QUEUE_FULL on the login page with an accessible cancel action', async () => {
@@ -546,7 +760,7 @@ describe('LoginPage email input', () => {
     expect(screen.getByRole('button', { name: '대기 취소' })).toBeEnabled();
   });
 
-  it('rechecks current state after QUEUE_LOGIN_IN_PROGRESS and never posts credentials again while VERIFYING', async () => {
+  it('keeps checking a VERIFYING ticket without opening the long-wait dialog', async () => {
     vi.mocked(submitQueuedLogin).mockRejectedValueOnce(
       new QueueRequestError(409, 'QUEUE_LOGIN_IN_PROGRESS'),
     );
@@ -564,18 +778,25 @@ describe('LoginPage email input', () => {
     await user.type(screen.getByLabelText('비밀번호'), 'password');
     await user.click(screen.getByRole('button', { name: '로그인' }));
 
-    expect(await screen.findByText(/로그인 처리가 진행 중이에요/)).toBeInTheDocument();
     expect(submitQueuedLogin).toHaveBeenCalledOnce();
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('keeps Escape cancellation pending until confirmed, then focuses email', async () => {
     vi.mocked(startOrResumeLoginQueue).mockResolvedValueOnce({
       status: 'WAITING',
       loginOutcome: null,
-      usersAhead: null,
+      usersAhead: 151,
       nextPollSeconds: 10,
     });
+    vi.mocked(getLoginQueueStatus)
+      .mockRejectedValueOnce(new QueueRequestError(404))
+      .mockResolvedValueOnce({
+        status: 'WAITING',
+        loginOutcome: null,
+        usersAhead: 151,
+        nextPollSeconds: 10,
+      });
     let confirmCancel!: () => void;
     vi.mocked(cancelLoginQueue).mockImplementationOnce(
       () => new Promise<void>((resolve) => (confirmCancel = resolve)),
@@ -600,7 +821,7 @@ describe('LoginPage email input', () => {
     vi.mocked(getLoginQueueStatus).mockResolvedValueOnce({
       status: 'WAITING',
       loginOutcome: null,
-      usersAhead: 3,
+      usersAhead: 151,
       nextPollSeconds: 10,
     });
     render(<LoginPage />);
@@ -681,6 +902,14 @@ describe('LoginPage email input', () => {
       usersAhead: 2,
       nextPollSeconds: 10,
     });
+    vi.mocked(getLoginQueueStatus)
+      .mockRejectedValueOnce(new QueueRequestError(404))
+      .mockResolvedValueOnce({
+        status: 'WAITING',
+        loginOutcome: null,
+        usersAhead: 151,
+        nextPollSeconds: 10,
+      });
     const user = userEvent.setup();
     render(<LoginPage />);
     await user.type(screen.getByLabelText('이메일'), 'user@example.com');
@@ -689,10 +918,10 @@ describe('LoginPage email input', () => {
 
     const dialog = await screen.findByRole('dialog');
     const cancelButton = screen.getByRole('button', { name: '대기 취소' });
-    expect(cancelButton).toHaveFocus();
+    await vi.waitFor(() => expect(cancelButton).toHaveFocus());
     expect(screen.getByLabelText('이메일').closest('.login-layout')).toHaveAttribute('inert');
     fireEvent.keyDown(dialog, { key: 'Tab' });
-    expect(cancelButton).toHaveFocus();
+    await vi.waitFor(() => expect(cancelButton).toHaveFocus());
 
     expect(queueSignals.listener).not.toBeNull();
     await act(async () => {
@@ -716,6 +945,13 @@ describe('LoginPage email input', () => {
     });
     vi.mocked(getLoginQueueStatus)
       .mockRejectedValueOnce(new QueueRequestError(404))
+      .mockResolvedValueOnce({
+        status: 'WAITING',
+        loginOutcome: null,
+        usersAhead: 3,
+        nextPollSeconds: 10,
+        statusFetchedAt: Date.now(),
+      })
       .mockImplementationOnce(async () => {
         vi.mocked(getLoginQueueGeneration).mockReturnValue('successor-generation');
         return { ...readyTicket };
@@ -731,8 +967,10 @@ describe('LoginPage email input', () => {
     });
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(250);
     });
+    await vi.waitFor(() => expect(getLoginQueueStatus).toHaveBeenCalledTimes(2));
+    await act(async () => vi.advanceTimersByTimeAsync(10_000));
     expect(submitQueuedLogin).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByLabelText('비밀번호')).toHaveValue('');

@@ -11,6 +11,7 @@ import {
   getQueueCreateRetryDelayMs,
   getNextQueueCreateAttemptAt,
   publishQueueSignal,
+  promiseWithTimeout,
   QueueRequestError,
   recoverQueuedLogin,
   startOrResumeLoginQueue,
@@ -21,9 +22,30 @@ import {
 import { clearAccessToken, getAccessTokenExpiresAt, refreshAccessToken } from '../api/authSession';
 import type { LoginSuccessResponse } from '../api/loginApi';
 import type { FieldErrors, CapacityWait } from './loginQueueFlowUtils';
-import { getQueueErrorMessage, normalizeEmail, validate, wait } from './loginQueueFlowUtils';
+import {
+  getQueueErrorMessage,
+  hasNonWhitespacePassword,
+  normalizeEmail,
+  validate,
+  wait,
+} from './loginQueueFlowUtils';
 
 const MAX_TIMER_DELAY_MS = 2_147_000_000;
+const MAX_USERS_AHEAD_WITHOUT_DIALOG = 150;
+
+function shouldShowQueueDialog(ticket: LoginQueueTicket): boolean {
+  return ticket.status === 'WAITING' && (ticket.usersAhead ?? 0) > MAX_USERS_AHEAD_WITHOUT_DIALOG;
+}
+
+function isQueuePending(ticket: LoginQueueTicket): boolean {
+  return ticket.status === 'WAITING' || ticket.status === 'VERIFYING';
+}
+
+async function confirmNewWaitingTicket(ticket: LoginQueueTicket): Promise<LoginQueueTicket> {
+  if (ticket.status !== 'WAITING' || ticket.statusFetchedAt !== undefined) return ticket;
+  await wait(250);
+  return promiseWithTimeout(getLoginQueueStatus(), 1_500, 'QUEUE_STATUS_PROBE_TIMEOUT');
+}
 
 type UseLoginQueueFlowProps = {
   email: string;
@@ -37,6 +59,7 @@ type UseLoginQueueFlowProps = {
   isSubmittingRef: MutableRefObject<boolean>;
   setIsLoginSuccessful: Dispatch<SetStateAction<boolean>>;
   authCapabilityMessage?: string;
+  skipInitialQueueRestore?: boolean;
   onLoginSuccess?: (response: LoginSuccessResponse) => void;
   onLoginStart?: () => void;
   onLoginFailure?: () => void;
@@ -54,6 +77,7 @@ export function useLoginQueueFlow({
   isSubmittingRef,
   setIsLoginSuccessful,
   authCapabilityMessage,
+  skipInitialQueueRestore = false,
   onLoginSuccess,
   onLoginStart,
   onLoginFailure,
@@ -68,6 +92,8 @@ export function useLoginQueueFlow({
   const activeSharedQueueGeneration = useRef<string | null>(null);
   const pendingCancelGeneration = useRef<string | null>(null);
   const statusRequestSequence = useRef(0);
+  const hasCheckedInitialQueue = useRef(false);
+  const lastQueuePositionUpdatedAt = useRef(0);
   const queueDialogRef = useRef<HTMLElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const previouslyFocusedElement = useRef<HTMLElement | null>(null);
@@ -168,6 +194,10 @@ export function useLoginQueueFlow({
   );
 
   useEffect(() => {
+    if (hasCheckedInitialQueue.current) return;
+    hasCheckedInitialQueue.current = true;
+    if (skipInitialQueueRestore) return;
+
     let isActive = true;
     const requestSequence = ++statusRequestSequence.current;
     const sharedGeneration = getLoginQueueGeneration();
@@ -183,7 +213,7 @@ export function useLoginQueueFlow({
         setQueueTicket(ticket);
         if (closeTerminalQueue(ticket)) return;
         if (ticket.status === 'WAITING' || ticket.status === 'VERIFYING') {
-          setIsQueueOpen(true);
+          setIsQueueOpen(shouldShowQueueDialog(ticket));
           return;
         }
         if (ticket.status === 'RETRYABLE') {
@@ -229,7 +259,13 @@ export function useLoginQueueFlow({
     return () => {
       isActive = false;
     };
-  }, [closeTerminalQueue, finishLogin, setPassword, setRequestError]);
+  }, [
+    closeTerminalQueue,
+    finishLogin,
+    setPassword,
+    setRequestError,
+    skipInitialQueueRestore,
+  ]);
 
   const submitReadyLogin = useCallback(
     async (credentials: { email: string; password: string }, diagnosticCorrelationId?: string) => {
@@ -300,9 +336,18 @@ export function useLoginQueueFlow({
               if (!isCurrent()) return;
               setQueueTicket(status);
               if (closeTerminalQueue(status)) return;
-              if (status.status === 'READY') continue;
-              setIsQueueOpen(true);
-              setQueueMessage('아직 차례가 아니에요. 순서를 다시 확인할게요.');
+              if (status.status === 'READY' || status.status === 'RETRYABLE') continue;
+              const isWaiting = isQueuePending(status);
+              setIsQueueOpen(shouldShowQueueDialog(status));
+              if (isWaiting) {
+                setQueueMessage(
+                  status.status === 'VERIFYING'
+                    ? '로그인 처리가 진행 중이에요. 결과를 확인하고 있어요.'
+                    : '아직 차례가 아니에요. 순서를 다시 확인할게요.',
+                );
+              } else {
+                setRequestError('로그인 대기 상태가 아니에요. 다시 로그인해 주세요.');
+              }
               return;
             }
             if (
@@ -318,17 +363,19 @@ export function useLoginQueueFlow({
                 );
                 if (!isCurrent()) return;
                 if (resolution.recovered) return;
-                if (
-                  resolution.status &&
-                  ['WAITING', 'READY', 'VERIFYING', 'RETRYABLE'].includes(resolution.status.status)
-                ) {
+                if (resolution.status) {
                   setQueueTicket(resolution.status);
-                  setIsQueueOpen(true);
-                  setAmbiguousLogin(false);
-                  setQueueMessage(
-                    '로그인 상태를 확인하고 있어요. 같은 대기 요청으로 이어서 처리할게요.',
-                  );
-                  return;
+                  const isPending = isQueuePending(resolution.status);
+                  setIsQueueOpen(shouldShowQueueDialog(resolution.status));
+                  if (isPending) {
+                    setAmbiguousLogin(false);
+                    setQueueMessage(
+                      resolution.status.status === 'VERIFYING'
+                        ? '로그인 상태를 확인하고 있어요. 같은 대기 요청으로 이어서 처리할게요.'
+                        : '대기 상태를 다시 확인했어요. 차례가 되면 이어서 로그인할게요.',
+                    );
+                    return;
+                  }
                 }
               } catch {
                 // Do not replay credentials after an ambiguous response.
@@ -364,19 +411,38 @@ export function useLoginQueueFlow({
                     onLoginFailure?.();
                     return;
                   }
-                  if (status.status === 'READY' && error.code === 'TICKET_NOT_READY') continue;
-                  setIsQueueOpen(true);
-                  setQueueMessage(
-                    status.status === 'VERIFYING'
-                      ? '로그인 처리가 진행 중이에요. 결과를 확인하고 있어요.'
-                      : '대기 상태를 다시 확인했어요. 차례가 되면 이어서 로그인할게요.',
-                  );
+                  if (
+                    status.status === 'RETRYABLE' ||
+                    (status.status === 'READY' && error.code === 'TICKET_NOT_READY')
+                  )
+                    continue;
+                  if (status.status === 'READY' && error.code === 'QUEUE_LOGIN_IN_PROGRESS') {
+                    setIsQueueOpen(false);
+                    setPassword('');
+                    setAmbiguousLogin(true);
+                    setQueueMessage(
+                      '로그인 진행 상태를 확인할 수 없어요. 기존 로그인 상태를 확인해 주세요.',
+                    );
+                    return;
+                  }
+                  const isWaiting = isQueuePending(status);
+                  setIsQueueOpen(shouldShowQueueDialog(status));
+                  if (isWaiting) {
+                    setQueueMessage(
+                      status.status === 'VERIFYING'
+                        ? '로그인 처리가 진행 중이에요. 결과를 확인하고 있어요.'
+                        : '대기 상태를 다시 확인했어요. 차례가 되면 이어서 로그인할게요.',
+                    );
+                  } else {
+                    setRequestError('로그인 상태를 다시 확인할 수 없어요. 다시 로그인해 주세요.');
+                  }
                   return;
                 } catch {
                   setQueueMessage(
                     '로그인 상태를 확인할 수 없어요. 기존 대기 요청을 유지하고 있어요.',
                   );
-                  setIsQueueOpen(true);
+                  setIsQueueOpen(false);
+                  setRequestError('로그인 상태를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.');
                   return;
                 }
               }
@@ -413,6 +479,7 @@ export function useLoginQueueFlow({
     event.preventDefault();
     if (isSubmittingRef.current) return;
     invalidateStatusReads();
+    lastQueuePositionUpdatedAt.current = 0;
     const normalizedEmail = normalizeEmail(email.trim());
     setEmail(normalizedEmail);
     const nextFieldErrors = validate(normalizedEmail, password);
@@ -429,13 +496,17 @@ export function useLoginQueueFlow({
     setIsSubmitting(true);
     isSubmittingRef.current = true;
     try {
-      const ticket = await startOrResumeLoginQueue();
+      const ticket = await confirmNewWaitingTicket(await startOrResumeLoginQueue());
       setCapacityWait(null);
       activeSharedQueueGeneration.current = getLoginQueueGeneration();
       setQueueTicket(ticket);
       if (closeTerminalQueue(ticket)) return;
-      setIsQueueOpen(ticket.status !== 'CONSUMED');
+      setIsQueueOpen(shouldShowQueueDialog(ticket));
       if (ticket.status === 'READY') {
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
+        await submitReadyLogin({ email: normalizedEmail, password }, ticket.diagnosticCorrId);
+      } else if (ticket.status === 'RETRYABLE') {
         isSubmittingRef.current = false;
         setIsSubmitting(false);
         await submitReadyLogin({ email: normalizedEmail, password }, ticket.diagnosticCorrId);
@@ -471,14 +542,19 @@ export function useLoginQueueFlow({
             getQueueCreateRetryDelayMs() ?? Math.max(1_000, (error.retryAfterSeconds ?? 5) * 1000),
           message: getQueueErrorMessage(error),
         });
-      } else if (error instanceof QueueRequestError && error.code === 'CREATE_RETRIES_EXHAUSTED') {
+      } else if (
+        error instanceof QueueRequestError &&
+        ['CREATE_RETRIES_EXHAUSTED', 'QUEUE_STATUS_RETRY_PAUSED'].includes(error.code ?? '')
+      ) {
         setRequestError('');
         setCapacityWait({
           reason: 'EXHAUSTED',
           mode: 'paused',
           delayMs: 0,
           message:
-            '요청 결과를 확인할 수 없어 자동 재시도를 마쳤어요. 취소하거나 상태만 다시 확인해 주세요.',
+            error.code === 'QUEUE_STATUS_RETRY_PAUSED'
+              ? '대기 상태 확인이 제한되어 자동 확인을 멈췄어요. 다시 확인할 수 있어요.'
+              : '요청 결과를 확인할 수 없어 자동 재시도를 마쳤어요. 취소하거나 상태만 다시 확인해 주세요.',
         });
       } else if (
         error instanceof QueueRequestError &&
@@ -510,13 +586,20 @@ export function useLoginQueueFlow({
     isSubmittingRef.current = true;
     setIsSubmitting(true);
     try {
-      const ticket = await startOrResumeLoginQueue();
+      const ticket = await confirmNewWaitingTicket(await startOrResumeLoginQueue());
       setCapacityWait(null);
       setQueueTicket(ticket);
       if (closeTerminalQueue(ticket)) return;
       activeSharedQueueGeneration.current = getLoginQueueGeneration();
-      setIsQueueOpen(ticket.status !== 'CONSUMED');
+      setIsQueueOpen(shouldShowQueueDialog(ticket));
       if (ticket.status === 'READY') {
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
+        await submitReadyLogin(
+          { email: normalizeEmail(email.trim()), password },
+          ticket.diagnosticCorrId,
+        );
+      } else if (ticket.status === 'RETRYABLE') {
         isSubmittingRef.current = false;
         setIsSubmitting(false);
         await submitReadyLogin(
@@ -598,7 +681,7 @@ export function useLoginQueueFlow({
       setCapacityWait(null);
       setQueueTicket(ticket);
       if (closeTerminalQueue(ticket)) return;
-      setIsQueueOpen(ticket.status !== 'CONSUMED');
+      setIsQueueOpen(shouldShowQueueDialog(ticket));
       activeSharedQueueGeneration.current = getLoginQueueGeneration();
       if (ticket.status === 'CONSUMED' && ticket.loginOutcome === 'SUCCESS') {
         const recovered = await recoverQueuedLogin();
@@ -606,8 +689,32 @@ export function useLoginQueueFlow({
       } else if (ticket.status === 'CONSUMED') {
         setPassword('');
         setRequestError('대기 요청이 이미 종료되었어요. 새 로그인을 시작할 수 있어요.');
+      } else if (ticket.status === 'READY' && hasNonWhitespacePassword(password)) {
+        setIsQueueOpen(false);
+        await submitReadyLogin(
+          { email: normalizeEmail(email.trim()), password },
+          ticket.diagnosticCorrId,
+        );
+      } else if (ticket.status === 'READY') {
+        setIsQueueOpen(false);
+        setRequestError('차례가 되었어요. 비밀번호를 입력해 로그인을 이어가 주세요.');
+      } else if (ticket.status === 'RETRYABLE' && hasNonWhitespacePassword(password)) {
+        await submitReadyLogin(
+          { email: normalizeEmail(email.trim()), password },
+          ticket.diagnosticCorrId,
+        );
+      } else if (ticket.status === 'RETRYABLE') {
+        setIsQueueOpen(false);
+        setRequestError('로그인을 이어가려면 비밀번호를 다시 입력해 주세요.');
       }
     } catch (error) {
+      if (error instanceof QueueRequestError && error.status === 404) {
+        setCapacityWait(null);
+        setQueueTicket(null);
+        setIsQueueOpen(false);
+        await retryCapacityWait();
+        return;
+      }
       if (error instanceof QueueRequestError && error.status === 410) {
         setCapacityWait(null);
         setQueueTicket(null);
@@ -674,13 +781,20 @@ export function useLoginQueueFlow({
   }, [capacityWait, retryCapacityWait]);
 
   useEffect(() => {
-    if (!isQueueOpen || !queueTicket) return;
+    if (!queueTicket || !['WAITING', 'VERIFYING'].includes(queueTicket.status)) return;
     let isActive = true;
     const generation = queueGeneration.current;
     const sharedGeneration = activeSharedQueueGeneration.current ?? getLoginQueueGeneration();
+    const initialPollDelay =
+      queueTicket.statusFetchedAt === undefined
+        ? 500
+        : Math.max(
+            500,
+            queueTicket.nextPollSeconds * 1_000 - (Date.now() - queueTicket.statusFetchedAt),
+          );
     let timer: number | undefined;
     let consecutivePollErrors = 0;
-    let nextPollDelay = 10_000;
+    let nextPollDelay = Math.max(5_500, queueTicket.nextPollSeconds * 1_000);
     let terminalStatusSeen = false;
     const poll = async () => {
       if (getLoginQueueGeneration() !== sharedGeneration) {
@@ -711,14 +825,29 @@ export function useLoginQueueFlow({
           return;
         }
         consecutivePollErrors = 0;
-        nextPollDelay = 10_000;
-        setQueueTicket(ticket);
+        nextPollDelay = Math.max(5_500, ticket.nextPollSeconds * 1_000);
+        setIsQueueOpen(shouldShowQueueDialog(ticket));
+        if (ticket.status === 'WAITING') {
+          const now = Date.now();
+          const shouldUpdatePosition = now - lastQueuePositionUpdatedAt.current >= 10_000;
+          if (shouldUpdatePosition) {
+            lastQueuePositionUpdatedAt.current = now;
+            setQueueTicket((current) =>
+              current?.status === 'WAITING' && current.usersAhead === ticket.usersAhead
+                ? current
+                : ticket,
+            );
+          }
+        } else {
+          setQueueTicket(ticket);
+        }
         if (closeTerminalQueue(ticket)) {
           terminalStatusSeen = true;
           return;
         }
         if (ticket.status === 'READY') {
-          if (password.length > 0) {
+          setIsQueueOpen(false);
+          if (hasNonWhitespacePassword(password)) {
             setQueueMessage('차례가 되었어요. 로그인을 진행할게요.');
             void submitReadyLogin(
               { email: normalizeEmail(email.trim()), password },
@@ -729,7 +858,8 @@ export function useLoginQueueFlow({
             setRequestError('차례가 되었어요. 이메일과 비밀번호를 입력해 로그인을 이어가 주세요.');
           }
         } else if (ticket.status === 'RETRYABLE') {
-          if (password.length > 0) {
+          setIsQueueOpen(false);
+          if (hasNonWhitespacePassword(password)) {
             setQueueMessage('같은 대기 요청으로 다시 등록하고 있어요.');
             void submitReadyLogin(
               { email: normalizeEmail(email.trim()), password },
@@ -800,7 +930,7 @@ export function useLoginQueueFlow({
           timer = window.setTimeout(poll, nextPollDelay);
       }
     };
-    timer = window.setTimeout(poll, 10_000);
+    timer = window.setTimeout(poll, initialPollDelay);
     return () => {
       isActive = false;
       if (timer !== undefined) window.clearTimeout(timer);
@@ -809,10 +939,10 @@ export function useLoginQueueFlow({
     closeTerminalQueue,
     email,
     finishLogin,
-    isQueueOpen,
     password,
     queueTicket,
     setPassword,
+    retryCapacityWait,
     setRequestError,
     submitReadyLogin,
   ]);
@@ -846,6 +976,22 @@ export function useLoginQueueFlow({
               ? { ...current, message: '취소 결과를 확인하지 못했어요. 다시 취소해 주세요.' }
               : current,
           );
+          return;
+        }
+        if (signal.type === 'queue-logout-reset') {
+          if (signal.queueGeneration !== getLoginQueueGeneration()) return;
+          statusRequestSequence.current += 1;
+          queueGeneration.current += 1;
+          activeSharedQueueGeneration.current = null;
+          pendingCancelGeneration.current = null;
+          setIsCanceling(false);
+          setCapacityWait(null);
+          setPassword('');
+          setIsQueueOpen(false);
+          setQueueTicket(null);
+          setAmbiguousLogin(false);
+          setQueueMessage('');
+          setRequestError('');
           return;
         }
         if (
@@ -885,7 +1031,7 @@ export function useLoginQueueFlow({
           setQueueMessage('다른 탭의 로그인 시도가 종료되었어요. 다시 로그인해 주세요.');
         }
       }),
-    [setPassword],
+    [setPassword, setRequestError],
   );
 
   useEffect(() => {

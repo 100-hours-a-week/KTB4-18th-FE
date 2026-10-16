@@ -10,6 +10,7 @@ import './LoginPage.css';
 
 type LoginPageProps = {
   authCapabilityMessage?: string;
+  skipInitialQueueRestore?: boolean;
   onLoginSuccess?: (response: LoginSuccessResponse) => void;
   onLoginStart?: () => void;
   onLoginFailure?: () => void;
@@ -19,6 +20,7 @@ type LoginPageProps = {
 
 export function LoginPage({
   authCapabilityMessage,
+  skipInitialQueueRestore,
   onLoginSuccess,
   onLoginStart,
   onLoginFailure,
@@ -47,6 +49,7 @@ export function LoginPage({
     isSubmittingRef,
     setIsLoginSuccessful,
     authCapabilityMessage,
+    skipInitialQueueRestore,
     onLoginSuccess,
     onLoginStart,
     onLoginFailure,
