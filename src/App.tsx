@@ -4,6 +4,7 @@ import type { FormEvent } from 'react';
 import { recommend, streamRecommendation } from './api/recommendations';
 import { RecommendationCards } from './components/RecommendationCards';
 import { LoginPage } from './features/auth-login/components/LoginPage';
+import { resetLoginQueueAfterLogout } from './features/auth-login/api/loginQueueApi';
 import { MainPage } from './features/mainMap/MainPage';
 import {
   MusicRecordCreatePage,
@@ -74,6 +75,7 @@ function App() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>('restoring');
   const [authCapability] = useState(() => probeAuthCapabilities());
   const [passwordChangedNotice, setPasswordChangedNotice] = useState(false);
+  const [skipQueueRestoreAfterLogout, setSkipQueueRestoreAfterLogout] = useState(false);
   const authIntent = useRef(0);
   const [authIntentVersion, setAuthIntentVersion] = useState(0);
   const isLoggingOutRef = useRef(false);
@@ -300,6 +302,8 @@ function App() {
     setManualLogoutError('');
     try {
       await logout();
+      await resetQueueAfterLogoutSafely();
+      setSkipQueueRestoreAfterLogout(true);
       clearAccessToken();
       setAuthStatus('guest');
       navigate(LOGIN_PATH);
@@ -324,6 +328,8 @@ function App() {
     setLogoutError('');
     try {
       await logout();
+      await resetQueueAfterLogoutSafely();
+      setSkipQueueRestoreAfterLogout(true);
       clearAccessToken();
       setAuthStatus('guest');
       navigate(LOGIN_PATH);
@@ -340,6 +346,7 @@ function App() {
   if (pathname === LOGIN_PATH) {
     return (
       <LoginPage
+        skipInitialQueueRestore={skipQueueRestoreAfterLogout}
         authCapabilityMessage={
           authCapability.supported ? undefined : getAuthCapabilityMessage(authCapability.reason)
         }
@@ -347,6 +354,7 @@ function App() {
         onPasswordChangedNoticeDismiss={() => setPasswordChangedNotice(false)}
         onLoginSuccess={handleLoginSuccess}
         onLoginStart={() => {
+          setSkipQueueRestoreAfterLogout(false);
           advanceAuthIntent();
           setAuthStatus('logging-in');
         }}
@@ -441,6 +449,14 @@ function App() {
   }
 
   return <MainPage onChat={() => navigate(CHAT_PATH)} />;
+}
+
+async function resetQueueAfterLogoutSafely(): Promise<void> {
+  try {
+    await resetLoginQueueAfterLogout();
+  } catch {
+    // Logout must finish even if local queue storage is temporarily unavailable.
+  }
 }
 
 function getSafeReturnTo(search: string): string {
