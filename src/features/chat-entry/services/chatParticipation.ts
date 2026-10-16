@@ -8,6 +8,7 @@ import type { LocationResolution } from '../../../api/locationResolutions';
 import { getAccessToken } from '../../auth-login/api/authSession';
 import type { ActiveChatRoom } from '../components/ChatEntryPage';
 import { connectChatRoom, type ChatConnectionStatus } from './chatConnection';
+import { chatAuthContext, sameChatAuthContext, type ChatAuthContext } from './chatAuthContext';
 import {
   REJECTION_MESSAGES,
   chatBanNotice,
@@ -84,6 +85,7 @@ export class ChatParticipation {
   private restoredThroughMessageId: number | undefined;
   private expirationTimer: number | undefined;
   private startingAccountId: number | null = null;
+  private startingAuthContext: ChatAuthContext | null = null;
 
   private readonly publish: (state: ChatParticipationState) => void;
 
@@ -114,6 +116,7 @@ export class ChatParticipation {
 
   async start() {
     this.startingAccountId = chatAccountId(getAccessToken());
+    this.startingAuthContext = chatAuthContext(getAccessToken());
     this.update('locating', '현재 위치를 확인하고 있어요. 위치 권한을 허용해 주세요.');
     try {
       const location = await resolveCurrentChatLocation(this.controller.signal);
@@ -130,7 +133,11 @@ export class ChatParticipation {
     this.update('joining', '현재 지역 채팅방에 입장하고 있어요.');
     const room = await getRegionChatRoom(location.region.sigungu.regionId, this.controller.signal);
     await transition(async () => {
-      if (this.isStopped) return;
+      if (
+        this.isStopped ||
+        !sameChatAuthContext(this.startingAuthContext, chatAuthContext(getAccessToken()))
+      )
+        return;
       const entryToken = getAccessToken();
       // Do not abort a sent join: obtain its membership_id and explicitly end a late success.
       const membership = await joinChatRoom(
@@ -139,7 +146,11 @@ export class ChatParticipation {
         new AbortController().signal,
       );
       const token = getAccessToken();
-      if (this.isStopped || chatAccountId(token) !== this.startingAccountId) {
+      if (
+        this.isStopped ||
+        chatAccountId(token) !== this.startingAccountId ||
+        !sameChatAuthContext(this.startingAuthContext, chatAuthContext(token))
+      ) {
         await leaveChatRoom(membership, entryToken);
         return;
       }

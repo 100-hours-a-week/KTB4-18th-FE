@@ -11,11 +11,13 @@ import {
 import {
   changeMyPassword,
   verifyMyCurrentPassword,
+  getMyAuthSessions,
   getMyProfile,
   getMySettings,
   getRecommendationHistoryPage,
   MyPageRequestError,
   type RecommendationHistoryItem,
+  type AuthDeviceSession,
   updateMyProfile,
   uploadMyProfileImage,
   updateMySettings,
@@ -36,7 +38,8 @@ type MyPageProps = {
   onWithdrawn: () => void | Promise<void>;
   onPasswordChanged?: () => void;
 };
-type View = 'overview' | 'profile' | 'settings' | 'password' | 'terms' | 'recommendations';
+type View =
+  'overview' | 'profile' | 'settings' | 'sessions' | 'password' | 'terms' | 'recommendations';
 const INITIAL_SETTINGS: UserSettings = {
   map_visibility: 'PRIVATE',
   is_unrecorded_dot_recommendation_enabled: true,
@@ -565,6 +568,58 @@ function SettingsPage({
           <p className="mypage-notice" role="alert">
             {notice}
           </p>
+        )}
+      </section>
+    </>
+  );
+}
+
+function DeviceSessionsPage({ back }: { back: () => void }) {
+  const [sessions, setSessions] = useState<AuthDeviceSession[] | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let active = true;
+    void getMyAuthSessions()
+      .then((result) => {
+        if (active) setSessions(result);
+      })
+      .catch(() => {
+        if (active) setError('로그인된 기기 목록을 불러오지 못했어요.');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const formatSessionDate = (value: string) => {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '확인할 수 없음' : date.toLocaleString('ko-KR');
+  };
+
+  return (
+    <>
+      <Header title="로그인된 기기" onBack={back} />
+      <section className="mypage-page-content mypage-device-sessions">
+        <p>현재 계정으로 로그인된 기기별 세션이에요.</p>
+        {error ? (
+          <p role="alert">{error}</p>
+        ) : sessions === null ? (
+          <p role="status">기기 목록을 불러오고 있어요.</p>
+        ) : sessions.length === 0 ? (
+          <p>활성화된 기기 세션이 없어요.</p>
+        ) : (
+          <ul>
+            {sessions.map((session) => (
+              <li key={session.sid}>
+                <strong>
+                  {session.device_label || '알 수 없는 기기'}
+                  {session.current && <span> · 현재 기기</span>}
+                </strong>
+                <small>로그인: {formatSessionDate(session.created_at)}</small>
+                <small>최근 활동: {formatSessionDate(session.last_refreshed_at)}</small>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
     </>
@@ -1296,6 +1351,7 @@ export function MyPage({
     content = (
       <PasswordPage back={() => setView('overview')} onPasswordChanged={onPasswordChanged} />
     );
+  else if (view === 'sessions') content = <DeviceSessionsPage back={() => setView('overview')} />;
   else if (view === 'terms') content = <TermsPage back={() => setView('overview')} />;
   else if (view === 'recommendations')
     content = <RecommendationPage back={() => setView('overview')} />;
@@ -1382,6 +1438,14 @@ export function MyPage({
                 onClick={() => setView('recommendations')}
               >
                 <span>챗봇 추천</span>
+                <img src="/icons/mypage/arrow-right.svg" alt="" />
+              </button>
+              <button
+                className="mypage-navigation-row"
+                type="button"
+                onClick={() => setView('sessions')}
+              >
+                <span>로그인된 기기</span>
                 <img src="/icons/mypage/arrow-right.svg" alt="" />
               </button>
               <button

@@ -40,8 +40,8 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
 
   it('새로고침 후 sessionStorage access token을 복구한다', () => {
     sessionStorage.setItem('access_token', 'persisted-token');
-
-    resetAuthSessionForTests();
+    window.localStorage.setItem('meomuneum:auth-epoch', 'browser-epoch');
+    sessionStorage.setItem('access_token_epoch', 'browser-epoch');
     expect(getAccessToken()).toBe('persisted-token');
   });
 
@@ -232,17 +232,24 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     );
   });
 
-  it('새로고침 뒤 세션 저장소에서 읽은 토큰을 즉시 Bearer로 사용한다', async () => {
+  it('중앙 인증 세대가 없는 기존 세션 토큰은 refresh 후 사용한다', async () => {
     sessionStorage.setItem('access_token', 'reloaded-token');
-    resetAuthSessionForTests();
-    const fetchMock = vi.fn().mockResolvedValue(Response.json({ data: 'ok' }));
+    const fetchMock = vi.fn((input: string | URL, init?: RequestInit) => {
+      void init;
+      const url = String(input);
+      if (url.endsWith('/token/csrf'))
+        return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+      if (url.endsWith('/token/refresh'))
+        return Promise.resolve(Response.json({ data: { access_token: 'fresh-token' } }));
+      return Promise.resolve(Response.json({ data: 'ok' }));
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     await authenticatedFetch('/api/protected');
 
-    expect(fetchMock).toHaveBeenCalledOnce();
-    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('Authorization')).toBe(
-      'Bearer reloaded-token',
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(new Headers(fetchMock.mock.calls[2][1]?.headers).get('Authorization')).toBe(
+      'Bearer fresh-token',
     );
   });
 
@@ -597,6 +604,158 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     expect(refreshCount).toBe(2);
   });
 
+  it('refresh body reads stop at 15 seconds and abort the underlying request', async () => {
+    vi.useFakeTimers();
+    let requestSignal!: AbortSignal;
+    let refreshStarted!: () => void;
+    const started = new Promise<void>((resolve) => (refreshStarted = resolve));
+    const fetchMock = vi.fn((input: string | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/token/csrf')) {
+        return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+      }
+      requestSignal = init!.signal!;
+      refreshStarted();
+      const stream = new ReadableStream<Uint8Array>({ start() {} });
+      return Promise.resolve(new Response(stream, { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const pending = refreshAccessToken();
+    const failure = expect(pending).rejects.toMatchObject({ status: null, requestWasSent: true });
+    await started;
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    await failure;
+    expect(requestSignal.aborted).toBe(true);
+  });
+
+  it('CSRF body reads stop at 15 seconds and do not start the refresh POST', async () => {
+    vi.useFakeTimers();
+    let csrfSignal!: AbortSignal;
+    let csrfStarted!: () => void;
+    const started = new Promise<void>((resolve) => (csrfStarted = resolve));
+    const fetchMock = vi.fn((input: string | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/token/csrf')) {
+        csrfSignal = init!.signal!;
+        csrfStarted();
+        return Promise.resolve(new Response(new ReadableStream<Uint8Array>({ start() {} })));
+      }
+      throw new Error('Refresh must not start after CSRF timeout');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const pending = refreshAccessToken();
+    const failure = expect(pending).rejects.toMatchObject({ status: null });
+    await started;
+    await vi.advanceTimersByTimeAsync(15_000);
+    await failure;
+
+    expect(csrfSignal.aborted).toBe(true);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('rejects oversized refresh bodies and retains the operation identity', async () => {
+    const operationIds: string[] = [];
+    const fetchMock = vi.fn((input: string | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/token/csrf')) {
+        return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+      }
+      operationIds.push(new Headers(init?.headers).get('X-Refresh-Operation-Id') ?? '');
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ data: { access_token: 'too-large' }, padding: 'x'.repeat(70_000) }),
+          {
+            status: 200,
+            headers: { 'Content-Length': '70000' },
+          },
+        ),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(refreshAccessToken()).rejects.toMatchObject({
+      status: null,
+      requestWasSent: true,
+    });
+    const marker = JSON.parse(localStorage.getItem('meomuneum:pending-refresh-operation') ?? '{}');
+    expect(operationIds).toHaveLength(1);
+    expect(marker.id).toBe(operationIds[0]);
+  });
+
+  it('reuses the refresh operation through 44.999 seconds and sends no request at cutoff', async () => {
+    vi.useFakeTimers();
+    const operationIds: string[] = [];
+    let refreshCount = 0;
+    const fetchMock = vi.fn((input: string | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/token/csrf')) {
+        return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+      }
+      operationIds.push(new Headers(init?.headers).get('X-Refresh-Operation-Id') ?? '');
+      refreshCount += 1;
+      return Promise.resolve(Response.json({ message: 'unavailable' }, { status: 503 }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(refreshAccessToken()).rejects.toMatchObject({ status: 503 });
+    const marker = JSON.parse(localStorage.getItem('meomuneum:pending-refresh-operation') ?? '{}');
+    expect(marker.retryCutoffAt - marker.createdAt).toBe(45_000);
+    await vi.advanceTimersByTimeAsync(44_999);
+    await expect(refreshAccessToken()).rejects.toMatchObject({ status: 503 });
+    expect(operationIds[1]).toBe(operationIds[0]);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(refreshAccessToken()).rejects.toMatchObject({
+      status: null,
+      requestWasSent: true,
+    });
+    expect(refreshCount).toBe(2);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('clears a stale token and signals expiry when an ambiguous refresh reaches its cutoff', async () => {
+    vi.useFakeTimers();
+    const expired = vi.fn();
+    window.addEventListener(AUTH_EXPIRED_EVENT, expired);
+    const fetchMock = vi.fn((input: string | URL) =>
+      String(input).endsWith('/token/csrf')
+        ? Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }))
+        : Promise.resolve(Response.json({ message: 'unavailable' }, { status: 503 })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    setAccessToken('stale-token');
+
+    await expect(refreshAccessToken()).rejects.toMatchObject({ status: 503 });
+    await vi.advanceTimersByTimeAsync(45_000);
+    await expect(refreshAccessToken()).rejects.toMatchObject({
+      retryCutoffExceeded: true,
+      requestWasSent: true,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(getAccessToken()).toBeNull();
+    expect(expired).toHaveBeenCalledOnce();
+    window.removeEventListener(AUTH_EXPIRED_EVENT, expired);
+  });
+
+  it('does not mark a protected mutation sent when its prerequisite refresh fails ambiguously', async () => {
+    const fetchMock = vi.fn((input: string | URL) =>
+      String(input).endsWith('/token/csrf')
+        ? Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }))
+        : Promise.reject(new TypeError('offline')),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      authenticatedFetch('/api/v1/music-records', {
+        method: 'POST',
+        body: JSON.stringify({ name: 'record' }),
+      }),
+    ).rejects.toMatchObject({ status: null, requestWasSent: false });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1][0])).toMatch(/token\/refresh$/);
+  });
+
   it('CSRF GET 403은 refresh나 보호 API를 호출하지 않는다', async () => {
     const fetchMock = vi
       .fn()
@@ -822,7 +981,7 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     });
 
     await expect(authenticatedFetch('/api/protected')).rejects.toMatchObject({ status: null });
-    expect(order).toEqual(['csrf', 'refresh']);
+    expect(order).toEqual([]);
   });
 
   it('sessionStorage 삭제 실패 뒤 오래된 token을 인증에 재사용하지 않는다', async () => {

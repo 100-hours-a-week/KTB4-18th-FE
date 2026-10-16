@@ -4,6 +4,7 @@ import type { FormEvent } from 'react';
 import { recommend, streamRecommendation } from './api/recommendations';
 import { RecommendationCards } from './components/RecommendationCards';
 import { LoginPage } from './features/auth-login/components/LoginPage';
+import { resetLoginQueueAfterLogout } from './features/auth-login/api/loginQueueApi';
 import { MainPage } from './features/mainMap/MainPage';
 import {
   MusicRecordCreatePage,
@@ -16,6 +17,7 @@ import {
   ACCESS_TOKEN_CHANGED_EVENT,
   ACCESS_TOKEN_REFRESH_EARLY_MS,
   AUTH_EXPIRED_EVENT,
+  AUTH_SESSION_AVAILABLE_EVENT,
   AuthRequestError,
   clearAccessToken,
   getAccessToken,
@@ -25,9 +27,14 @@ import {
   shouldRefreshAccessToken,
   type AuthStatus,
 } from './features/auth-login/api/authSession';
+import {
+  getAuthCapabilityMessage,
+  probeAuthCapabilities,
+} from './features/auth-login/api/authCapabilities';
 import { ChatEntryPage } from './features/chat-entry/components/ChatEntryPage';
 import { SignupPage } from './features/user-signup/components/SignupPage';
 import { useVoiceInput } from './hooks/useVoiceInput';
+import { ChatImageRecommendation } from './features/chat-image-recommendation/components/ChatImageRecommendation';
 import type { RecommendationInputType } from './api/recommendations';
 import type { Recommendation } from './types/recommendation';
 import {
@@ -51,6 +58,7 @@ const MAX_TIMEOUT_DELAY_MS = 2_147_483_647;
 
 type ChatMessage = { id: string; sentAt: Date } & (
   | { role: 'user'; text: string }
+  | { role: 'user'; imageUrl: string }
   | {
       role: 'assistant';
       text: string;
@@ -67,7 +75,9 @@ function App() {
   const [routeLocation, setRouteLocation] = useState(() => readRouteLocation());
   const pathname = routeLocation.pathname;
   const [authStatus, setAuthStatus] = useState<AuthStatus>('restoring');
+  const [authCapability] = useState(() => probeAuthCapabilities());
   const [passwordChangedNotice, setPasswordChangedNotice] = useState(false);
+  const [skipQueueRestoreAfterLogout, setSkipQueueRestoreAfterLogout] = useState(false);
   const authIntent = useRef(0);
   const [authIntentVersion, setAuthIntentVersion] = useState(0);
   const isLoggingOutRef = useRef(false);
@@ -101,6 +111,10 @@ function App() {
 
   const restore = useCallback(async () => {
     const currentIntent = authIntent.current;
+    if (!authCapability.supported) {
+      setAuthStatus('retryable-error');
+      return;
+    }
     setAuthStatus('restoring');
     try {
       if (getAccessToken() && !shouldRefreshAccessToken()) {
@@ -117,10 +131,20 @@ function App() {
         setAuthStatus('retryable-error');
       }
     }
-  }, []);
+  }, [authCapability]);
 
   useEffect(() => {
+    if (!authCapability.supported) return;
     queueMicrotask(() => void restore());
+  }, [authCapability, restore]);
+
+  useEffect(() => {
+    const onPeerSessionAvailable = () => {
+      advanceAuthIntent();
+      void restore();
+    };
+    window.addEventListener(AUTH_SESSION_AVAILABLE_EVENT, onPeerSessionAvailable);
+    return () => window.removeEventListener(AUTH_SESSION_AVAILABLE_EVENT, onPeerSessionAvailable);
   }, [restore]);
 
   useEffect(() => {
@@ -280,6 +304,8 @@ function App() {
     setManualLogoutError('');
     try {
       await logout();
+      await resetQueueAfterLogoutSafely();
+      setSkipQueueRestoreAfterLogout(true);
       clearAccessToken();
       setAuthStatus('guest');
       navigate(LOGIN_PATH);
@@ -304,6 +330,8 @@ function App() {
     setLogoutError('');
     try {
       await logout();
+      await resetQueueAfterLogoutSafely();
+      setSkipQueueRestoreAfterLogout(true);
       clearAccessToken();
       setAuthStatus('guest');
       navigate(LOGIN_PATH);
@@ -320,10 +348,15 @@ function App() {
   if (pathname === LOGIN_PATH) {
     return (
       <LoginPage
+        skipInitialQueueRestore={skipQueueRestoreAfterLogout}
+        authCapabilityMessage={
+          authCapability.supported ? undefined : getAuthCapabilityMessage(authCapability.reason)
+        }
         passwordChangedNotice={passwordChangedNotice}
         onPasswordChangedNoticeDismiss={() => setPasswordChangedNotice(false)}
         onLoginSuccess={handleLoginSuccess}
         onLoginStart={() => {
+          setSkipQueueRestoreAfterLogout(false);
           advanceAuthIntent();
           setAuthStatus('logging-in');
         }}
@@ -345,7 +378,11 @@ function App() {
   if (isProtectedRoute && authStatus === 'retryable-error' && !getAccessToken()) {
     return (
       <main role="alert">
-        <p>인증 서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.</p>
+        <p>
+          {authCapability.supported
+            ? '인증 서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.'
+            : getAuthCapabilityMessage(authCapability.reason)}
+        </p>
         {manualLogoutError && <p>{manualLogoutError}</p>}
         <button
           type="button"
@@ -416,6 +453,14 @@ function App() {
   return <MainPage onChat={() => navigate(CHAT_PATH)} />;
 }
 
+async function resetQueueAfterLogoutSafely(): Promise<void> {
+  try {
+    await resetLoginQueueAfterLogout();
+  } catch {
+    // Logout must finish even if local queue storage is temporarily unavailable.
+  }
+}
+
 function getSafeReturnTo(search: string): string {
   const candidate = new URLSearchParams(search).get('returnTo');
   if (!candidate || !candidate.startsWith('/') || candidate.startsWith('//')) return '/';
@@ -449,6 +494,7 @@ function ChatbotPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const chatAppRef = useRef<HTMLElement>(null);
+  const ownedImageUrls = useRef(new Set<string>());
 
   const handleTranscript = useCallback((transcript: string) => {
     setPrompt(transcript);
@@ -464,7 +510,14 @@ function ChatbotPage() {
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [resetVoiceForTextInput]);
 
-  useEffect(() => () => requestRef.current?.abort(), []);
+  useEffect(
+    () => () => {
+      requestRef.current?.abort();
+      ownedImageUrls.current.forEach((url) => URL.revokeObjectURL(url));
+      ownedImageUrls.current.clear();
+    },
+    [],
+  );
   useEffect(() => {
     const chatApp = chatAppRef.current;
     const visualViewport = window.visualViewport;
@@ -604,6 +657,101 @@ function ChatbotPage() {
     }
   }
 
+  const handleImageUsable = useCallback(
+    async (recommendationId: number, imageUrl: string, confirmedAt: Date) => {
+      ownedImageUrls.current.add(imageUrl);
+      const controller = new AbortController();
+      requestRef.current?.abort();
+      requestRef.current = controller;
+      const imageMessageId = crypto.randomUUID();
+      const assistantId = crypto.randomUUID();
+      setMessages((previous) => [
+        ...previous,
+        { id: imageMessageId, role: 'user', imageUrl, sentAt: confirmedAt },
+        {
+          id: assistantId,
+          role: 'assistant',
+          text: '',
+          result: {
+            recommendation_id: recommendationId,
+            conversation_key: conversationKey,
+            status: 'PROCESSING',
+            items: [],
+            completed_at: null,
+          },
+          streamStatus: 'PROCESSING',
+          sentAt: new Date(),
+        },
+      ]);
+      setLoading(true);
+      setError('');
+      try {
+        const result = await streamRecommendation(recommendationId, controller.signal, {
+          onText: (delta) =>
+            setMessages((previous) =>
+              previous.map((message) =>
+                message.id === assistantId && message.role === 'assistant'
+                  ? { ...message, text: message.text + delta }
+                  : message,
+              ),
+            ),
+          onTracks: (tracks) =>
+            setMessages((previous) =>
+              previous.map((message) =>
+                message.id === assistantId && message.role === 'assistant'
+                  ? {
+                      ...message,
+                      result: {
+                        ...message.result,
+                        items: tracks.map((track, index) => ({
+                          rank_no: index + 1,
+                          music: {
+                            music_id: index + 1,
+                            title: track.title,
+                            artist_name: track.artist,
+                            album_cover_url: track.artwork_url,
+                            preview_url: track.preview_url,
+                          },
+                        })),
+                      },
+                    }
+                  : message,
+              ),
+            ),
+        });
+        setMessages((previous) =>
+          previous.map((message) =>
+            message.id === assistantId && message.role === 'assistant'
+              ? { ...message, result, streamStatus: result.status }
+              : message,
+          ),
+        );
+        setInputType('TEXT');
+      } catch (caught) {
+        if (!controller.signal.aborted) {
+          const failureMessage =
+            caught instanceof Error ? caught.message : '추천 결과를 가져오지 못했습니다.';
+          setMessages((previous) =>
+            previous.map((message) =>
+              message.id === assistantId && message.role === 'assistant'
+                ? {
+                    ...message,
+                    streamStatus: 'FAILED',
+                    result: { ...message.result, status: 'FAILED', items: [] },
+                    failureMessage,
+                  }
+                : message,
+            ),
+          );
+        }
+      } finally {
+        if (requestRef.current === controller) requestRef.current = null;
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    },
+    [conversationKey],
+  );
+
   return (
     <main className="chat-app" ref={chatAppRef}>
       <header className="chat-header">
@@ -635,13 +783,21 @@ function ChatbotPage() {
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`message-row ${message.role === 'user' ? 'user-row' : 'assistant-row'}`}
+            className={`message-row ${message.role === 'user' ? 'user-row' : 'assistant-row'} ${message.role === 'user' && 'imageUrl' in message ? 'image-message-row' : ''}`}
           >
             <div
-              className={`message-group ${message.role === 'user' ? 'user-group' : 'assistant-group'}`}
+              className={`message-group ${message.role === 'user' ? 'user-group' : 'assistant-group'} ${message.role === 'user' && 'imageUrl' in message ? 'image-message-group' : ''}`}
             >
               {message.role === 'user' ? (
-                <p className="user-bubble">{message.text}</p>
+                'imageUrl' in message ? (
+                  <img
+                    className="chat-image-message"
+                    src={message.imageUrl}
+                    alt="음악 추천에 사용한 장소 사진"
+                  />
+                ) : (
+                  <p className="user-bubble">{message.text}</p>
+                )
               ) : (
                 <div className="assistant-content">
                   {message.text && <p className="assistant-text-bubble">{message.text}</p>}
@@ -722,7 +878,7 @@ function ChatbotPage() {
             </div>
           </div>
         )}
-        <div className="prompt-feedback">
+        <div className="prompt-feedback sr-only">
           <span id="prompt-count">
             {prompt.length} / {MAX_PROMPT_LENGTH}
           </span>
@@ -733,49 +889,58 @@ function ChatbotPage() {
           </p>
         </div>
         <form className="input-bar" onSubmit={submit}>
-          <button
-            className={`voice-button ${voice.isRecording ? 'recording' : ''}`}
-            type="button"
-            disabled={loading || voice.isTranscribing}
-            aria-label={voice.isRecording ? '음성 녹음 종료' : '음성 녹음 시작'}
-            aria-pressed={voice.isRecording}
-            onClick={() => {
-              if (voice.isRecording) {
-                voice.stopRecording();
-              } else {
-                void voice.startRecording();
-              }
-            }}
-          >
-            <img
-              src="/icons/chatbot/Microphone.svg"
-              alt=""
-              aria-hidden="true"
-              width="20"
-              height="20"
-            />
-          </button>
+          <ChatImageRecommendation
+            conversationKey={conversationKey}
+            disabled={
+              loading || voice.isRecording || voice.isTranscribing || voice.status === 'reviewing'
+            }
+            onUsable={(id, url, confirmedAt) => void handleImageUsable(id, url, confirmedAt)}
+          />
           <label className="sr-only" htmlFor="prompt">
             추천받고 싶은 상황
           </label>
-          <textarea
-            ref={inputRef}
-            id="prompt"
-            placeholder="메시지를 입력하세요…"
-            rows={1}
-            maxLength={MAX_PROMPT_LENGTH}
-            aria-describedby="prompt-count prompt-limit-message"
-            aria-invalid={isPromptTooLong}
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            disabled={loading || voice.isRecording || voice.isTranscribing}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                event.currentTarget.form?.requestSubmit();
-              }
-            }}
-          />
+          <div className="prompt-field">
+            <textarea
+              ref={inputRef}
+              id="prompt"
+              placeholder="메시지를 입력하세요…"
+              rows={1}
+              maxLength={MAX_PROMPT_LENGTH}
+              aria-describedby="prompt-count prompt-limit-message"
+              aria-invalid={isPromptTooLong}
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              disabled={loading || voice.isRecording || voice.isTranscribing}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
+            />
+            <button
+              className={`voice-button ${voice.isRecording ? 'recording' : ''}`}
+              type="button"
+              disabled={loading || voice.isTranscribing}
+              aria-label={voice.isRecording ? '음성 녹음 종료' : '음성 녹음 시작'}
+              aria-pressed={voice.isRecording}
+              onClick={() => {
+                if (voice.isRecording) {
+                  voice.stopRecording();
+                } else {
+                  void voice.startRecording();
+                }
+              }}
+            >
+              <img
+                src="/icons/chatbot/Microphone.svg"
+                alt=""
+                aria-hidden="true"
+                width="20"
+                height="20"
+              />
+            </button>
+          </div>
           <button
             className="send-button"
             type="submit"

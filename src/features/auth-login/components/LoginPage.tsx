@@ -1,16 +1,16 @@
 import { ActionButton } from '@seed-design/react';
 import { useRef, useState } from 'react';
-import type { FormEvent } from 'react';
 
-import { login, LoginRequestError, type LoginSuccessResponse } from '../api/loginApi';
+import type { LoginSuccessResponse } from '../api/loginApi';
+import { LoginQueueDialog } from './LoginQueueDialog';
+import { useLoginQueueFlow } from '../hooks/useLoginQueueFlow';
+import { validate } from '../hooks/loginQueueFlowUtils';
+import type { FieldErrors } from '../hooks/loginQueueFlowUtils';
 import './LoginPage.css';
 
-type FieldErrors = {
-  email?: string;
-  password?: string;
-};
-
 type LoginPageProps = {
+  authCapabilityMessage?: string;
+  skipInitialQueueRestore?: boolean;
   onLoginSuccess?: (response: LoginSuccessResponse) => void;
   onLoginStart?: () => void;
   onLoginFailure?: () => void;
@@ -18,29 +18,9 @@ type LoginPageProps = {
   onPasswordChangedNoticeDismiss?: () => void;
 };
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const INVALID_EMAIL_CHARACTER_PATTERN = /[^\p{Script=Hangul}A-Za-z0-9._+@-]/gu;
-
-function normalizeEmail(value: string) {
-  return value.replace(INVALID_EMAIL_CHARACTER_PATTERN, '').toLowerCase();
-}
-
-function validate(email: string, password: string): FieldErrors {
-  const errors: FieldErrors = {};
-  if (!email.trim()) errors.email = '이메일을 입력해 주세요.';
-  else if (!EMAIL_PATTERN.test(email.trim())) errors.email = '이메일 형식을 확인해 주세요.';
-  if (!password.trim()) errors.password = '비밀번호를 입력해 주세요.';
-  return errors;
-}
-
-function getRequestErrorMessage(error: LoginRequestError): string {
-  if (error.status === 400) return '입력값을 확인해 주세요.';
-  if (error.status === 401) return '이메일 또는 비밀번호를 확인해 주세요.';
-  if (error.status === null) return '네트워크 상태를 확인한 뒤 다시 시도해 주세요.';
-  return '잠시 후 다시 시도해 주세요.';
-}
-
 export function LoginPage({
+  authCapabilityMessage,
+  skipInitialQueueRestore,
   onLoginSuccess,
   onLoginStart,
   onLoginFailure,
@@ -57,53 +37,47 @@ export function LoginPage({
   const [isLoginSuccessful, setIsLoginSuccessful] = useState(false);
   const isFormValid = Object.keys(validate(email, password)).length === 0;
 
-  function updateEmail(value: string) {
-    const nextEmail = normalizeEmail(value);
-    setEmail(nextEmail);
-    setFieldErrors((current) => ({
-      ...current,
-      email: validate(nextEmail, password).email,
-    }));
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (isSubmittingRef.current) return;
-    const normalizedEmail = normalizeEmail(email.trim());
-    setEmail(normalizedEmail);
-    const nextFieldErrors = validate(normalizedEmail, password);
-    setFieldErrors(nextFieldErrors);
-    setRequestError('');
-    setIsLoginSuccessful(false);
-    if (Object.keys(nextFieldErrors).length > 0) return;
-
-    setIsSubmitting(true);
-    isSubmittingRef.current = true;
-    onLoginStart?.();
-    try {
-      const response = await login({ email: normalizedEmail, password });
-      if (onLoginSuccess) {
-        onLoginSuccess(response);
-        return;
-      }
-      setIsLoginSuccessful(true);
-    } catch (error) {
-      onLoginFailure?.();
-      setRequestError(
-        error instanceof LoginRequestError
-          ? getRequestErrorMessage(error)
-          : '잠시 후 다시 시도해 주세요.',
-      );
-    } finally {
-      isSubmittingRef.current = false;
-      setIsSubmitting(false);
-    }
-  }
+  const flow = useLoginQueueFlow({
+    email,
+    password,
+    setEmail,
+    setPassword,
+    setFieldErrors,
+    setRequestError,
+    setIsSubmitting,
+    isSubmitting,
+    isSubmittingRef,
+    setIsLoginSuccessful,
+    authCapabilityMessage,
+    skipInitialQueueRestore,
+    onLoginSuccess,
+    onLoginStart,
+    onLoginFailure,
+  });
+  const {
+    queueTicket,
+    isQueueOpen,
+    capacityWait,
+    queueMessage,
+    ambiguousLogin,
+    isCanceling,
+    queueDialogRef,
+    emailInputRef,
+    isAuthSupported,
+    invalidateStatusReads,
+    updateEmail,
+    handleSubmit,
+    retryCapacityWait,
+    reconcileExhaustedQueue,
+    handleCancelQueue,
+    continueWithExistingSession,
+    restartAfterAmbiguousLogin,
+  } = flow;
 
   return (
     <main className="login-screen">
       <section className="login-content" aria-labelledby="login-title">
-        <div className="login-layout">
+        <div className="login-layout" inert={isQueueOpen}>
           <header className="login-brand">
             <span className="login-symbol-grid" aria-hidden="true">
               <span className="login-symbol-frame">
@@ -116,6 +90,11 @@ export function LoginPage({
           </header>
 
           <div className="login-body">
+            {authCapabilityMessage && (
+              <p className="login-notice" role="alert">
+                {authCapabilityMessage}
+              </p>
+            )}
             {passwordChangedNotice && (
               <p role="status">
                 비밀번호가 변경되었어요. 새 비밀번호로 다시 로그인해 주세요.{' '}
@@ -136,6 +115,7 @@ export function LoginPage({
                 <div className={'login-input-wrap' + (fieldErrors.email ? ' has-error' : '')}>
                   <input
                     id="email"
+                    ref={emailInputRef}
                     className="login-input"
                     type="email"
                     inputMode="email"
@@ -152,7 +132,7 @@ export function LoginPage({
                     spellCheck={false}
                     aria-invalid={Boolean(fieldErrors.email)}
                     aria-describedby={fieldErrors.email ? 'email-error' : undefined}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || Boolean(capacityWait) || !isAuthSupported}
                   />
                 </div>
                 {fieldErrors.email && (
@@ -174,17 +154,20 @@ export function LoginPage({
                     autoComplete="current-password"
                     placeholder="비밀번호를 입력해주세요"
                     value={password}
-                    onChange={(event) => setPassword(event.target.value)}
+                    onChange={(event) => {
+                      invalidateStatusReads();
+                      setPassword(event.target.value);
+                    }}
                     aria-invalid={Boolean(fieldErrors.password)}
                     aria-describedby={fieldErrors.password ? 'password-error' : undefined}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || Boolean(capacityWait) || !isAuthSupported}
                   />
                   <button
                     className="password-toggle"
                     type="button"
                     onClick={() => setIsPasswordVisible((visible) => !visible)}
                     aria-label={isPasswordVisible ? '비밀번호 숨기기' : '비밀번호 표시'}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !isAuthSupported}
                   >
                     <img
                       src={
@@ -206,10 +189,67 @@ export function LoginPage({
                   {requestError}
                 </p>
               )}
+              {capacityWait && (
+                <section className="login-capacity-wait" aria-labelledby="login-capacity-title">
+                  <h2 id="login-capacity-title">
+                    {capacityWait.mode === 'paused'
+                      ? '대기 요청을 확인해 주세요'
+                      : '접속 대기 중이에요'}
+                  </h2>
+                  <p role="status" aria-live="polite" aria-atomic="true">
+                    {capacityWait.message}
+                    {capacityWait.mode === 'waiting' &&
+                      ' 다음 시도 시간에 같은 요청으로 다시 확인할게요.'}
+                  </p>
+                  <div className="login-capacity-actions">
+                    {capacityWait.mode === 'paused' && capacityWait.reason !== 'EXHAUSTED' && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void (capacityWait.message.includes('취소 결과')
+                            ? handleCancelQueue()
+                            : retryCapacityWait())
+                        }
+                        disabled={isSubmitting}
+                      >
+                        {capacityWait.message.includes('취소 결과')
+                          ? '취소 결과 다시 확인'
+                          : '다시 확인'}
+                      </button>
+                    )}
+                    {capacityWait.reason === 'EXHAUSTED' && (
+                      <button
+                        type="button"
+                        onClick={() => void reconcileExhaustedQueue()}
+                        disabled={isSubmitting}
+                      >
+                        상태 확인
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void handleCancelQueue()}
+                      disabled={isCanceling}
+                    >
+                      {isCanceling ? '취소 중…' : '대기 취소'}
+                    </button>
+                  </div>
+                </section>
+              )}
               {isLoginSuccessful && (
                 <p className="login-success" role="status">
                   로그인에 성공했어요.
                 </p>
+              )}
+              {ambiguousLogin && (
+                <div className="login-ambiguity" role="group" aria-label="로그인 결과 선택">
+                  <button type="button" onClick={continueWithExistingSession}>
+                    이전 로그인 상태 계속하기
+                  </button>
+                  <button type="button" onClick={restartAfterAmbiguousLogin}>
+                    새로 로그인하기
+                  </button>
+                </div>
               )}
 
               <ActionButton
@@ -217,7 +257,13 @@ export function LoginPage({
                 type="submit"
                 variant="brandSolid"
                 size="large"
-                disabled={!isFormValid || isSubmitting}
+                disabled={
+                  !isFormValid ||
+                  isSubmitting ||
+                  Boolean(capacityWait) ||
+                  ambiguousLogin ||
+                  !isAuthSupported
+                }
                 loading={isSubmitting}
                 aria-label="로그인"
               >
@@ -231,6 +277,15 @@ export function LoginPage({
           </div>
         </div>
       </section>
+      {isQueueOpen && queueTicket && (
+        <LoginQueueDialog
+          ticket={queueTicket}
+          message={queueMessage}
+          isCanceling={isCanceling}
+          dialogRef={queueDialogRef}
+          onCancel={() => void handleCancelQueue()}
+        />
+      )}
     </main>
   );
 }
