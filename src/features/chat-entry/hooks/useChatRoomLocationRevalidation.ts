@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { ChatRoomRequestError, getRegionChatRoom, joinChatRoom } from '../../../api/chatRooms';
+import { getAccessToken } from '../../auth-login/api/authSession';
+import { chatAuthContext, sameChatAuthContext } from '../services/chatAuthContext';
+
+import {
+  ChatRoomRequestError,
+  getRegionChatRoom,
+  joinChatRoom,
+  leaveChatRoom,
+} from '../../../api/chatRooms';
 import type { ActiveChatRoom } from '../components/ChatEntryPage';
 import { resolveCurrentChatLocation } from '../services/resolveCurrentChatLocation';
 
@@ -63,7 +71,9 @@ export function useChatRoomLocationRevalidation({
   }, [onMembershipEnded]);
 
   useEffect(() => {
-    if (!activeChatRoom) {
+    const ownerToken = getAccessToken();
+    const owner = chatAuthContext(ownerToken);
+    if (!activeChatRoom || !owner || !ownerToken) {
       return;
     }
 
@@ -74,12 +84,21 @@ export function useChatRoomLocationRevalidation({
       }
       isCheckingRef.current = true;
       const controller = new AbortController();
+      const isCurrent = () =>
+        isMounted &&
+        !controller.signal.aborted &&
+        sameChatAuthContext(owner, chatAuthContext(getAccessToken()));
+      if (!isCurrent()) {
+        isCheckingRef.current = false;
+        return;
+      }
       requestRef.current = controller;
       setStatus('checking');
       setMessage('현재 지역을 다시 확인하고 있어요.');
 
       try {
-        const candidate = await resolveCurrentChatLocation(controller.signal);
+        const candidate = await resolveCurrentChatLocation(controller.signal, ownerToken);
+        if (!isCurrent()) return;
         if (candidate.region.sigungu.regionId === activeChatRoom.room.regionId) {
           if (isMounted) {
             setStatus('stable');
@@ -93,7 +112,9 @@ export function useChatRoomLocationRevalidation({
           setMessage('지역 이동 여부를 15초 후 한 번 더 확인합니다.');
         }
         await waitForConfirmation(controller.signal);
-        const confirmation = await resolveCurrentChatLocation(controller.signal);
+        if (!isCurrent()) return;
+        const confirmation = await resolveCurrentChatLocation(controller.signal, ownerToken);
+        if (!isCurrent()) return;
         if (confirmation.region.sigungu.regionId !== candidate.region.sigungu.regionId) {
           if (isMounted) {
             setStatus('mismatch');
@@ -110,19 +131,23 @@ export function useChatRoomLocationRevalidation({
           confirmation.region.sigungu.regionId,
           controller.signal,
         );
+        if (!isCurrent()) return;
+        const entryToken = getAccessToken() ?? ownerToken;
         const membership = await joinChatRoom(
           room.roomId,
           confirmation.locationResolutionToken,
-          controller.signal,
+          new AbortController().signal,
+          entryToken,
         );
-        if (!isMounted || controller.signal.aborted) {
+        if (!isCurrent()) {
+          await leaveChatRoom(membership, entryToken);
           return;
         }
         onMovedRef.current({ room, membership });
         setStatus('moved');
         setMessage(`${room.regionName} 채팅방으로 이동했어요.`);
       } catch (caught) {
-        if (!isMounted || controller.signal.aborted) {
+        if (!isCurrent()) {
           return;
         }
         if (caught instanceof ChatRoomRequestError && caught.status === 409) {
