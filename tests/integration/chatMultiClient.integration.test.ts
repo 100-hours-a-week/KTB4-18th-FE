@@ -187,11 +187,12 @@ it.skipIf(!bridge.path)(
       target = new ChatParticipation((state) => states.push(state));
       await target.start();
       await vi.waitFor(() => expect(states.at(-1)?.status).toBe('ready'), { timeout: 10000 });
-      expect(states.at(-1)?.messages).toHaveLength(3);
+      // The remaining same-account tab authorizes these messages for account history.
+      expect(states.at(-1)?.messages).toHaveLength(5);
       expect(states.at(-1)?.restoredThroughMessageId).toBeGreaterThan(0);
       expect(
         states.at(-1)?.messages?.some((message) => message.content.includes('퇴장 부재')),
-      ).toBe(false);
+      ).toBe(true);
     } finally {
       bridge.release?.();
       await target.stop();

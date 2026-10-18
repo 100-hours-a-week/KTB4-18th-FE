@@ -144,6 +144,25 @@ describe('지역 채팅 메시지 처리', () => {
     expect(sessionStorage.getItem(CHAT_CACHE_KEY)).not.toContain('퇴장 중 메시지');
   });
 
+  it('서버 이력이 도착하면 로컬 캐시를 대체하고 중복 live를 병합한다', async () => {
+    const first = await ready();
+    first.event({ type: 'CHAT_MESSAGE', message: saved });
+    await participation.stop();
+    participation = new ChatParticipation((state) => states.push(state));
+    await participation.start();
+    expect(states.at(-1)?.messages).toEqual([saved]);
+    const event = vi.mocked(connectChatRoom).mock.calls.at(-1)![2]!;
+    const restored = { ...saved, messageId: 20, content: '다른 기기의 참여 이력' };
+    event({ type: 'CHAT_HISTORY', messages: [restored], gaps: [] });
+    event({ type: 'CHAT_MESSAGE', message: restored });
+    expect(states.at(-1)?.messages).toEqual([restored]);
+    expect(states.at(-1)?.restoredThroughMessageId).toBe(20);
+    expect(openChatConversation(7, 25, 700).messages).toEqual([restored]);
+    event({ type: 'CHAT_HISTORY', messages: [], gaps: [] });
+    expect(states.at(-1)?.messages).toEqual([]);
+    expect(openChatConversation(7, 25, 700).messages).toEqual([]);
+  });
+
   it('이전 대화는 실제 전송 시각의24시간 경계에 화면과 캐시에서 제거된다', async () => {
     const { event } = await ready();
     event({
