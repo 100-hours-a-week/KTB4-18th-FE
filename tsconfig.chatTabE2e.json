@@ -7,6 +7,7 @@
   "include": [
     "playwright.chat.config.ts",
     "tests/e2e/chatTabLeave.spec.ts",
+    "tests/e2e/chatDeviceHistory.spec.ts",
     "tests/fixtures/chatTabLeaveBrowser.tsx"
   ]
 }
