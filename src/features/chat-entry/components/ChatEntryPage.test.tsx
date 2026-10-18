@@ -205,6 +205,7 @@ describe('ChatEntryPage', () => {
           roomId: 700,
           regionId: 25,
           joinedAt: '2026-10-07T00:00:00Z',
+          viewSessionId: '11111111-1111-4111-8111-111111111111',
         },
       },
     });

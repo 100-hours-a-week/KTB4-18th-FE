@@ -2,6 +2,7 @@ import {
   getRegionChatRoom,
   joinChatRoom,
   leaveChatRoom,
+  leaveChatRoomForRegionChange,
   ChatRoomRequestError,
 } from '../../../api/chatRooms';
 import type { LocationResolution } from '../../../api/locationResolutions';
@@ -224,7 +225,7 @@ export class ChatParticipation {
     });
   }
 
-  private depart() {
+  private depart(locationResolutionToken?: string) {
     this.closeConnection?.();
     this.closeConnection = null;
     this.clearMessages();
@@ -234,7 +235,13 @@ export class ChatParticipation {
     this.token = null;
     this.currentUserId = null;
     this.update(this.status, this.statusMessage);
-    return active ? transition(() => leaveChatRoom(active.membership, token)) : Promise.resolve();
+    return active
+      ? transition(() =>
+          locationResolutionToken
+            ? leaveChatRoomForRegionChange(active.membership, locationResolutionToken, token)
+            : leaveChatRoom(active.membership, token),
+        )
+      : Promise.resolve();
   }
 
   private clearMessages() {
@@ -447,7 +454,7 @@ export class ChatParticipation {
         return;
       this.update('joining', '지역 이동이 확인되어 새 채팅방으로 이동하고 있어요.');
       // Always leave the old room before any destination lookup, including failed/full destinations.
-      await this.depart();
+      await this.depart(confirmation.locationResolutionToken);
       await this.enter(confirmation);
     } catch (error) {
       if (!this.active) this.failed(error);

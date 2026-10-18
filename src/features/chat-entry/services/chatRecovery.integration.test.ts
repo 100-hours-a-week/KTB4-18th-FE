@@ -8,6 +8,7 @@ const bridge = vi.hoisted(() => ({
   token: process.env.CHAT_RECOVERY_INTEGRATION_TOKEN ?? '',
   room: Number(process.env.CHAT_RECOVERY_INTEGRATION_ROOM),
   member: Number(process.env.CHAT_RECOVERY_INTEGRATION_MEMBER),
+  view: process.env.CHAT_RECOVERY_INTEGRATION_VIEW ?? '',
   hold: false,
   onHeld: undefined as (() => void) | undefined,
   release: undefined as (() => void) | undefined,
@@ -50,10 +51,11 @@ vi.mock('../../../api/chatRooms', async (original) => ({
     membershipId: bridge.member,
     regionId: 1,
     joinedAt: new Date().toISOString(),
+    viewSessionId: bridge.view,
   })),
   leaveChatRoom: async () => {
     await fetch(
-      `${bridge.url}/api/v1/chat-rooms/${bridge.room}/members/me?membership_id=${bridge.member}`,
+      `${bridge.url}/api/v1/chat-rooms/${bridge.room}/members/me?membership_id=${bridge.member}&view_session_id=${bridge.view}`,
       {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${bridge.token}` },

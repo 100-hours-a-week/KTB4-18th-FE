@@ -5,6 +5,7 @@ import {
   getRegionChatRoom,
   joinChatRoom,
   leaveChatRoom,
+  leaveChatRoomForRegionChange,
 } from '../../../api/chatRooms';
 import { connectChatRoom } from './chatConnection';
 import { resolveCurrentChatLocation } from './resolveCurrentChatLocation';
@@ -20,6 +21,7 @@ vi.mock('../../../api/chatRooms', async (original) => ({
   getRegionChatRoom: vi.fn(),
   joinChatRoom: vi.fn(),
   leaveChatRoom: vi.fn(),
+  leaveChatRoomForRegionChange: vi.fn(),
 }));
 const auth = vi.hoisted(() => ({ accountId: 7, sid: '550e8400-e29b-41d4-a716-446655440000' }));
 vi.mock('../../auth-login/api/authSession', () => ({
@@ -41,6 +43,7 @@ const membership = {
   roomId: 700,
   regionId: 25,
   joinedAt: '2026-10-07T00:00:00Z',
+  viewSessionId: '11111111-1111-4111-8111-111111111111',
 };
 const location = {
   mapDot: null,
@@ -68,6 +71,7 @@ beforeEach(() => {
   vi.mocked(getRegionChatRoom).mockResolvedValue(room);
   vi.mocked(joinChatRoom).mockResolvedValue(membership);
   vi.mocked(leaveChatRoom).mockResolvedValue();
+  vi.mocked(leaveChatRoomForRegionChange).mockResolvedValue();
   vi.mocked(connectChatRoom).mockImplementation((_membership, status) => {
     status('connecting', '연결 중');
     return Object.assign(close, { send: vi.fn().mockReturnValue(true), retryRecovery: vi.fn() });
@@ -403,6 +407,41 @@ describe('지역 채팅 참여 흐름', () => {
     await next.stop();
   });
 
+  it('같은 참여 ID의 두 탭 중 하나만 중복 없이 퇴장하고 남은 탭은 전송한다', async () => {
+    const otherView = { ...membership, viewSessionId: '22222222-2222-4222-8222-222222222222' };
+    const secondStates: ChatParticipationState[] = [];
+    const second = new ChatParticipation((state) => secondStates.push(state));
+    vi.mocked(joinChatRoom).mockResolvedValueOnce(membership).mockResolvedValueOnce(otherView);
+    const firstClose = Object.assign(vi.fn(), {
+      send: vi.fn().mockReturnValue(true),
+      retryRecovery: vi.fn(),
+    });
+    const secondClose = Object.assign(vi.fn(), {
+      send: vi.fn().mockReturnValue(true),
+      retryRecovery: vi.fn(),
+    });
+    vi.mocked(connectChatRoom).mockReturnValueOnce(firstClose).mockReturnValueOnce(secondClose);
+    try {
+      await participation.start();
+      await second.start();
+      vi.mocked(connectChatRoom).mock.calls[1][1]('ready', '입장');
+      await participation.stop();
+      await participation.stop();
+      expect(leaveChatRoom).toHaveBeenCalledExactlyOnceWith(membership, expect.any(String));
+      expect(firstClose).toHaveBeenCalledOnce();
+      expect(secondClose).not.toHaveBeenCalled();
+      expect(second.send('남은 탭 메시지')).toBe(true);
+      expect(secondClose.send).toHaveBeenCalledOnce();
+      expect(secondStates.at(-1)?.activeRoom?.membership.viewSessionId).toBe(
+        otherView.viewSessionId,
+      );
+      expect(leaveChatRoomForRegionChange).not.toHaveBeenCalled();
+    } finally {
+      await second.stop();
+    }
+    expect(leaveChatRoom).toHaveBeenLastCalledWith(otherView, expect.any(String));
+  });
+
   it('다른 기기 퇴장 알림 뒤에는 자동 재입장하지 않는다', async () => {
     await participation.start();
     vi.mocked(connectChatRoom).mock.calls[0][1]('left', '다른 기기에서 퇴장');
@@ -423,8 +462,9 @@ describe('지역 채팅 참여 흐름', () => {
     );
     await vi.advanceTimersByTimeAsync(10 * 60 * 1_000 + 15_000);
     expect(close).toHaveBeenCalledOnce();
-    expect(leaveChatRoom).toHaveBeenCalledWith(
+    expect(leaveChatRoomForRegionChange).toHaveBeenCalledWith(
       membership,
+      'location-token',
       `header.${btoa(JSON.stringify({ sub: '7', sid: '550e8400-e29b-41d4-a716-446655440000' }))}.signature`,
     );
     expect(states.at(-1)?.status).toBe('error');
@@ -506,7 +546,12 @@ describe('지역 채팅 참여 흐름', () => {
     });
     await vi.advanceTimersByTimeAsync(10 * 60 * 1_000 + 15_000);
     expect(close).toHaveBeenCalledOnce();
-    expect(leaveChatRoom).toHaveBeenCalledWith(membership, expect.any(String));
+    expect(leaveChatRoomForRegionChange).toHaveBeenCalledWith(
+      membership,
+      'confirmed-token',
+      expect.any(String),
+    );
+    expect(leaveChatRoom).not.toHaveBeenCalled();
     expect(joinChatRoom).toHaveBeenLastCalledWith(
       701,
       'confirmed-token',

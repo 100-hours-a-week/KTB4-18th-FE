@@ -37,7 +37,8 @@ export function connectChatRoom(
   let generation = 0;
   let readyTimer: number | undefined;
   let initialDeadline: number | undefined;
-  let viewSessionId: string | undefined;
+  let viewSessionId: string | undefined = membership.viewSessionId;
+  let hasReceivedReady = false;
   let lastMessageId = 0;
   let recovery: AbortController | undefined;
   let buffered: ChatEvent[] = [];
@@ -220,6 +221,7 @@ export function connectChatRoom(
             (viewSessionId && viewSessionId !== event.viewSessionId)
           )
             return;
+          hasReceivedReady = true;
           viewSessionId = event.viewSessionId;
           ready ??= event;
           begin();
@@ -256,7 +258,7 @@ export function connectChatRoom(
       if (code === 'CHAT_BANNED') terminal('banned', chatBanNotice(frame.headers.banned_until));
       else if (code === 'CHAT_FULL') terminal('full', '현재 지역 채팅방의 정원이 가득 찼습니다.');
       else if (code === 'CHAT_LEFT')
-        terminal('left', '다른 탭 또는 기기에서 퇴장하여 채팅이 종료됐어요.');
+        terminal('left', '현재 채팅 참여가 종료됐어요. 채팅 탭에 다시 입장해 주세요.');
       else terminal('error', '채팅 연결 인증에 실패했습니다. 다시 입장해 주세요.');
     },
     onWebSocketClose: (event) => {
@@ -265,13 +267,13 @@ export function connectChatRoom(
       generation += 1;
       cancelRecovery();
       if (event.code === 4100)
-        terminal('left', '다른 탭 또는 기기에서 퇴장하여 채팅이 종료됐어요.');
+        terminal('left', '현재 채팅 참여가 종료됐어요. 채팅 탭에 다시 입장해 주세요.');
       else if (event.code === 4101) terminal('banned', chatBanNotice(event.reason?.split('|')[1]));
       else if (event.code === 4103) recoveryFailed();
       else {
         onStatus('reconnecting', '연결이 끊겼어요. 채팅방에 다시 연결하고 있습니다.');
         // Established views can reconnect beyond grace; only the server decides recoverable intervals.
-        if (!viewSessionId)
+        if (!hasReceivedReady)
           initialDeadline ??= window.setTimeout(
             () => terminal('error', '채팅방에 연결하지 못했습니다. 다시 입장해 주세요.'),
             30_000,
