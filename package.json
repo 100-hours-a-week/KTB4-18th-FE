@@ -15,6 +15,7 @@
     "verify:chat:browser": "node scripts/startChatRecoveryBrowser.mjs",
     "verify:chat:integration": "node scripts/runChatRecoveryIntegration.mjs",
     "verify:chat:tab-e2e": "node scripts/runChatTabLeaveE2e.mjs",
+    "verify:chat:device-e2e": "node scripts/runChatTabLeaveE2e.mjs --suite=device",
     "verify:chat:tab-types": "tsc -p tsconfig.chatTabE2e.json"
   },
   "dependencies": {

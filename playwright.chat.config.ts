@@ -7,7 +7,8 @@ const channel = process.env.CHAT_E2E_BROWSER_CHANNEL ?? 'chrome';
 const output = process.env.CHAT_TAB_E2E_OUTPUT_DIR ?? './node_modules/.tmp/chat-tab-leave-e2e';
 export default defineConfig({
   testDir: './tests/e2e',
-  testMatch: 'chatTabLeave.spec.ts',
+  testMatch:
+    process.env.CHAT_E2E_SUITE === 'device' ? 'chatDeviceHistory.spec.ts' : 'chatTabLeave.spec.ts',
   fullyParallel: false,
   workers: 1,
   retries: 0,
