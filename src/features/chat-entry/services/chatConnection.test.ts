@@ -369,6 +369,28 @@ describe('구독 완료와 누락 메시지 복구', () => {
     expect(client.deactivate).toHaveBeenCalledOnce();
   });
 
+  it('로그아웃 종료는 인증 토큰을 변경하지 않고 전송과 자동 재연결을 중단한다', async () => {
+    const status = vi.fn();
+    const event = vi.fn();
+    const connection = connectChatRoom(membership, status, event);
+    config?.onConnect?.({} as never);
+    await ready();
+    const oldReceive = receive();
+    event.mockClear();
+    const token = auth.token;
+    config?.onWebSocketClose?.({ code: 4100, reason: 'CHAT_LOGGED_OUT' } as CloseEvent);
+    expect(status).toHaveBeenLastCalledWith('left', '로그아웃되어 채팅이 종료됐어요.');
+    expect(connection.send('id', 'hello')).toBe(false);
+    oldReceive(live(99));
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(event).not.toHaveBeenCalled();
+    expect(client.deactivate).toHaveBeenCalledOnce();
+    expect(auth.token).toBe(token);
+    connection.retryRecovery();
+    expect(client.activate).toHaveBeenCalledOnce();
+    connection();
+  });
+
   it('최초 연결 실패는 30초 뒤 멈추지만 자동 REST 새 입장을 수행하지 않는다', async () => {
     const status = vi.fn();
     connectChatRoom(membership, status);
