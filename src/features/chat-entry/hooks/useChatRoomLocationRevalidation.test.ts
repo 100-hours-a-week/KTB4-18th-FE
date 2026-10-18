@@ -35,6 +35,7 @@ const activeChatRoom: ActiveChatRoom = {
     roomId: 700,
     regionId: 25,
     joinedAt: '2026-09-25T00:00:00Z',
+    viewSessionId: '11111111-1111-4111-8111-111111111111',
   },
 };
 
@@ -51,6 +52,7 @@ const movedMembership = {
   roomId: 701,
   regionId: 30,
   joinedAt: '2026-09-25T00:10:15Z',
+  viewSessionId: '11111111-1111-4111-8111-111111111111',
 };
 
 function resolution(regionId: number, token: string): LocationResolution {

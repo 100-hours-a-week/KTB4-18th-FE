@@ -25,6 +25,7 @@ const membership = {
   roomId: 700,
   regionId: 25,
   joinedAt: '2026-10-07T00:00:00Z',
+  viewSessionId: '550e8400-e29b-41d4-a716-446655440000',
 };
 const viewId = '550e8400-e29b-41d4-a716-446655440000';
 const empty: ChatRecoveryPage = {
@@ -208,6 +209,8 @@ describe('구독 완료와 누락 메시지 복구', () => {
       auth_session_id: authSid,
       room_id: '700',
       membership_id: '900',
+      view_session_id: viewId,
+      last_message_id: '0',
     });
     expect(config?.brokerURL).not.toContain('account-token');
     config?.onConnect?.({} as never);
