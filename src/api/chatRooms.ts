@@ -1,3 +1,4 @@
+import { chatSessionFetch } from '../features/chat-entry/services/chatSessionFetch';
 import {
   AuthRequestError,
   authenticatedFetch,
@@ -83,13 +84,17 @@ function errorMessage(status: number, serverMessage?: string) {
   }
 }
 
-async function request<T>(url: string, options: RequestInit): Promise<ApiBody<T>> {
+async function request<T>(
+  url: string,
+  options: RequestInit,
+  ownerToken?: string,
+): Promise<ApiBody<T>> {
   let response: Response;
   try {
-    response = await authenticatedFetch(`${baseUrl}${url}`, {
-      ...options,
-      credentials: 'include',
-    });
+    const init = { ...options, credentials: 'include' as const };
+    response = ownerToken
+      ? await chatSessionFetch(`${baseUrl}${url}`, init, ownerToken)
+      : await authenticatedFetch(`${baseUrl}${url}`, init);
   } catch (caught) {
     if (caught instanceof DOMException && caught.name === 'AbortError') {
       throw caught;
@@ -164,15 +169,20 @@ export async function joinChatRoom(
   roomId: number,
   locationResolutionToken: string,
   signal: AbortSignal,
+  ownerToken?: string,
 ): Promise<ChatRoomMembership> {
-  const body = await request<ChatRoomMembershipBody>(`/api/v1/chat-rooms/${roomId}/members`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+  const body = await request<ChatRoomMembershipBody>(
+    `/api/v1/chat-rooms/${roomId}/members`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ location_resolution_token: locationResolutionToken }),
+      signal,
     },
-    body: JSON.stringify({ location_resolution_token: locationResolutionToken }),
-    signal,
-  });
+    ownerToken,
+  );
   const data = body.data;
   if (
     typeof data?.membership_id !== 'number' ||
