@@ -266,7 +266,9 @@ export function connectChatRoom(
       isReady = false;
       generation += 1;
       cancelRecovery();
-      if (event.code === 4100)
+      if (event.code === 4100 && event.reason === 'CHAT_LOGGED_OUT') {
+        terminal('left', '로그아웃되어 채팅이 종료됐어요.');
+      } else if (event.code === 4100)
         terminal('left', '현재 채팅 참여가 종료됐어요. 채팅 탭에 다시 입장해 주세요.');
       else if (event.code === 4101) terminal('banned', chatBanNotice(event.reason?.split('|')[1]));
       else if (event.code === 4103) recoveryFailed();
