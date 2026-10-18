@@ -95,7 +95,7 @@ test.afterEach(async ({ context }) => {
   }
 });
 
-test('메뉴 이동은 해당 탭만 종료하고 같은 sid 재입장에서 부재 메시지를 제외한다', async ({
+test('메뉴 이동은 해당 탭만 종료하고 재입장하면 남은 탭의 참여 대화를 복원한다', async ({
   page,
   context,
 }) => {
@@ -125,7 +125,7 @@ test('메뉴 이동은 해당 탭만 종료하고 같은 sid 재입장에서 부
   await expect.poll(() => first.joins.length).toBe(2);
   expect(first.joins[1].viewSessionId).not.toBe(first.joins[0].viewSessionId);
   await expect(page.getByRole('log').getByText(seen, { exact: true })).toBeVisible();
-  await expect(page.getByRole('log').getByText(absent, { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('log').getByText(absent, { exact: true })).toHaveCount(1);
   await send(page, `재입장 후 전송 ${test.info().project.name}`);
 });
 

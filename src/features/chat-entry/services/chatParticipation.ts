@@ -287,6 +287,14 @@ export class ChatParticipation {
     const membership = this.active?.membership;
     if (!membership) return;
     if (event.type === 'CHAT_READY') return;
+    if (event.type === 'CHAT_HISTORY') {
+      this.messages = retainChatMessages(event.messages);
+      this.gaps = [...event.gaps];
+      this.restoredThroughMessageId = this.messages.at(-1)?.messageId;
+      this.rememberMessages();
+      this.update(this.status, this.statusMessage);
+      return;
+    }
     if (event.type === 'CHAT_GAPS') {
       for (const gap of event.gaps) {
         if (

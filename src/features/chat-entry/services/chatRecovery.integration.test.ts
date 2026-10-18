@@ -17,6 +17,15 @@ vi.mock('../../auth-login/api/authSession', async (original) => ({
   ...(await original<typeof import('../../auth-login/api/authSession')>()),
   getAccessToken: () => bridge.token,
   shouldRefreshAccessToken: () => false,
+  authenticatedFetchWithCurrentToken: async (
+    url: RequestInfo | URL,
+    init: RequestInit,
+    token: string,
+  ) => {
+    const headers = new Headers(init.headers);
+    headers.set('Authorization', `Bearer ${token}`);
+    return fetch(url, { ...init, headers });
+  },
   authenticatedFetch: async (url: string, init: RequestInit) => {
     const headers = new Headers(init.headers);
     headers.set('Authorization', `Bearer ${bridge.token}`);
