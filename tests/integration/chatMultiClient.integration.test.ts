@@ -15,13 +15,12 @@ const bridge = vi.hoisted(() => ({
   release: undefined as (() => void) | undefined,
   held: undefined as (() => void) | undefined,
 }));
-vi.mock('../../src/features/auth-login/api/authSession', async (original) => ({
-  ...(await original<typeof import('../../src/features/auth-login/api/authSession')>()),
-  getAccessToken: () => bridge.config.token,
-  shouldRefreshAccessToken: () => false,
-  authenticatedFetch: async (url: string, init: RequestInit) => {
+vi.mock('../../src/features/auth-login/api/authSession', async (original) => {
+  const auth = await original<typeof import('../../src/features/auth-login/api/authSession')>();
+  const send = async (url: string, init: RequestInit, token = bridge.config.token) => {
+    if (token !== bridge.config.token) throw new auth.AuthRequestError(401);
     const headers = new Headers(init.headers);
-    headers.set('Authorization', `Bearer ${bridge.config.token}`);
+    headers.set('Authorization', `Bearer ${token}`);
     headers.set('Origin', 'http://localhost:5174');
     const response = await fetch(url, { ...init, headers });
     if (bridge.hold && url.includes('/messages?')) {
@@ -32,8 +31,15 @@ vi.mock('../../src/features/auth-login/api/authSession', async (original) => ({
       });
     }
     return response;
-  },
-}));
+  };
+  return {
+    ...auth,
+    getAccessToken: () => bridge.config.token,
+    shouldRefreshAccessToken: () => false,
+    authenticatedFetch: send,
+    authenticatedFetchWithCurrentToken: send,
+  };
+});
 vi.mock('../../src/features/chat-entry/services/resolveCurrentChatLocation', async () => ({
   resolveCurrentChatLocation: async (signal: AbortSignal) => {
     const { resolveLocation } = await import('../../src/api/locationResolutions');
@@ -97,6 +103,7 @@ async function actor(token: string) {
       Authorization: `Bearer ${token}`,
       room_id: String(bridge.config.room),
       membership_id: String(membership.membership_id),
+      view_session_id: membership.view_session_id,
     },
   });
   let closed!: (code: number) => void;
@@ -138,7 +145,7 @@ async function actor(token: string) {
 }
 
 it.skipIf(!bridge.path)(
-  '실제 REST 입장·누락 복구·전체 퇴장·같은 탭 캐시 재입장과 부재 제외',
+  '실제 REST 입장·누락 복구·탭별 퇴장·같은 탭 캐시 재입장과 부재 제외',
   async () => {
     const clients: Client[] = [];
     const activate = Client.prototype.activate;
@@ -173,17 +180,19 @@ it.skipIf(!bridge.path)(
       expect(values.get(CHAT_CACHE_KEY)).not.toContain('씨발');
       expect(values.get(CHAT_CACHE_KEY)).not.toContain('미전송 원문');
       await target.stop();
-      expect(await writer.closure).toBe(4100);
+      expect(writer.client.connected).toBe(true);
+      await writer.send('같은 sid의 남은 탭 전송');
       foreign = await actor(bridge.config.otherToken);
       await foreign.send('연동 퇴장 부재 메시지');
       target = new ChatParticipation((state) => states.push(state));
       await target.start();
       await vi.waitFor(() => expect(states.at(-1)?.status).toBe('ready'), { timeout: 10000 });
-      expect(states.at(-1)?.messages).toHaveLength(3);
+      // The remaining same-account tab authorizes these messages for account history.
+      expect(states.at(-1)?.messages).toHaveLength(5);
       expect(states.at(-1)?.restoredThroughMessageId).toBeGreaterThan(0);
       expect(
         states.at(-1)?.messages?.some((message) => message.content.includes('퇴장 부재')),
-      ).toBe(false);
+      ).toBe(true);
     } finally {
       bridge.release?.();
       await target.stop();

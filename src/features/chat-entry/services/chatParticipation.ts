@@ -2,6 +2,7 @@ import {
   getRegionChatRoom,
   joinChatRoom,
   leaveChatRoom,
+  leaveChatRoomForRegionChange,
   ChatRoomRequestError,
 } from '../../../api/chatRooms';
 import type { LocationResolution } from '../../../api/locationResolutions';
@@ -119,31 +120,40 @@ export class ChatParticipation {
     this.startingAuthContext = chatAuthContext(getAccessToken());
     this.update('locating', '현재 위치를 확인하고 있어요. 위치 권한을 허용해 주세요.');
     try {
-      const location = await resolveCurrentChatLocation(this.controller.signal);
+      const location = await resolveCurrentChatLocation(
+        this.controller.signal,
+        getAccessToken() ?? undefined,
+      );
       await this.enter(location);
-      if (!this.isStopped)
+      if (this.ownsSession() && this.active)
         this.interval = window.setInterval(() => void this.revalidate(), 10 * 60 * 1_000);
     } catch (error) {
       this.failed(error);
     }
   }
 
+  private ownsSession() {
+    return (
+      !this.isStopped &&
+      !this.controller.signal.aborted &&
+      sameChatAuthContext(this.startingAuthContext, chatAuthContext(getAccessToken()))
+    );
+  }
+
   private async enter(location: LocationResolution) {
-    if (this.isStopped) return;
+    if (!this.ownsSession()) return;
     this.update('joining', '현재 지역 채팅방에 입장하고 있어요.');
     const room = await getRegionChatRoom(location.region.sigungu.regionId, this.controller.signal);
     await transition(async () => {
-      if (
-        this.isStopped ||
-        !sameChatAuthContext(this.startingAuthContext, chatAuthContext(getAccessToken()))
-      )
-        return;
+      if (!this.ownsSession()) return;
       const entryToken = getAccessToken();
+      if (!entryToken) return;
       // Do not abort a sent join: obtain its membership_id and explicitly end a late success.
       const membership = await joinChatRoom(
         room.roomId,
         location.locationResolutionToken,
         new AbortController().signal,
+        entryToken,
       );
       const token = getAccessToken();
       if (
@@ -215,7 +225,7 @@ export class ChatParticipation {
     });
   }
 
-  private depart() {
+  private depart(locationResolutionToken?: string) {
     this.closeConnection?.();
     this.closeConnection = null;
     this.clearMessages();
@@ -225,7 +235,13 @@ export class ChatParticipation {
     this.token = null;
     this.currentUserId = null;
     this.update(this.status, this.statusMessage);
-    return active ? transition(() => leaveChatRoom(active.membership, token)) : Promise.resolve();
+    return active
+      ? transition(() =>
+          locationResolutionToken
+            ? leaveChatRoomForRegionChange(active.membership, locationResolutionToken, token)
+            : leaveChatRoom(active.membership, token),
+        )
+      : Promise.resolve();
   }
 
   private clearMessages() {
@@ -271,6 +287,14 @@ export class ChatParticipation {
     const membership = this.active?.membership;
     if (!membership) return;
     if (event.type === 'CHAT_READY') return;
+    if (event.type === 'CHAT_HISTORY') {
+      this.messages = retainChatMessages(event.messages);
+      this.gaps = [...event.gaps];
+      this.restoredThroughMessageId = this.messages.at(-1)?.messageId;
+      this.rememberMessages();
+      this.update(this.status, this.statusMessage);
+      return;
+    }
     if (event.type === 'CHAT_GAPS') {
       for (const gap of event.gaps) {
         if (
@@ -404,12 +428,17 @@ export class ChatParticipation {
   }
 
   private async revalidate() {
-    if (this.isStopped || !this.active || this.isChecking) return;
+    if (!this.ownsSession() || !this.active || this.isChecking) return;
+    const membershipId = this.active.membership.membershipId;
+    const isCurrent = () =>
+      this.ownsSession() && this.active?.membership.membershipId === membershipId;
     this.isChecking = true;
     try {
-      const candidate = await resolveCurrentChatLocation(this.controller.signal);
-      if (this.isStopped || candidate.region.sigungu.regionId === this.active?.room.regionId)
-        return;
+      const candidate = await resolveCurrentChatLocation(
+        this.controller.signal,
+        getAccessToken() ?? undefined,
+      );
+      if (!isCurrent() || candidate.region.sigungu.regionId === this.active?.room.regionId) return;
       await new Promise<void>((resolve) => {
         const timer = window.setTimeout(resolve, 15_000);
         this.controller.signal.addEventListener(
@@ -421,12 +450,19 @@ export class ChatParticipation {
           { once: true },
         );
       });
-      if (this.isStopped || this.controller.signal.aborted) return;
-      const confirmation = await resolveCurrentChatLocation(this.controller.signal);
-      if (confirmation.region.sigungu.regionId !== candidate.region.sigungu.regionId) return;
+      if (!isCurrent()) return;
+      const confirmation = await resolveCurrentChatLocation(
+        this.controller.signal,
+        getAccessToken() ?? undefined,
+      );
+      if (
+        !isCurrent() ||
+        confirmation.region.sigungu.regionId !== candidate.region.sigungu.regionId
+      )
+        return;
       this.update('joining', '지역 이동이 확인되어 새 채팅방으로 이동하고 있어요.');
       // Always leave the old room before any destination lookup, including failed/full destinations.
-      await this.depart();
+      await this.depart(confirmation.locationResolutionToken);
       await this.enter(confirmation);
     } catch (error) {
       if (!this.active) this.failed(error);

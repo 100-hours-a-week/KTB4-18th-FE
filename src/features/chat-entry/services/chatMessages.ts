@@ -17,6 +17,7 @@ export type ChatEvent =
       snapshotMessageId: number;
     }
   | { type: 'CHAT_GAPS'; gaps: ChatGap[] }
+  | { type: 'CHAT_HISTORY'; messages: ChatMessage[]; gaps: ChatGap[] }
   | { type: 'CHAT_PRESENCE'; roomId: number; connectedCount: number; version: number }
   | { type: 'CHAT_BANNED'; roomId: number; membershipId: number; bannedUntil: string }
   | { type: 'CHAT_MESSAGE'; message: ChatMessage }

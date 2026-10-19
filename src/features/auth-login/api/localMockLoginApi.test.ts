@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getCsrfToken, runAuthTransition, setAccessToken } from './authSession';
-import { isLocalMockLoginEnabled, localMockLogin, LocalMockLoginRequestError } from './localMockLoginApi';
+import {
+  isLocalMockLoginEnabled,
+  localMockLogin,
+  LocalMockLoginRequestError,
+} from './localMockLoginApi';
 
 vi.mock('./authSession', () => ({
   getCsrfToken: vi.fn(),

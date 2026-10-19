@@ -54,9 +54,9 @@ async function submitLocalMockLogin(): Promise<LoginSuccessResponse> {
     throw new LocalMockLoginRequestError(response.status);
   }
 
-  const payload = (await response.json().catch((): LocalMockLoginEnvelope | null => null)) as
-    | LocalMockLoginEnvelope
-    | null;
+  const payload = (await response
+    .json()
+    .catch((): LocalMockLoginEnvelope | null => null)) as LocalMockLoginEnvelope | null;
   if (
     payload?.message !== 'login success' ||
     typeof payload.data?.access_token !== 'string' ||

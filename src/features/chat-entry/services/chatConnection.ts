@@ -7,9 +7,10 @@ import {
   shouldRefreshAccessToken,
   ACCESS_TOKEN_CHANGED_EVENT,
 } from '../../auth-login/api/authSession';
+import { CHAT_CACHE_LIMIT } from './chatConversationCache';
 import { chatAuthContext, sameChatAuthContext } from './chatAuthContext';
 import { chatBanNotice, parseChatEvent, type ChatEvent, type ChatGap } from './chatMessages';
-import { ChatRecoveryError, fetchChatRecovery } from './chatRecovery';
+import { ChatRecoveryError, fetchChatRecovery, fetchChatHistory } from './chatRecovery';
 
 export type ChatConnectionStatus =
   | 'connecting'
@@ -37,7 +38,8 @@ export function connectChatRoom(
   let generation = 0;
   let readyTimer: number | undefined;
   let initialDeadline: number | undefined;
-  let viewSessionId: string | undefined;
+  let viewSessionId: string | undefined = membership.viewSessionId;
+  let hasReceivedReady = false;
   let lastMessageId = 0;
   let recovery: AbortController | undefined;
   let buffered: ChatEvent[] = [];
@@ -93,7 +95,6 @@ export function connectChatRoom(
     const controller = recovery;
     onStatus('recovering', '놓친 메시지를 복구하고 있어요.');
     const recovered = new Map<number, Extract<ChatEvent, { type: 'CHAT_MESSAGE' }>>();
-    const gaps = new Map<string, ChatGap>();
     const visited = new Set<string>();
     let cursor: string | null = ready.recoveryCursor;
     try {
@@ -117,8 +118,6 @@ export function connectChatRoom(
         if (page.snapshotMessageId !== ready.snapshotMessageId) throw new ChatRecoveryError(502);
         for (const message of page.items)
           recovered.set(message.messageId, { type: 'CHAT_MESSAGE', message });
-        for (const gap of page.gaps)
-          gaps.set(`${gap.reason}:${gap.beforeMessageId}:${gap.resumedAt}`, gap);
         cursor = page.nextCursor;
       }
       if (
@@ -129,7 +128,52 @@ export function connectChatRoom(
         !ownsCurrentAuth()
       )
         return;
-      deliver({ type: 'CHAT_GAPS', gaps: [...gaps.values()] });
+      const history = new Map<number, Extract<ChatEvent, { type: 'CHAT_MESSAGE' }>['message']>();
+      const historyGaps = new Map<string, ChatGap>();
+      const historyVisited = new Set<string>();
+      let historyCursor: string | null = null;
+      let historySnapshot: number | undefined;
+      let oldest = Number.POSITIVE_INFINITY;
+      do {
+        if (historyCursor && historyVisited.has(historyCursor)) throw new ChatRecoveryError(502);
+        if (historyCursor) historyVisited.add(historyCursor);
+        const token = getAccessToken();
+        if (!token || !ownsCurrentAuth()) return;
+        const page = await fetchChatHistory(
+          membership,
+          ready.viewSessionId,
+          historyCursor,
+          controller.signal,
+          token,
+        );
+        if (
+          isStopped ||
+          isPaused ||
+          generation !== connectionGeneration ||
+          controller.signal.aborted ||
+          !ownsCurrentAuth()
+        )
+          return;
+        historySnapshot ??= page.snapshotMessageId;
+        if (page.snapshotMessageId !== historySnapshot || (page.hasNext && page.items.length === 0))
+          throw new ChatRecoveryError(502);
+        for (const message of page.items) {
+          if (message.messageId >= oldest) throw new ChatRecoveryError(502);
+          oldest = message.messageId;
+          history.set(message.messageId, message);
+        }
+        for (const gap of page.gaps)
+          historyGaps.set(`${gap.reason}:${gap.beforeMessageId}:${gap.resumedAt}`, gap);
+        historyCursor = page.nextCursor;
+      } while (historyCursor && history.size < CHAT_CACHE_LIMIT);
+      deliver({
+        type: 'CHAT_HISTORY',
+        messages: [...history.values()]
+          .sort((a, b) => a.messageId - b.messageId)
+          .slice(-CHAT_CACHE_LIMIT),
+        gaps: [...historyGaps.values()],
+      });
+      deliver({ type: 'CHAT_GAPS', gaps: [...historyGaps.values()] });
       [...recovered.values()]
         .sort((a, b) => a.message.messageId - b.message.messageId)
         .forEach(deliver);
@@ -220,6 +264,7 @@ export function connectChatRoom(
             (viewSessionId && viewSessionId !== event.viewSessionId)
           )
             return;
+          hasReceivedReady = true;
           viewSessionId = event.viewSessionId;
           ready ??= event;
           begin();
@@ -256,7 +301,7 @@ export function connectChatRoom(
       if (code === 'CHAT_BANNED') terminal('banned', chatBanNotice(frame.headers.banned_until));
       else if (code === 'CHAT_FULL') terminal('full', '현재 지역 채팅방의 정원이 가득 찼습니다.');
       else if (code === 'CHAT_LEFT')
-        terminal('left', '다른 탭 또는 기기에서 퇴장하여 채팅이 종료됐어요.');
+        terminal('left', '현재 채팅 참여가 종료됐어요. 채팅 탭에 다시 입장해 주세요.');
       else terminal('error', '채팅 연결 인증에 실패했습니다. 다시 입장해 주세요.');
     },
     onWebSocketClose: (event) => {
@@ -264,14 +309,16 @@ export function connectChatRoom(
       isReady = false;
       generation += 1;
       cancelRecovery();
-      if (event.code === 4100)
-        terminal('left', '다른 탭 또는 기기에서 퇴장하여 채팅이 종료됐어요.');
+      if (event.code === 4100 && event.reason === 'CHAT_LOGGED_OUT') {
+        terminal('left', '로그아웃되어 채팅이 종료됐어요.');
+      } else if (event.code === 4100)
+        terminal('left', '현재 채팅 참여가 종료됐어요. 채팅 탭에 다시 입장해 주세요.');
       else if (event.code === 4101) terminal('banned', chatBanNotice(event.reason?.split('|')[1]));
       else if (event.code === 4103) recoveryFailed();
       else {
         onStatus('reconnecting', '연결이 끊겼어요. 채팅방에 다시 연결하고 있습니다.');
         // Established views can reconnect beyond grace; only the server decides recoverable intervals.
-        if (!viewSessionId)
+        if (!hasReceivedReady)
           initialDeadline ??= window.setTimeout(
             () => terminal('error', '채팅방에 연결하지 못했습니다. 다시 입장해 주세요.'),
             30_000,

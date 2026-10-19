@@ -83,15 +83,12 @@ export function persistLogoutQueueReset(generation: string): LogoutQueueResetMar
   return event;
 }
 
-export function consumeLogoutQueueReset(
-  eventId: string | undefined,
-  generation: string,
-): boolean {
+export function consumeLogoutQueueReset(eventId: string | undefined, generation: string): boolean {
   if (!eventId || handledLogoutResetIds.has(eventId)) return false;
   try {
-    const pending = JSON.parse(storage().getItem(LOGOUT_QUEUE_RESET_STORAGE) ?? 'null') as
-      | LogoutQueueResetMarker
-      | null;
+    const pending = JSON.parse(
+      storage().getItem(LOGOUT_QUEUE_RESET_STORAGE) ?? 'null',
+    ) as LogoutQueueResetMarker | null;
     if (
       pending?.eventId !== eventId ||
       pending.generation !== generation ||

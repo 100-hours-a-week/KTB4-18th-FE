@@ -1,3 +1,4 @@
+import { chatSessionFetch } from './chatSessionFetch';
 import type { ChatRoomMembership } from '../../../api/chatRooms';
 import { authenticatedFetch, AuthRequestError } from '../../auth-login/api/authSession';
 import { parseChatMessage, type ChatGap, type ChatMessage } from './chatMessages';
@@ -26,30 +27,34 @@ export class ChatRecoveryError extends Error {
 const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
-export async function fetchChatRecovery(
+async function fetchChatPage(
   membership: ChatRoomMembership,
   viewId: string,
-  cursor: string,
+  cursor: string | null,
   signal: AbortSignal,
+  mode: 'history' | 'recovery',
+  ownerToken?: string,
 ): Promise<ChatRecoveryPage> {
   const base = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
   const query = new URLSearchParams({
     membership_id: String(membership.membershipId),
-    mode: 'recovery',
-    cursor,
+    mode,
+    ...(cursor ? { cursor } : {}),
     size: '50',
   });
   let response: Response;
   try {
-    response = await authenticatedFetch(
-      `${base}/api/v1/chat-rooms/${membership.roomId}/messages?${query}`,
-      {
-        method: 'GET',
-        credentials: 'include',
-        headers: { 'X-Chat-View-Session': viewId },
-        signal,
-      },
-    );
+    const request =
+      mode === 'history'
+        ? (input: RequestInfo | URL, init: RequestInit) =>
+            chatSessionFetch(input, init, ownerToken!)
+        : authenticatedFetch;
+    response = await request(`${base}/api/v1/chat-rooms/${membership.roomId}/messages?${query}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { 'X-Chat-View-Session': viewId },
+      signal,
+    });
   } catch (error) {
     if (signal.aborted) throw error;
     throw new ChatRecoveryError(error instanceof AuthRequestError ? error.status : null);
@@ -116,4 +121,23 @@ export async function fetchChatRecovery(
     snapshotMessageId: data.snapshot_message_id,
     gaps,
   };
+}
+
+export function fetchChatRecovery(
+  membership: ChatRoomMembership,
+  viewId: string,
+  cursor: string,
+  signal: AbortSignal,
+): Promise<ChatRecoveryPage> {
+  return fetchChatPage(membership, viewId, cursor, signal, 'recovery');
+}
+
+export function fetchChatHistory(
+  membership: ChatRoomMembership,
+  viewId: string,
+  cursor: string | null,
+  signal: AbortSignal,
+  ownerToken: string,
+): Promise<ChatRecoveryPage> {
+  return fetchChatPage(membership, viewId, cursor, signal, 'history', ownerToken);
 }

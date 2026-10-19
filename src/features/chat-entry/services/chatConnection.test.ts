@@ -2,12 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Client } from '@stomp/stompjs';
 import { connectChatRoom } from './chatConnection';
 import { refreshAccessToken } from '../../auth-login/api/authSession';
-import { fetchChatRecovery, ChatRecoveryError, type ChatRecoveryPage } from './chatRecovery';
+import {
+  fetchChatRecovery,
+  fetchChatHistory,
+  ChatRecoveryError,
+  type ChatRecoveryPage,
+} from './chatRecovery';
 
 vi.mock('@stomp/stompjs', () => ({ Client: vi.fn() }));
 vi.mock('./chatRecovery', async (original) => ({
   ...(await original<typeof import('./chatRecovery')>()),
   fetchChatRecovery: vi.fn(),
+  fetchChatHistory: vi.fn(),
 }));
 const auth = vi.hoisted(() => ({ token: '', shouldRefresh: false }));
 vi.mock('../../auth-login/api/authSession', () => ({
@@ -25,6 +31,7 @@ const membership = {
   roomId: 700,
   regionId: 25,
   joinedAt: '2026-10-07T00:00:00Z',
+  viewSessionId: '550e8400-e29b-41d4-a716-446655440000',
 };
 const viewId = '550e8400-e29b-41d4-a716-446655440000';
 const empty: ChatRecoveryPage = {
@@ -102,6 +109,7 @@ beforeEach(() => {
   auth.token = tokenFor();
   auth.shouldRefresh = false;
   vi.mocked(fetchChatRecovery).mockReset().mockResolvedValue(empty);
+  vi.mocked(fetchChatHistory).mockReset().mockResolvedValue(empty);
   vi.mocked(Client).mockImplementation(function (options) {
     config = options;
     return client as unknown as Client;
@@ -208,6 +216,8 @@ describe('구독 완료와 누락 메시지 복구', () => {
       auth_session_id: authSid,
       room_id: '700',
       membership_id: '900',
+      view_session_id: viewId,
+      last_message_id: '0',
     });
     expect(config?.brokerURL).not.toContain('account-token');
     config?.onConnect?.({} as never);
@@ -216,6 +226,7 @@ describe('구독 완료와 누락 메시지 복구', () => {
     expect(status).not.toHaveBeenCalledWith('ready', expect.any(String));
     receive()(readyFrame());
     expect(status).toHaveBeenLastCalledWith('recovering', expect.any(String));
+    await Promise.resolve();
     await Promise.resolve();
     expect(status).toHaveBeenLastCalledWith('ready', expect.any(String));
     expect(connection.send('id', 'hello')).toBe(true);
@@ -254,6 +265,7 @@ describe('구독 완료와 누락 메시지 복구', () => {
       snapshotMessageId: 2,
       gaps: [{ reason: 'ABSENCE', beforeMessageId: 1, resumedAt: '2026-10-13T00:00:00Z' }],
     });
+    await Promise.resolve();
     await Promise.resolve();
     expect(
       event.mock.calls
@@ -364,6 +376,108 @@ describe('구독 완료와 누락 메시지 복구', () => {
     expect(status).toHaveBeenLastCalledWith('banned', expect.stringContaining('제한 종료:'));
     expect(connection.send('id', 'hello')).toBe(false);
     expect(client.deactivate).toHaveBeenCalledOnce();
+  });
+
+  it('로그아웃 종료는 인증 토큰을 변경하지 않고 전송과 자동 재연결을 중단한다', async () => {
+    const status = vi.fn();
+    const event = vi.fn();
+    const connection = connectChatRoom(membership, status, event);
+    config?.onConnect?.({} as never);
+    await ready();
+    const oldReceive = receive();
+    event.mockClear();
+    const token = auth.token;
+    config?.onWebSocketClose?.({ code: 4100, reason: 'CHAT_LOGGED_OUT' } as CloseEvent);
+    expect(status).toHaveBeenLastCalledWith('left', '로그아웃되어 채팅이 종료됐어요.');
+    expect(connection.send('id', 'hello')).toBe(false);
+    oldReceive(live(99));
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(event).not.toHaveBeenCalled();
+    expect(client.deactivate).toHaveBeenCalledOnce();
+    expect(auth.token).toBe(token);
+    connection.retryRecovery();
+    expect(client.activate).toHaveBeenCalledOnce();
+    connection();
+  });
+
+  it('서버 계정 이력 페이지와 복구 중 live를 모두 받은 뒤 준비한다', async () => {
+    let finish!: (value: ChatRecoveryPage) => void;
+    vi.mocked(fetchChatHistory).mockResolvedValueOnce({
+      ...empty,
+      items: [message(5), message(4)],
+      snapshotMessageId: 5,
+      hasNext: true,
+      nextCursor: 'older',
+    });
+    vi.mocked(fetchChatHistory).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const event = vi.fn();
+    const status = vi.fn();
+    const connection = connectChatRoom(membership, status, event);
+    config?.onConnect?.({} as never);
+    await ready();
+    await Promise.resolve();
+    expect(connection.send('id', 'blocked')).toBe(false);
+    receive()(live(6));
+    finish({ ...empty, items: [message(3)], snapshotMessageId: 5 });
+    await Promise.resolve();
+    expect(event).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'CHAT_HISTORY',
+        messages: [message(3), message(4), message(5)],
+      }),
+    );
+    expect(event).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'CHAT_MESSAGE', message: message(6) }),
+    );
+    expect(status).toHaveBeenLastCalledWith('ready', expect.any(String));
+    connection();
+  });
+
+  it('이력 조회 실패와 늦은 이력 응답은 기존 화면을 덮어쓰지 않는다', async () => {
+    let finish!: (value: ChatRecoveryPage) => void;
+    vi.mocked(fetchChatHistory).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const event = vi.fn();
+    const connection = connectChatRoom(membership, vi.fn(), event);
+    config?.onConnect?.({} as never);
+    await ready();
+    connection();
+    finish({ ...empty, items: [message(1)], snapshotMessageId: 1 });
+    await Promise.resolve();
+    expect(event).not.toHaveBeenCalled();
+  });
+
+  it('서버 이력 snapshot이 바뀌면 부분 결과를 표시하지 않는다', async () => {
+    vi.mocked(fetchChatHistory).mockResolvedValueOnce({
+      ...empty,
+      items: [message(2)],
+      snapshotMessageId: 2,
+      hasNext: true,
+      nextCursor: 'older',
+    });
+    vi.mocked(fetchChatHistory).mockResolvedValueOnce({
+      ...empty,
+      items: [message(1)],
+      snapshotMessageId: 3,
+    });
+    const event = vi.fn();
+    const status = vi.fn();
+    const connection = connectChatRoom(membership, status, event);
+    config?.onConnect?.({} as never);
+    await ready();
+    await Promise.resolve();
+    expect(status).toHaveBeenLastCalledWith('recovery-failed', expect.any(String));
+    expect(event).not.toHaveBeenCalled();
+    connection();
   });
 
   it('최초 연결 실패는 30초 뒤 멈추지만 자동 REST 새 입장을 수행하지 않는다', async () => {

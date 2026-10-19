@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { setAccessToken } from '../features/auth-login/api/authSession';
-import { ChatRoomRequestError, getRegionChatRoom, joinChatRoom, leaveChatRoom } from './chatRooms';
+import {
+  ChatRoomRequestError,
+  getRegionChatRoom,
+  joinChatRoom,
+  leaveChatRoom,
+  leaveChatRoomForRegionChange,
+} from './chatRooms';
 
 function accessToken(sub: string, sid: string) {
   const payload = btoa(JSON.stringify({ sub, sid }));
@@ -58,6 +64,7 @@ describe('chat room API', () => {
             room_id: 700,
             region_id: 25,
             joined_at: '2026-09-23T08:00:00Z',
+            view_session_id: '11111111-1111-4111-8111-111111111111',
           },
         }),
         { status, headers: { 'Content-Type': 'application/json' } },
@@ -72,6 +79,7 @@ describe('chat room API', () => {
       roomId: 700,
       regionId: 25,
       joinedAt: '2026-09-23T08:00:00Z',
+      viewSessionId: '11111111-1111-4111-8111-111111111111',
     });
     const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(options.body as string)).toEqual({
@@ -138,13 +146,67 @@ describe('chat room API', () => {
     const currentToken = accessToken('user-1', 'session-1');
     setAccessToken(currentToken);
     await leaveChatRoom(
-      { membershipId: 900, roomId: 700, regionId: 25, joinedAt: '2026-10-07T00:00:00Z' },
+      {
+        membershipId: 900,
+        roomId: 700,
+        regionId: 25,
+        joinedAt: '2026-10-07T00:00:00Z',
+        viewSessionId: '11111111-1111-4111-8111-111111111111',
+      },
       accessToken('user-1', 'session-1'),
     );
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('/api/v1/chat-rooms/700/members/me?membership_id=900');
+    expect(url).toBe(
+      '/api/v1/chat-rooms/700/members/me?membership_id=900&view_session_id=11111111-1111-4111-8111-111111111111',
+    );
     expect(options).toMatchObject({ method: 'DELETE', keepalive: true });
     expect(new Headers(options.headers).get('Authorization')).toBe(`Bearer ${currentToken}`);
+  });
+
+  it('지역 이동 퇴장은 확인한 위치 증명을 별도 경로로 전달한다', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const token = accessToken('7', 'session-1');
+    setAccessToken(token);
+    await leaveChatRoomForRegionChange(
+      {
+        membershipId: 900,
+        roomId: 700,
+        regionId: 25,
+        joinedAt: '2026-10-07T00:00:00Z',
+        viewSessionId: '11111111-1111-4111-8111-111111111111',
+      },
+      'confirmed-location',
+      token,
+    );
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/chat-rooms/700/region-departures?membership_id=900');
+    expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body as string)).toEqual({
+      location_resolution_token: 'confirmed-location',
+    });
+  });
+
+  it('탭 식별자가 없는 입장 응답은 사용하지 않는다', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: {
+              membership_id: 900,
+              room_id: 700,
+              region_id: 25,
+              joined_at: '2026-10-07T00:00:00Z',
+            },
+          }),
+          { status: 201 },
+        ),
+      ),
+    );
+    await expect(joinChatRoom(700, 'location', new AbortController().signal)).rejects.toMatchObject(
+      { status: 502 },
+    );
   });
 
   it('제재된 계정의 403 응답은 일반 권한 오류와 구분한다', async () => {

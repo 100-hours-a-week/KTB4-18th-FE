@@ -1,9 +1,10 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useChatParticipation } from './useChatParticipation';
-import { ACCESS_TOKEN_CHANGED_EVENT } from '../../auth-login/api/authSession';
+import { ACCESS_TOKEN_CHANGED_EVENT, AUTH_EXPIRED_EVENT } from '../../auth-login/api/authSession';
 const setup = vi.hoisted(() => ({
   accountId: 7,
+  authenticated: true,
   sid: '550e8400-e29b-41d4-a716-446655440000',
   stop: vi.fn(),
 }));
@@ -11,7 +12,9 @@ vi.mock('../../auth-login/api/authSession', () => ({
   ACCESS_TOKEN_CHANGED_EVENT: 'test-token-changed',
   AUTH_EXPIRED_EVENT: 'test-auth-expired',
   getAccessToken: () =>
-    `header.${btoa(JSON.stringify({ sub: String(setup.accountId), sid: setup.sid }))}.signature`,
+    setup.authenticated
+      ? `header.${btoa(JSON.stringify({ sub: String(setup.accountId), sid: setup.sid }))}.signature`
+      : null,
 }));
 vi.mock('../services/chatParticipation', () => ({
   ChatParticipation: class {
@@ -34,6 +37,7 @@ vi.mock('../services/chatParticipation', () => ({
 }));
 beforeEach(() => {
   setup.accountId = 7;
+  setup.authenticated = true;
   setup.sid = '550e8400-e29b-41d4-a716-446655440000';
   setup.stop.mockReset().mockResolvedValue(undefined);
 });
@@ -60,3 +64,18 @@ it('같은 계정 토큰 갱신은 유지하고 계정 전환 시 대화와 기�
   expect(result.current.messages).toBeUndefined();
   expect(result.current.isReady).toBe(false);
 });
+
+it.each([ACCESS_TOKEN_CHANGED_EVENT, AUTH_EXPIRED_EVENT])(
+  '인증 담당 모듈이 %s를 알리면 채팅 참여와 이전 대화를 정리한다',
+  async (eventName) => {
+    const { result } = renderHook(() => useChatParticipation());
+    await act(async () => undefined);
+    expect(result.current.isReady).toBe(true);
+    setup.authenticated = false;
+    act(() => window.dispatchEvent(new Event(eventName)));
+    expect(setup.stop).toHaveBeenCalledTimes(1);
+    expect(result.current.status).toBe('left');
+    expect(result.current.messages).toBeUndefined();
+    expect(result.current.isReady).toBe(false);
+  },
+);

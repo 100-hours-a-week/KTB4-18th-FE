@@ -259,13 +259,7 @@ export function useLoginQueueFlow({
     return () => {
       isActive = false;
     };
-  }, [
-    closeTerminalQueue,
-    finishLogin,
-    setPassword,
-    setRequestError,
-    skipInitialQueueRestore,
-  ]);
+  }, [closeTerminalQueue, finishLogin, setPassword, setRequestError, skipInitialQueueRestore]);
 
   const submitReadyLogin = useCallback(
     async (credentials: { email: string; password: string }, diagnosticCorrelationId?: string) => {

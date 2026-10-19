@@ -1,3 +1,4 @@
+import { chatSessionFetch } from '../features/chat-entry/services/chatSessionFetch';
 import {
   AuthRequestError,
   authenticatedFetch,
@@ -27,6 +28,7 @@ interface ChatRoomMembershipBody {
   room_id?: number;
   region_id?: number;
   joined_at?: string;
+  view_session_id?: string;
 }
 
 export interface ChatRoomSummary {
@@ -42,6 +44,7 @@ export interface ChatRoomMembership {
   roomId: number;
   regionId: number;
   joinedAt: string;
+  viewSessionId: string;
 }
 
 export class ChatRoomRequestError extends Error {
@@ -83,13 +86,17 @@ function errorMessage(status: number, serverMessage?: string) {
   }
 }
 
-async function request<T>(url: string, options: RequestInit): Promise<ApiBody<T>> {
+async function request<T>(
+  url: string,
+  options: RequestInit,
+  ownerToken?: string,
+): Promise<ApiBody<T>> {
   let response: Response;
   try {
-    response = await authenticatedFetch(`${baseUrl}${url}`, {
-      ...options,
-      credentials: 'include',
-    });
+    const init = { ...options, credentials: 'include' as const };
+    response = ownerToken
+      ? await chatSessionFetch(`${baseUrl}${url}`, init, ownerToken)
+      : await authenticatedFetch(`${baseUrl}${url}`, init);
   } catch (caught) {
     if (caught instanceof DOMException && caught.name === 'AbortError') {
       throw caught;
@@ -164,21 +171,28 @@ export async function joinChatRoom(
   roomId: number,
   locationResolutionToken: string,
   signal: AbortSignal,
+  ownerToken?: string,
 ): Promise<ChatRoomMembership> {
-  const body = await request<ChatRoomMembershipBody>(`/api/v1/chat-rooms/${roomId}/members`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+  const body = await request<ChatRoomMembershipBody>(
+    `/api/v1/chat-rooms/${roomId}/members`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ location_resolution_token: locationResolutionToken }),
+      signal,
     },
-    body: JSON.stringify({ location_resolution_token: locationResolutionToken }),
-    signal,
-  });
+    ownerToken,
+  );
   const data = body.data;
   if (
     typeof data?.membership_id !== 'number' ||
     typeof data.room_id !== 'number' ||
     typeof data.region_id !== 'number' ||
-    typeof data.joined_at !== 'string'
+    typeof data.joined_at !== 'string' ||
+    typeof data.view_session_id !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(data.view_session_id)
   ) {
     throw new ChatRoomRequestError('채팅방 입장 결과를 확인할 수 없습니다.', 502);
   }
@@ -188,11 +202,28 @@ export async function joinChatRoom(
     roomId: data.room_id,
     regionId: data.region_id,
     joinedAt: data.joined_at,
+    viewSessionId: data.view_session_id,
   };
 }
 
 // Capture the joining account's token; teardown must never refresh as another account.
 export async function leaveChatRoom(membership: ChatRoomMembership, token = getAccessToken()) {
+  return departChatRoom(membership, token);
+}
+
+export async function leaveChatRoomForRegionChange(
+  membership: ChatRoomMembership,
+  locationResolutionToken: string,
+  token = getAccessToken(),
+) {
+  return departChatRoom(membership, token, locationResolutionToken);
+}
+
+async function departChatRoom(
+  membership: ChatRoomMembership,
+  token: string | null,
+  locationResolutionToken?: string,
+) {
   if (!token) return;
   const current = getAccessToken();
   if (!current) return;
@@ -209,10 +240,19 @@ export async function leaveChatRoom(membership: ChatRoomMembership, token = getA
   } catch {
     return;
   }
+  const path = locationResolutionToken
+    ? `/api/v1/chat-rooms/${membership.roomId}/region-departures?membership_id=${membership.membershipId}`
+    : `/api/v1/chat-rooms/${membership.roomId}/members/me?membership_id=${membership.membershipId}&view_session_id=${encodeURIComponent(membership.viewSessionId)}`;
   const response = await authenticatedFetchWithCurrentToken(
-    `${baseUrl}/api/v1/chat-rooms/${membership.roomId}/members/me?membership_id=${membership.membershipId}`,
+    `${baseUrl}${path}`,
     {
-      method: 'DELETE',
+      method: locationResolutionToken ? 'POST' : 'DELETE',
+      ...(locationResolutionToken
+        ? {
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ location_resolution_token: locationResolutionToken }),
+          }
+        : {}),
       credentials: 'include',
       keepalive: true,
     },

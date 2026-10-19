@@ -84,6 +84,6 @@ describe('ChatImageRecommendation', () => {
     expect(screen.getByText('이미지 속 장면을 확인하기 어려워요')).toBeInTheDocument();
     expect(screen.getByText('장면이 잘 보이도록 다시 촬영해 주세요.')).toBeInTheDocument();
     expect(onUsable).not.toHaveBeenCalled();
-    expect(screen.getByRole('dialog', { name: '이미지로 음악 추천받기' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: '이미지로 음악 추천' })).toBeInTheDocument();
   });
 });

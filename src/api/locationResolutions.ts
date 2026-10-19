@@ -1,3 +1,4 @@
+import { chatSessionFetch } from '../features/chat-entry/services/chatSessionFetch';
 import { AuthRequestError, authenticatedFetch } from '../features/auth-login/api/authSession';
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
@@ -87,10 +88,11 @@ function toRegionSummary(region: RegionBody): RegionSummary {
 export async function resolveLocation(
   coordinates: LocationCoordinates,
   signal: AbortSignal,
+  ownerToken?: string,
 ): Promise<LocationResolution> {
   let response: Response;
   try {
-    response = await authenticatedFetch(`${baseUrl}/api/v1/locations/resolve`, {
+    const init: RequestInit = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -100,7 +102,10 @@ export async function resolveLocation(
         accuracy_meters: coordinates.accuracyMeters,
       }),
       signal,
-    });
+    };
+    response = ownerToken
+      ? await chatSessionFetch(`${baseUrl}/api/v1/locations/resolve`, init, ownerToken)
+      : await authenticatedFetch(`${baseUrl}/api/v1/locations/resolve`, init);
   } catch (caught) {
     if (caught instanceof DOMException && caught.name === 'AbortError') {
       throw caught;
