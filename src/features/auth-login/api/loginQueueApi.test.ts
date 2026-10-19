@@ -456,7 +456,9 @@ describe('login queue response contract', () => {
 
     expect(requests).toHaveLength(2);
     expect(requests[1]).toMatch(/^POST .*\/tickets$/);
-    expect(JSON.parse(localStorage.getItem('meomuneum:queue-create-idempotency') ?? '{}')).toMatchObject({
+    expect(
+      JSON.parse(localStorage.getItem('meomuneum:queue-create-idempotency') ?? '{}'),
+    ).toMatchObject({
       id: 'cancel-unknown',
       status: 'ACTIVE',
     });
@@ -1276,7 +1278,8 @@ describe('login operation markers', () => {
       vi.fn(async (input: string | URL, init?: RequestInit) => {
         const url = String(input);
         requests.push(`${init?.method ?? 'GET'} ${url}`);
-        if (url.endsWith('/login-queue/tickets/current')) return new Response(null, { status: 404 });
+        if (url.endsWith('/login-queue/tickets/current'))
+          return new Response(null, { status: 404 });
         throw new Error(`Unexpected request: ${url}`);
       }),
     );
@@ -1288,7 +1291,9 @@ describe('login operation markers', () => {
     expect(lockObservations).toEqual(['ACTIVE']);
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatch(/^GET .*\/current$/);
-    expect(JSON.parse(localStorage.getItem('meomuneum:queue-create-idempotency') ?? '{}')).toMatchObject({
+    expect(
+      JSON.parse(localStorage.getItem('meomuneum:queue-create-idempotency') ?? '{}'),
+    ).toMatchObject({
       id: key,
       status: 'CANCEL_REQUESTED',
       cancelTarget: 'IDEMPOTENCY_KEY',
@@ -1352,11 +1357,12 @@ describe('login operation markers', () => {
       'fetch',
       vi.fn(async (_input: string | URL, init?: RequestInit) => {
         if (init?.method !== 'DELETE') return Response.json(ticket('READY'));
-        const marker = JSON.parse(localStorage.getItem('meomuneum:queue-create-idempotency') ?? '{}');
+        const marker = JSON.parse(
+          localStorage.getItem('meomuneum:queue-create-idempotency') ?? '{}',
+        );
         expect(marker.cancelTarget).toBe('CURRENT_TICKET');
         return Response.json({ data: { status: 'CANCELLED' } }, { status: 201 });
-      },
-      ),
+      }),
     );
 
     await expect(cancelLoginQueue()).rejects.toMatchObject({ status: 201 });

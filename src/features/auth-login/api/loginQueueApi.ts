@@ -65,9 +65,7 @@ type LoginSuccessEnvelope = {
   data: { access_token: string; expires_in: number };
 };
 
-async function requestTicketStatus(
-  signal?: AbortSignal,
-): Promise<LoginQueueTicket> {
+async function requestTicketStatus(signal?: AbortSignal): Promise<LoginQueueTicket> {
   let response: Response;
   try {
     response = await fetchWithTimeout(requestUrl('login-queue/tickets/current'), {
@@ -133,7 +131,9 @@ async function createTicketWithKey(
   return ticket;
 }
 
-async function currentTicketBeforeCreate(expectedGeneration: string): Promise<LoginQueueTicket | null> {
+async function currentTicketBeforeCreate(
+  expectedGeneration: string,
+): Promise<LoginQueueTicket | null> {
   const startedAt = Date.now();
   for (let attempt = 1; attempt <= MAX_STATUS_RECONCILIATION_ATTEMPTS; attempt += 1) {
     if (queueGeneration() !== expectedGeneration)
@@ -157,7 +157,11 @@ async function currentTicketBeforeCreate(expectedGeneration: string): Promise<Lo
       const remaining = STATUS_RECONCILIATION_WINDOW_MS - elapsed;
       const delayMs = calculateQueueStatusRetryDelayMs(attempt, error.retryAfterSeconds);
       if (remaining <= 0 || delayMs > remaining) {
-        throw new QueueRequestError(error.status, 'QUEUE_STATUS_RETRY_PAUSED', error.retryAfterSeconds);
+        throw new QueueRequestError(
+          error.status,
+          'QUEUE_STATUS_RETRY_PAUSED',
+          error.retryAfterSeconds,
+        );
       }
       await wait(delayMs);
       if (queueGeneration() !== expectedGeneration)
