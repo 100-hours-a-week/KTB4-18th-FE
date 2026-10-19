@@ -14,11 +14,6 @@ function accessToken(sub: string, sid: string) {
   return `header.${payload}.signature`;
 }
 
-function accessToken(sub: string, sid: string) {
-  const payload = btoa(JSON.stringify({ sub, sid }));
-  return `header.${payload}.signature`;
-}
-
 describe('chat room API', () => {
   beforeEach(() => setAccessToken('access-token'));
   afterEach(() => {
