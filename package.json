@@ -16,7 +16,9 @@
     "verify:chat:integration": "node scripts/runChatRecoveryIntegration.mjs",
     "verify:chat:tab-e2e": "node scripts/runChatTabLeaveE2e.mjs",
     "verify:chat:device-e2e": "node scripts/runChatTabLeaveE2e.mjs --suite=device",
-    "verify:chat:tab-types": "tsc -p tsconfig.chatTabE2e.json"
+    "verify:chat:tab-types": "tsc -p tsconfig.chatTabE2e.json",
+    "verify:auth:tabs": "playwright test -c playwright.auth.config.ts",
+    "verify:auth:types": "tsc -p tsconfig.authVerification.json"
   },
   "dependencies": {
     "@karrotmarket/react-monochrome-icon": "^1.27.0",
