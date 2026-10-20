@@ -118,6 +118,27 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('구독 완료와 누락 메시지 복구', () => {
+  it('25명을 초과한 접속 인원도 1000명까지 전달하고 초과 이벤트는 무시한다', async () => {
+    const event = vi.fn();
+    const connection = connectChatRoom(membership, vi.fn(), event);
+    config?.onConnect?.({} as never);
+    await ready();
+    for (const connected_count of [26, 999, 1000, 1001]) {
+      receive()({
+        body: JSON.stringify({
+          type: 'CHAT_PRESENCE',
+          data: { room_id: 700, connected_count, version: connected_count },
+        }),
+      });
+    }
+    expect(
+      event.mock.calls
+        .filter(([value]) => value.type === 'CHAT_PRESENCE')
+        .map(([value]) => value.connectedCount),
+    ).toEqual([26, 999, 1000]);
+    connection();
+  });
+
   it('같은 인증 세션의 토큰 갱신 후 기존 view로 다시 연결한다', async () => {
     const status = vi.fn();
     const connection = connectChatRoom(membership, status);
