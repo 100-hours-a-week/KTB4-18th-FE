@@ -190,6 +190,54 @@ async function renderAuthenticatedMyPage() {
   return screen.findByRole('button', { name: '로그아웃' });
 }
 
+describe('탭 간 인증 세션 복구', () => {
+  it('로그인 URL의 새 탭은 refresh 성공 뒤 원래 보호 경로로 돌아간다', async () => {
+    const restored = accessTokenWithExpiration(Date.now() + 60 * 60 * 1000);
+    const fetcher = vi.fn((input: string | URL) =>
+      Promise.resolve(
+        String(input).endsWith('/token/csrf')
+          ? Response.json({ data: { csrf_token: 'csrf' } })
+          : Response.json({ data: { access_token: restored } }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    window.history.replaceState(null, '', '/login?returnTo=%2Fmy');
+    render(<App />);
+    expect(await screen.findByRole('button', { name: '로그아웃' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/my');
+    expect(getAccessToken()).toBe(restored);
+    expect(login).not.toHaveBeenCalled();
+  });
+
+  it('새 탭의 초기 복구 중 다른 탭에서 로그아웃하면 늦은 성공 응답을 무시한다', async () => {
+    const deferred = createDeferred<Response>();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL) =>
+        String(input).endsWith('/token/csrf')
+          ? Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }))
+          : deferred.promise,
+      ),
+    );
+    window.history.replaceState(null, '', '/my');
+    render(<App />);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    act(() => {
+      localStorage.setItem(
+        'meomuneum:auth-epoch',
+        JSON.stringify({ id: 'other-tab-logout', state: 'signed-out' }),
+      );
+      window.dispatchEvent(new StorageEvent('storage', { key: 'meomuneum:auth-epoch' }));
+    });
+    await act(async () => {
+      deferred.resolve(Response.json({ data: { access_token: 'late-session' } }));
+    });
+    await waitFor(() => expect(window.location.pathname).toBe('/login'));
+    expect(getAccessToken()).toBeNull();
+    expect(screen.queryByRole('button', { name: '로그아웃' })).not.toBeInTheDocument();
+  });
+});
+
 describe('access token 사전 재발급 스케줄러', () => {
   const initialTime = new Date('2026-10-01T00:00:00.000Z').getTime();
 
@@ -780,6 +828,18 @@ describe('추천 결과 없음 안내', () => {
 
 describe('로그인과 회원가입 화면 연결', () => {
   beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL) => {
+        if (String(input).endsWith('/token/csrf'))
+          return Response.json({ data: { csrf_token: 'csrf' } });
+        // These UI tests use opaque token fixtures; a background refresh is transient, not logout.
+        return Response.json(
+          { message: 'unavailable', data: null },
+          { status: getAccessToken() ? 503 : 401 },
+        );
+      }),
+    );
     const types = [
       TermType.SERVICE,
       TermType.AIPERSONAL,
@@ -820,11 +880,14 @@ describe('로그인과 회원가입 화면 연결', () => {
     vi.mocked(logout).mockResolvedValue(undefined);
   });
 
-  it('로그인 화면의 회원가입 링크가 회원가입 경로를 가리킨다', () => {
+  it('로그인 화면의 회원가입 링크가 회원가입 경로를 가리킨다', async () => {
     window.history.replaceState(null, '', '/login');
     render(<App />);
 
-    expect(screen.getByRole('link', { name: '회원가입 하기' })).toHaveAttribute('href', '/signup');
+    expect(await screen.findByRole('link', { name: '회원가입 하기' })).toHaveAttribute(
+      'href',
+      '/signup',
+    );
     expect(screen.getByRole('button', { name: '로그인' })).not.toHaveClass('visually-hidden');
   });
 
@@ -1091,7 +1154,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     window.history.replaceState(null, '', '/login');
     render(<App />);
 
-    await user.type(screen.getByLabelText('이메일'), 'login.test@example.com');
+    await user.type(await screen.findByLabelText('이메일'), 'login.test@example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
     await user.click(screen.getByRole('button', { name: '로그인' }));
 
@@ -1114,7 +1177,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     );
     render(<App />);
 
-    await user.type(screen.getByLabelText('이메일'), 'login.test@example.com');
+    await user.type(await screen.findByLabelText('이메일'), 'login.test@example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
     await user.click(screen.getByRole('button', { name: '로그인' }));
 
@@ -1131,7 +1194,7 @@ describe('로그인과 회원가입 화면 연결', () => {
       window.history.replaceState(null, '', `/login?returnTo=${encodeURIComponent(returnTo)}`);
       render(<App />);
 
-      await user.type(screen.getByLabelText('이메일'), 'login.test@example.com');
+      await user.type(await screen.findByLabelText('이메일'), 'login.test@example.com');
       await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
       await user.click(screen.getByRole('button', { name: '로그인' }));
 
@@ -1145,7 +1208,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     window.history.replaceState(null, '', '/login');
     render(<App />);
 
-    await user.type(screen.getByLabelText('이메일'), 'login.test@example.com');
+    await user.type(await screen.findByLabelText('이메일'), 'login.test@example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
     await user.click(screen.getByRole('button', { name: '로그인' }));
     await screen.findByRole('button', { name: '마이' });
@@ -1165,7 +1228,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     const user = userEvent.setup();
     window.history.replaceState(null, '', '/login');
     render(<App />);
-    await user.type(screen.getByLabelText('이메일'), 'login.test@example.com');
+    await user.type(await screen.findByLabelText('이메일'), 'login.test@example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
     await user.click(screen.getByRole('button', { name: '로그인' }));
     expect(await screen.findByRole('heading', { name: '음악 지도' })).toBeInTheDocument();
@@ -1271,7 +1334,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     window.history.replaceState(null, '', '/login');
     render(<App />);
 
-    await user.type(screen.getByLabelText('이메일'), 'login.test@example.com');
+    await user.type(await screen.findByLabelText('이메일'), 'login.test@example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
     await user.click(screen.getByRole('button', { name: '로그인' }));
     await user.click(await screen.findByRole('button', { name: '채팅' }));

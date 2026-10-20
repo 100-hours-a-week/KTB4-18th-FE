@@ -149,6 +149,7 @@ function App() {
 
   useEffect(() => {
     const onExpired = () => {
+      advanceAuthIntent();
       setAuthStatus((current) =>
         current === 'logging-in' || current === 'logging-out' ? current : 'guest',
       );
@@ -156,6 +157,12 @@ function App() {
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
   }, []);
+
+  useEffect(() => {
+    if (pathname === LOGIN_PATH && authStatus === 'authenticated') {
+      replaceRoute(getSafeReturnTo(routeLocation.search));
+    }
+  }, [pathname, routeLocation.search, authStatus]);
 
   useEffect(() => {
     if (!isProtectedRoute || authStatus !== 'guest') return;
@@ -345,6 +352,18 @@ function App() {
     }
   };
 
+  if (
+    pathname === LOGIN_PATH &&
+    authCapability.supported &&
+    (authStatus === 'restoring' || authStatus === 'authenticated')
+  ) {
+    return (
+      <main role="status" aria-live="polite">
+        로그인 상태를 확인하고 있어요.
+      </main>
+    );
+  }
+
   if (pathname === LOGIN_PATH) {
     return (
       <LoginPage
@@ -466,7 +485,12 @@ function getSafeReturnTo(search: string): string {
   if (!candidate || !candidate.startsWith('/') || candidate.startsWith('//')) return '/';
   try {
     const url = new URL(candidate, window.location.origin);
-    if (url.origin !== window.location.origin) return '/';
+    if (
+      url.origin !== window.location.origin ||
+      url.pathname === LOGIN_PATH ||
+      url.pathname === SIGNUP_PATH
+    )
+      return '/';
     return `${url.pathname}${url.search}${url.hash}`;
   } catch {
     return '/';
