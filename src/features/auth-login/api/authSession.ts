@@ -18,7 +18,8 @@ const AUTH_RESPONSE_MAX_BYTES = 64 * 1024;
 // Keep client retries 15 seconds inside the backend's 60-second replay window.
 const REFRESH_RETRY_CUTOFF_MS = 45_000;
 
-type AuthBroadcastMessage = { type: 'auth-changed' };
+type AuthBroadcastMessage = { type: 'auth-changed'; epoch?: string };
+type AuthEpochState = 'available' | 'signed-out';
 
 export type AuthStatus =
   'restoring' | 'authenticated' | 'guest' | 'retryable-error' | 'logging-in' | 'logging-out';
@@ -53,6 +54,23 @@ let storageUnavailable = false;
 let storageNeedsClear = false;
 let authTransitionActionDepth = 0;
 let lastAccessTokenRefreshAt = 0;
+let lastHandledPeerEpoch: string | null = null;
+
+function epochState(epoch: string): AuthEpochState | null {
+  try {
+    const value: unknown = JSON.parse(epoch);
+    if (
+      value &&
+      typeof value === 'object' &&
+      'state' in value &&
+      (value.state === 'available' || value.state === 'signed-out')
+    )
+      return value.state;
+  } catch {
+    /* Legacy opaque epochs remain invalidation signals. */
+  }
+  return null;
+}
 
 function assertAuthCapabilities(): void {
   const result = probeAuthCapabilities();
@@ -77,20 +95,30 @@ function sharedAuthEpoch(): string {
 
 function advanceSharedAuthEpoch(): void {
   try {
-    const nextEpoch = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    window.localStorage.setItem(AUTH_EPOCH_KEY, nextEpoch);
     const token = sessionTokenStorage()?.getItem(ACCESS_TOKEN_KEY);
+    const nextEpoch = JSON.stringify({
+      id: crypto.randomUUID(),
+      state: token ? 'available' : 'signed-out',
+    });
+    window.localStorage.setItem(AUTH_EPOCH_KEY, nextEpoch);
+    lastHandledPeerEpoch = nextEpoch;
     if (token) sessionTokenStorage()?.setItem(ACCESS_TOKEN_EPOCH_KEY, nextEpoch);
   } catch {
     throw new AuthRequestError(null);
   }
 }
 
-function invalidateForPeerAuthChange(): void {
+function invalidateForPeerAuthChange(force = false): void {
+  const epoch = sharedAuthEpoch();
+  if (!force && epoch === lastHandledPeerEpoch) return;
+  lastHandledPeerEpoch = epoch;
   authTransitionGeneration += 1;
+  // A previous generation's refresh must not absorb the new session's restore.
+  pendingRefresh = null;
   clearAccessToken();
-  window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
-  window.dispatchEvent(new Event(AUTH_SESSION_AVAILABLE_EVENT));
+  if (epochState(epoch) !== 'available') window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+  if (epochState(epoch) !== 'signed-out')
+    window.dispatchEvent(new Event(AUTH_SESSION_AVAILABLE_EVENT));
 }
 
 let authChannel: BroadcastChannel | null = null;
@@ -104,7 +132,8 @@ try {
 
 authChannel?.addEventListener('message', (event: MessageEvent<AuthBroadcastMessage>) => {
   if (event.data?.type !== 'auth-changed') return;
-  invalidateForPeerAuthChange();
+  if (event.data.epoch && event.data.epoch !== sharedAuthEpoch()) return;
+  invalidateForPeerAuthChange(!event.data.epoch);
 });
 
 if (typeof window !== 'undefined') {
@@ -152,11 +181,7 @@ export function getAccessToken(): string | null {
       const epoch = sharedAuthEpoch();
       const tokenEpoch = storage.getItem(ACCESS_TOKEN_EPOCH_KEY);
       if (tokenEpoch && tokenEpoch !== epoch) {
-        storage.removeItem(ACCESS_TOKEN_KEY);
-        storage.removeItem(ACCESS_TOKEN_EPOCH_KEY);
-        accessTokenInMemory = null;
-        generation += 1;
-        window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+        invalidateForPeerAuthChange();
         return null;
       }
       if (!tokenEpoch) {
@@ -212,7 +237,9 @@ function persistAccessToken(token: string, invalidateRequests: boolean, refreshe
 
   try {
     storage.setItem(ACCESS_TOKEN_KEY, token);
-    storage.setItem(ACCESS_TOKEN_EPOCH_KEY, sharedAuthEpoch());
+    const epoch = sharedAuthEpoch();
+    storage.setItem(ACCESS_TOKEN_EPOCH_KEY, epoch);
+    lastHandledPeerEpoch = epoch;
   } catch {
     storageUnavailable = true;
     accessTokenInMemory = null;
@@ -268,7 +295,10 @@ export function clearAccessToken(): void {
 
 export function announceAuthChange(): void {
   try {
-    authChannel?.postMessage({ type: 'auth-changed' } satisfies AuthBroadcastMessage);
+    authChannel?.postMessage({
+      type: 'auth-changed',
+      epoch: sharedAuthEpoch(),
+    } satisfies AuthBroadcastMessage);
   } catch {
     // The current tab remains safe; browsers with BroadcastChannel synchronize peer tabs.
   }
@@ -416,9 +446,11 @@ async function refreshOnce(retryCsrf: boolean, requestEpoch: string): Promise<st
     credentials: 'include',
     headers: { 'X-CSRF-TOKEN': csrf, 'X-Refresh-Operation-Id': refreshOperation.id },
   });
+  if (sharedAuthEpoch() !== requestEpoch) throw new AuthRequestError(null);
   if (response.status === 403 && retryCsrf) return refreshOnce(false, requestEpoch);
   if (response.status === 403) clearRefreshOperation();
   const body = await response.json().catch(() => null);
+  if (sharedAuthEpoch() !== requestEpoch) throw new AuthRequestError(null);
   if (!response.ok || typeof body?.data?.access_token !== 'string') {
     if (response.status === 401) clearRefreshOperation();
     throw new AuthRequestError(response.status);
@@ -806,6 +838,7 @@ export function runAuthTransition<T>(action: () => Promise<T>): Promise<T> {
         } finally {
           authTransitionActionDepth -= 1;
         }
+        clearRefreshOperation();
         advanceSharedAuthEpoch();
         announceAuthChange();
         return result;
@@ -828,6 +861,7 @@ export function resetAuthSessionForTests(): void {
   storageNeedsClear = false;
   authTransitionActionDepth = 0;
   lastAccessTokenRefreshAt = 0;
+  lastHandledPeerEpoch = null;
   try {
     window.localStorage.removeItem(AUTH_EPOCH_KEY);
     window.localStorage.removeItem(REFRESH_OPERATION_KEY);

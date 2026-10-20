@@ -922,7 +922,10 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
       await Promise.all([first, second]);
       expect(order).toEqual(['first:start', 'first:end', 'second:start', 'second:end']);
       await vi.waitFor(() => expect(channelMessages).toHaveLength(2));
-      expect(channelMessages).toEqual([{ type: 'auth-changed' }, { type: 'auth-changed' }]);
+      expect(channelMessages).toEqual([
+        { type: 'auth-changed', epoch: expect.any(String) },
+        { type: 'auth-changed', epoch: expect.any(String) },
+      ]);
 
       firstTab.setAccessToken('peer-session-token');
       expect(firstTab.getAccessToken()).toBe('peer-session-token');
