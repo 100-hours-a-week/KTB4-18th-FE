@@ -66,6 +66,7 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
     if (inputNotice) setInputNotice('');
   }
   const regionName = chat.activeRoom?.room.regionName;
+  const capacity = chat.activeRoom?.room.capacity ?? 1000;
   const canRetry = ['error', 'full', 'left'].includes(chat.status);
 
   return (
@@ -86,7 +87,7 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
           {chat.presenceStatus === 'live' &&
           chat.connectedCount !== null &&
           chat.connectedCount !== undefined
-            ? `${chat.connectedCount} / ${chat.activeRoom?.room.capacity ?? 25}명`
+            ? `${chat.connectedCount} / ${capacity}명`
             : chat.presenceStatus === 'disconnected'
               ? '연결 끊김'
               : chat.presenceStatus === 'error'
@@ -96,7 +97,7 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
       </header>
       <div className="region-chat-status">
         <p role="status">{chat.message}</p>
-        <span className="sr-only">정원 25명</span>
+        <span className="sr-only">정원 {capacity}명</span>
         {canRetry && (
           <button type="button" className="btn-primary" onClick={chat.retry}>
             다시 입장
