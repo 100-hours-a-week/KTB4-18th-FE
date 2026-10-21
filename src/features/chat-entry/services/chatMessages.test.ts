@@ -42,8 +42,12 @@ describe('채팅 메시지 이벤트 계약', () => {
         data: { room_id: 700, connected_count, version },
       });
     expect(parseChatEvent(encode(0, 0))).toMatchObject({ connectedCount: 0, version: 0 });
+    for (const count of [26, 999, 1000]) {
+      expect(parseChatEvent(encode(count, 1))).toMatchObject({ connectedCount: count, version: 1 });
+    }
     expect(parseChatEvent(encode(-1, 1))).toBeNull();
-    expect(parseChatEvent(encode(26, 1))).toBeNull();
+    expect(parseChatEvent(encode(1001, 1))).toBeNull();
+    expect(parseChatEvent(encode(999.5, 1))).toBeNull();
     expect(parseChatEvent(encode(1, 1.5))).toBeNull();
   });
 
