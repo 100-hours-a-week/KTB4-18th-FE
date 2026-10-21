@@ -100,7 +100,7 @@ export function parseChatEvent(body: string): ChatEvent | null {
       typeof data.connected_count === 'number' &&
       Number.isSafeInteger(data.connected_count) &&
       data.connected_count >= 0 &&
-      data.connected_count <= 25 &&
+      data.connected_count <= 1000 &&
       typeof data.version === 'number' &&
       Number.isSafeInteger(data.version) &&
       data.version >= 0

@@ -30,7 +30,7 @@ describe('chat room API', () => {
             room_id: 700,
             region_id: 25,
             region_name: '성남시 분당구',
-            capacity: 25,
+            capacity: 1000,
             status: 'ACTIVE',
           },
         }),
@@ -45,7 +45,7 @@ describe('chat room API', () => {
       roomId: 700,
       regionId: 25,
       regionName: '성남시 분당구',
-      capacity: 25,
+      capacity: 1000,
       status: 'ACTIVE',
     });
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];

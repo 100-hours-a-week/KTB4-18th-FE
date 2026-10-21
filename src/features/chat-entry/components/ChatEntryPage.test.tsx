@@ -221,11 +221,13 @@ describe('ChatEntryPage', () => {
     expect(window.location.pathname).toBe('/');
   });
 
-  it('입장과 구독 완료 후 지역명, 정원, 퇴장 버튼을 제공한다', () => {
+  it.each([25, 1000])('서버 정원 %i명과 현재 인원을 표시하고 퇴장 버튼을 제공한다', (capacity) => {
     vi.mocked(useChatParticipation).mockReturnValue({
       status: 'ready',
       message: '채팅방에 입장했어요.',
       isReady: true,
+      presenceStatus: 'live',
+      connectedCount: capacity,
       retry,
       send: vi.fn().mockReturnValue(true),
       retryMessage: vi.fn().mockReturnValue(true),
@@ -235,7 +237,7 @@ describe('ChatEntryPage', () => {
           roomId: 700,
           regionId: 25,
           regionName: '성남시 분당구',
-          capacity: 25,
+          capacity,
           status: 'ACTIVE',
         },
         membership: {
@@ -249,7 +251,10 @@ describe('ChatEntryPage', () => {
     });
     render(<ChatEntryPage />);
     expect(screen.getByRole('heading', { name: '성남시 분당구 채팅방' })).toBeInTheDocument();
-    expect(screen.getByText('정원 25명')).toBeInTheDocument();
+    expect(screen.getByText(`정원 ${capacity}명`)).toBeInTheDocument();
+    expect(screen.getByLabelText('현재 접속 인원')).toHaveTextContent(
+      `${capacity} / ${capacity}명`,
+    );
     fireEvent.click(screen.getByRole('button', { name: '퇴장' }));
     expect(window.location.pathname).toBe('/');
   });
@@ -360,6 +365,7 @@ describe('ChatEntryPage', () => {
     });
     render(<ChatEntryPage />);
     expect(screen.getByRole('status')).toHaveTextContent('정원이 가득 찼습니다.');
+    expect(screen.getByRole('textbox', { name: '메시지' })).toBeDisabled();
     screen.getByRole('button', { name: '다시 입장' }).focus();
     await userEvent.setup().keyboard('{Enter}');
     expect(retry).toHaveBeenCalledOnce();
