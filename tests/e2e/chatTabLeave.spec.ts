@@ -110,14 +110,14 @@ test('메뉴 이동은 해당 탭만 종료하고 재입장하면 남은 탭의 
   await expect.poll(() => second.joins.length).toBe(1);
   expect(first.joins[0].membershipId).toBe(second.joins[0].membershipId);
   expect(first.joins[0].viewSessionId).not.toBe(second.joins[0].viewSessionId);
-  await expect(secondPage.getByLabel('현재 접속 인원')).toHaveText('1 / 25명');
+  await expect(secondPage.getByLabel('현재 접속 인원')).toHaveText('1 / 1000명');
   const seen = `함께 본 대화 ${test.info().project.name}`;
   await send(secondPage, seen);
   await expect(page.getByRole('log').getByText(seen, { exact: true })).toBeVisible();
   await leave(page);
   expect(first.departures).toEqual([first.joins[0].viewSessionId]);
   await revoked(secondPage, first.joins[0]);
-  await expect(secondPage.getByLabel('현재 접속 인원')).toHaveText('1 / 25명');
+  await expect(secondPage.getByLabel('현재 접속 인원')).toHaveText('1 / 1000명');
   const absent = `퇴장 중 대화 ${test.info().project.name}`;
   await send(secondPage, absent);
   await page.getByRole('button', { name: '채팅 탭', exact: true }).click();
@@ -142,11 +142,11 @@ test('마지막 탭 퇴장 때 계정 인원이 줄고 다른 계정은 계속 �
     await second.goto('/chat');
     await ready(page);
     await ready(second);
-    await expect(watcher.page.getByLabel('현재 접속 인원')).toHaveText('2 / 25명');
+    await expect(watcher.page.getByLabel('현재 접속 인원')).toHaveText('2 / 1000명');
     await leave(page);
-    await expect(watcher.page.getByLabel('현재 접속 인원')).toHaveText('2 / 25명');
+    await expect(watcher.page.getByLabel('현재 접속 인원')).toHaveText('2 / 1000명');
     await leave(second);
-    await expect(watcher.page.getByLabel('현재 접속 인원')).toHaveText('1 / 25명');
+    await expect(watcher.page.getByLabel('현재 접속 인원')).toHaveText('1 / 1000명');
     await send(watcher.page, `마지막 탭 퇴장 후 ${test.info().project.name}`);
   } finally {
     await watcher.close();
@@ -163,7 +163,7 @@ test('실제 탭 닫기 후에도 남은 탭의 채팅과 계정 인원을 유�
   await expect.poll(() => first.joins.length).toBe(1);
   await page.close({ runBeforeUnload: true });
   await expect.poll(() => page.isClosed()).toBe(true);
-  await expect(second.getByLabel('현재 접속 인원')).toHaveText('1 / 25명');
+  await expect(second.getByLabel('현재 접속 인원')).toHaveText('1 / 1000명');
   await send(second, `탭 닫기 후 전송 ${test.info().project.name}`);
 });
 
@@ -181,7 +181,7 @@ test('새로고침은 새 view로 입장하고 남은 탭을 유지한다', asyn
   await expect.poll(() => first.joins.length).toBe(2);
   expect(first.joins[1].viewSessionId).not.toBe(previous.viewSessionId);
   // Unload keepalive delivery is best effort. Only confirmed DELETE promises view revocation.
-  await expect(second.getByLabel('현재 접속 인원')).toHaveText('1 / 25명');
+  await expect(second.getByLabel('현재 접속 인원')).toHaveText('1 / 1000명');
   const cached = await page.evaluate(() =>
     sessionStorage.getItem('meomuneum:chat-conversations:v1'),
   );

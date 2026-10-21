@@ -130,7 +130,7 @@ test('빈 저장소의 다른 기기는 계정 이력을 복원하고 다른 계
   const second = await openDevice();
   distinctSessions(first, second);
   await expect(message(second.page, past)).toHaveCount(1);
-  await expect(second.page.getByLabel('현재 접속 인원')).toHaveText('1 / 25명');
+  await expect(second.page.getByLabel('현재 접속 인원')).toHaveText('1 / 1000명');
   const observer = await openDevice({ observer: true });
   expect(observer.identity.sub).not.toBe(first.identity.sub);
   await expect(message(observer.page, past)).toHaveCount(0);
@@ -154,14 +154,14 @@ test('한 기기 퇴장 중 다른 기기의 참여 이력은 복원하고 모�
   await expect(message(first.page, participated)).toHaveCount(1);
   await leave(first.page);
   await leave(second.page);
-  await expect(observer.page.getByLabel('현재 접속 인원')).toHaveText('1 / 25명');
+  await expect(observer.page.getByLabel('현재 접속 인원')).toHaveText('1 / 1000명');
   const absent = unique('모든 기기 부재 대화');
   await send(observer.page, absent);
   const fresh = await openDevice();
   expect(fresh.identity.sid).not.toBe(first.identity.sid);
   await expect(message(fresh.page, participated)).toHaveCount(1);
   await expect(message(fresh.page, absent)).toHaveCount(0);
-  await expect(observer.page.getByLabel('현재 접속 인원')).toHaveText('2 / 25명');
+  await expect(observer.page.getByLabel('현재 접속 인원')).toHaveText('2 / 1000명');
   await send(fresh.page, unique('새 인증 세션 전송'));
 });
 
