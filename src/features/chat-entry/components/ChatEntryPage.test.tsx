@@ -254,6 +254,99 @@ describe('ChatEntryPage', () => {
     expect(window.location.pathname).toBe('/');
   });
 
+  it.each([
+    [4, 25],
+    [0, 1000],
+    [9999, 9999],
+  ])('live 접속 인원 %s와 실제 정원 %s를 헤더와 접근성 안내에 반영한다', (count, capacity) => {
+    const state = readyState();
+    vi.mocked(useChatParticipation).mockReturnValue({
+      ...state,
+      connectedCount: count,
+      activeRoom: { ...state.activeRoom, room: { ...state.activeRoom.room, capacity } },
+    });
+    const { container } = render(<ChatEntryPage />);
+    const counter = container.querySelector('.chat-entry-capacity');
+    expect(counter).toHaveTextContent(`${count}/${capacity}`);
+    expect(counter).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.getByLabelText('현재 접속 인원')).toHaveTextContent(`${count} / ${capacity}명`);
+    expect(screen.getByLabelText('현재 접속 인원')).toHaveClass('chat-entry-visually-hidden');
+    expect(screen.getByText(`정원 ${capacity}명`)).toHaveClass('chat-entry-visually-hidden');
+  });
+
+  it.each([null, undefined])('live 상태여도 인원 %s는 미확인으로 표시한다', (connectedCount) => {
+    vi.mocked(useChatParticipation).mockReturnValue({ ...readyState(), connectedCount });
+    render(<ChatEntryPage />);
+    expect(screen.getByRole('heading').closest('header')).toHaveTextContent('-/25');
+    expect(screen.getByLabelText('현재 접속 인원')).toHaveTextContent('인원 확인 중');
+    expect(screen.getByLabelText('현재 접속 인원')).toHaveClass('chat-entry-visually-hidden');
+  });
+
+  it.each([
+    ['loading', '인원 확인 중'],
+    ['error', '인원 확인 실패'],
+    ['disconnected', '연결 끊김'],
+    [undefined, '인원 확인 중'],
+  ] as const)('%s 상태의 오래된 인원은 숨기고 기존 안내를 유지한다', (presenceStatus, notice) => {
+    vi.mocked(useChatParticipation).mockReturnValue({
+      ...readyState(),
+      presenceStatus,
+      connectedCount: 23,
+    });
+    render(<ChatEntryPage />);
+    expect(screen.getByRole('heading').closest('header')).toHaveTextContent('-/25');
+    const countNotice = screen.getByLabelText('현재 접속 인원');
+    expect(countNotice).toHaveTextContent(notice);
+    expect(countNotice.classList.contains('chat-entry-visually-hidden')).toBe(
+      presenceStatus !== 'error' && presenceStatus !== 'disconnected',
+    );
+    expect(screen.getByRole('textbox')).toHaveAttribute(
+      'aria-describedby',
+      'region-chat-count region-chat-notice',
+    );
+  });
+
+  it('방이 없으면 미확인 정원을 표시하고 임의 정원 안내를 만들지 않는다', () => {
+    vi.mocked(useChatParticipation).mockReturnValue({ ...readyState(), activeRoom: null });
+    render(<ChatEntryPage />);
+    expect(
+      screen.getByRole('heading', { name: '우리 지역 채팅방' }).closest('header'),
+    ).toHaveTextContent('4/-');
+    expect(screen.getByLabelText('현재 접속 인원')).toHaveTextContent('4 / -명');
+    expect(screen.queryByText(/^정원 /)).not.toBeInTheDocument();
+  });
+
+  it('방과 접속 인원을 확인하기 전에는 헤더 양쪽 숫자를 미확인으로 표시한다', () => {
+    render(<ChatEntryPage />);
+    expect(screen.getByRole('heading').closest('header')).toHaveTextContent('-/-');
+    expect(screen.queryByText(/^정원 /)).not.toBeInTheDocument();
+  });
+
+  it('같은 화면에서 바뀐 접속 인원과 정원을 즉시 반영하고 재연결 중 오래된 인원은 숨긴다', () => {
+    const state = readyState();
+    vi.mocked(useChatParticipation).mockReturnValue(state);
+    const view = render(<ChatEntryPage />);
+    expect(screen.getByRole('heading').closest('header')).toHaveTextContent('4/25');
+    const updated = {
+      ...state,
+      connectedCount: 12,
+      activeRoom: { ...state.activeRoom, room: { ...state.activeRoom.room, capacity: 1000 } },
+    };
+    vi.mocked(useChatParticipation).mockReturnValue(updated);
+    view.rerender(<ChatEntryPage />);
+    expect(screen.getByRole('heading').closest('header')).toHaveTextContent('12/1000');
+    expect(screen.getByText('정원 1000명')).toHaveClass('chat-entry-visually-hidden');
+    expect(screen.queryByText('정원 25명')).not.toBeInTheDocument();
+    vi.mocked(useChatParticipation).mockReturnValue({ ...updated, presenceStatus: 'disconnected' });
+    view.rerender(<ChatEntryPage />);
+    expect(screen.getByRole('heading').closest('header')).toHaveTextContent('-/1000');
+    expect(screen.getByLabelText('현재 접속 인원')).toHaveTextContent('연결 끊김');
+    vi.mocked(useChatParticipation).mockReturnValue({ ...updated, connectedCount: 0 });
+    view.rerender(<ChatEntryPage />);
+    expect(screen.getByRole('heading').closest('header')).toHaveTextContent('0/1000');
+    expect(screen.getByLabelText('현재 접속 인원')).toHaveTextContent('0 / 1000명');
+  });
+
   it('정원 초과 상태에서 키보드로 다시 입장할 수 있다', async () => {
     vi.mocked(useChatParticipation).mockReturnValue({
       status: 'full',

@@ -50,7 +50,8 @@
 .chat-entry-header {
   display: grid;
   flex-shrink: 0;
-  grid-template-columns: 32px minmax(0, 1fr) 32px;
+  grid-template-columns: 80px minmax(0, 1fr) 80px;
+  column-gap: 8px;
   align-items: center;
   height: 68px;
   padding: 24px 16px 12px;
@@ -69,6 +70,20 @@
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-entry-capacity {
+  justify-self: end;
+  color: #171717;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  letter-spacing: 0.145px;
+  white-space: nowrap;
+}
+
+.chat-entry-capacity span + span {
+  color: #a1a1a1;
 }
 
 .chat-entry-back {

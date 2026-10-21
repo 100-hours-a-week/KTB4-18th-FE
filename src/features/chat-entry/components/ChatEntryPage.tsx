@@ -102,6 +102,11 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
     if (inputNotice) setInputNotice('');
   }
   const regionName = chat.activeRoom?.room.regionName;
+  const capacity = chat.activeRoom?.room.capacity;
+  const isLiveCount =
+    chat.presenceStatus === 'live' &&
+    chat.connectedCount !== null &&
+    chat.connectedCount !== undefined;
   const canRetry = ['error', 'full', 'left'].includes(chat.status);
   const isNormal = chat.status === 'ready' && chat.isReady;
   const isPresenceError = ['disconnected', 'error'].includes(chat.presenceStatus ?? '');
@@ -153,6 +158,10 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
             <img src="/icons/chat/back.svg" alt="" aria-hidden="true" width="24" height="24" />
           </button>
           <h1 id="chat-entry-title">{regionName ? `${regionName} 채팅방` : '우리 지역 채팅방'}</h1>
+          <div className="chat-entry-capacity" aria-hidden="true">
+            <span>{isLiveCount ? chat.connectedCount : '-'}</span>
+            <span>/{capacity ?? '-'}</span>
+          </div>
         </header>
         <div className="region-chat-status">
           <p role="status" className={isNormal ? 'chat-entry-visually-hidden' : undefined}>
@@ -162,17 +171,17 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
             className={`region-chat-count${isPresenceError ? '' : ' chat-entry-visually-hidden'}`}
             aria-label="현재 접속 인원"
           >
-            {chat.presenceStatus === 'live' &&
-            chat.connectedCount !== null &&
-            chat.connectedCount !== undefined
-              ? `${chat.connectedCount} / ${chat.activeRoom?.room.capacity ?? 25}명`
+            {isLiveCount
+              ? `${chat.connectedCount} / ${capacity ?? '-'}명`
               : chat.presenceStatus === 'disconnected'
                 ? '연결 끊김'
                 : chat.presenceStatus === 'error'
                   ? '인원 확인 실패'
                   : '인원 확인 중'}
           </p>
-          <span className="chat-entry-visually-hidden">정원 25명</span>
+          {capacity !== null && capacity !== undefined && (
+            <span className="chat-entry-visually-hidden">정원 {capacity}명</span>
+          )}
           {canRetry && (
             <button type="button" onClick={chat.retry}>
               다시 입장

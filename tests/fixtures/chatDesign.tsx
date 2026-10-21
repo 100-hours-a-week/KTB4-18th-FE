@@ -27,6 +27,8 @@ declare global {
 
 const params = new URLSearchParams(window.location.search);
 const initialStory: Story = params.get('story') === 'mobile' ? 'mobile' : 'web';
+const count = params.get('count');
+const capacity = params.get('capacity');
 const content =
   '지금의 순간에 음악을 더해볼까요?\n느껴지는 분위기나 장소, 날씨를 편하게 들려주세요.\n이 순간에 어울리는 음악을 골라드릴게요.';
 const actions: Action[] = [];
@@ -40,13 +42,13 @@ function referenceState(story: Story): ChatParticipationState {
     isReady: true,
     currentUserId: 7,
     presenceStatus: 'live',
-    connectedCount: 4,
+    connectedCount: count === null ? 1 : Number(count),
     activeRoom: {
       room: {
         roomId: 700,
         regionId: 25,
         regionName: params.get('region') || '성남시',
-        capacity: 25,
+        capacity: capacity === null ? 1000 : Number(capacity),
         status: 'ACTIVE',
       },
       membership: {
@@ -143,7 +145,7 @@ function scenarioState(): ChatParticipationState {
   const presence = params.get('presence');
   if (['live', 'loading', 'error', 'disconnected'].includes(presence ?? '')) {
     state.presenceStatus = presence as ChatParticipationState['presenceStatus'];
-    if (presence !== 'live') state.connectedCount = null;
+    if (presence !== 'live' && count === null) state.connectedCount = null;
   }
   return state;
 }
