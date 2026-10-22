@@ -21,8 +21,10 @@ import {
   type LoginQueueTicket,
 } from '../api/loginQueueApi';
 import type { LoginSuccessResponse } from '../api/loginApi';
+import { checkUserAvailability } from '../../user-signup/api/userAvailabilityApi';
 import type { FieldErrors, CapacityWait } from './loginQueueFlowUtils';
 import {
+  EMAIL_NOT_REGISTERED_ERROR,
   getQueueErrorMessage,
   hasNonWhitespacePassword,
   normalizeEmail,
@@ -32,6 +34,8 @@ import {
 
 const MAX_TIMER_DELAY_MS = 2_147_000_000;
 const MAX_USERS_AHEAD_WITHOUT_DIALOG = 150;
+const INVALID_CREDENTIALS_MESSAGE =
+  '이메일 또는 비밀번호를 확인해 주세요. 비밀번호를 다시 입력해 주세요.';
 
 function shouldShowQueueDialog(ticket: LoginQueueTicket): boolean {
   return ticket.status === 'WAITING' && (ticket.usersAhead ?? 0) > MAX_USERS_AHEAD_WITHOUT_DIALOG;
@@ -130,6 +134,7 @@ export function useLoginQueueFlow({
     setFieldErrors((current) => ({
       ...current,
       email: validate(nextEmail, password).email,
+      emailNeedsSignup: false,
     }));
   }
 
@@ -150,6 +155,25 @@ export function useLoginQueueFlow({
       if (onLoginSuccess) onLoginSuccess(response);
     },
     [onLoginSuccess, setIsLoginSuccessful, setPassword, setRequestError],
+  );
+
+  const showCredentialFailure = useCallback(
+    async (submittedEmail: string, isCurrent: () => boolean) => {
+      let emailAvailable = false;
+      try {
+        emailAvailable = await checkUserAvailability('email', submittedEmail);
+      } catch {
+        // Keep the generic credential message when the availability check cannot complete.
+      }
+      if (!isCurrent()) return;
+      if (emailAvailable) {
+        setFieldErrors({ email: EMAIL_NOT_REGISTERED_ERROR, emailNeedsSignup: true });
+        setRequestError('');
+      } else {
+        setRequestError(INVALID_CREDENTIALS_MESSAGE);
+      }
+    },
+    [setFieldErrors, setRequestError],
   );
 
   const recoverIfSuccessful = useCallback(
@@ -267,9 +291,8 @@ export function useLoginQueueFlow({
       invalidateStatusReads();
       const requestSequence = statusRequestSequence.current;
       const sharedGeneration = getLoginQueueGeneration();
-      const isCurrent = () =>
-        requestSequence === statusRequestSequence.current &&
-        sharedGeneration === getLoginQueueGeneration();
+      const isRequestCurrent = () => requestSequence === statusRequestSequence.current;
+      const isCurrent = () => isRequestCurrent() && sharedGeneration === getLoginQueueGeneration();
       isSubmittingRef.current = true;
       setIsSubmitting(true);
       setQueueMessage('차례가 되었어요. 로그인을 진행하고 있어요.');
@@ -287,20 +310,19 @@ export function useLoginQueueFlow({
             finishLogin(response as LoginSuccessResponse);
             return;
           } catch (error) {
-            if (!isCurrent()) return;
             if (error instanceof QueueRequestError && error.status === 401) {
+              if (!isRequestCurrent()) return;
               queueGeneration.current += 1;
               setQueueTicket(null);
               setIsQueueOpen(false);
               setPassword('');
-              setRequestError(
-                '이메일 또는 비밀번호를 확인해 주세요. 비밀번호를 다시 입력해 주세요.',
-              );
               setIsLoginSuccessful(false);
               clearLoginOperationId();
               onLoginFailure?.();
+              await showCredentialFailure(credentials.email, isRequestCurrent);
               return;
             }
+            if (!isCurrent()) return;
             if (
               error instanceof QueueRequestError &&
               error.status === 429 &&
@@ -398,11 +420,9 @@ export function useLoginQueueFlow({
                     setQueueTicket(null);
                     setIsQueueOpen(false);
                     setPassword('');
-                    setRequestError(
-                      '이메일 또는 비밀번호를 확인해 주세요. 비밀번호를 다시 입력해 주세요.',
-                    );
                     clearLoginOperationId();
                     onLoginFailure?.();
+                    await showCredentialFailure(credentials.email, isCurrent);
                     return;
                   }
                   if (
@@ -462,6 +482,7 @@ export function useLoginQueueFlow({
       onLoginStart,
       queueTicket?.diagnosticCorrId,
       recoverIfSuccessful,
+      showCredentialFailure,
       setIsLoginSuccessful,
       setIsSubmitting,
       setPassword,
@@ -573,7 +594,13 @@ export function useLoginQueueFlow({
     email: string;
     password: string;
   }): Promise<void> {
+    const requestSequence = statusRequestSequence.current;
+    const sharedGeneration = getLoginQueueGeneration();
+    const isCurrent = () =>
+      requestSequence === statusRequestSequence.current &&
+      sharedGeneration === getLoginQueueGeneration();
     const ticket = await confirmNewWaitingTicket(await startOrResumeLoginQueue());
+    if (!isCurrent()) return;
     activeSharedQueueGeneration.current = getLoginQueueGeneration();
     setQueueTicket(ticket);
     if (closeTerminalQueue(ticket)) return;
@@ -588,6 +615,15 @@ export function useLoginQueueFlow({
       finishLogin({ message: 'login success', data: recovered.data });
       return;
     }
+    if (ticket.status === 'CONSUMED' && ticket.loginOutcome === 'INVALID_CREDENTIALS') {
+      setQueueTicket(null);
+      setPassword('');
+      setIsQueueOpen(false);
+      clearLoginOperationId();
+      onLoginFailure?.();
+      await showCredentialFailure(credentials.email, isCurrent);
+      return;
+    }
     setAmbiguousLogin(false);
     setIsQueueOpen(shouldShowQueueDialog(ticket));
   }
@@ -596,6 +632,11 @@ export function useLoginQueueFlow({
     event.preventDefault();
     if (isSubmittingRef.current) return;
     invalidateStatusReads();
+    const requestSequence = statusRequestSequence.current;
+    const sharedGeneration = getLoginQueueGeneration();
+    const isCurrent = () =>
+      requestSequence === statusRequestSequence.current &&
+      sharedGeneration === getLoginQueueGeneration();
     lastQueuePositionUpdatedAt.current = 0;
     const normalizedEmail = normalizeEmail(email.trim());
     setEmail(normalizedEmail);
@@ -622,6 +663,7 @@ export function useLoginQueueFlow({
         return;
       }
       const ticket = await confirmNewWaitingTicket(await startOrResumeLoginQueue());
+      if (!isCurrent()) return;
       setCapacityWait(null);
       activeSharedQueueGeneration.current = getLoginQueueGeneration();
       setQueueTicket(ticket);
@@ -638,6 +680,13 @@ export function useLoginQueueFlow({
       } else if (ticket.status === 'CONSUMED' && ticket.loginOutcome === 'SUCCESS') {
         const recovered = await recoverQueuedLogin();
         finishLogin({ message: 'login success', data: recovered.data });
+      } else if (ticket.status === 'CONSUMED' && ticket.loginOutcome === 'INVALID_CREDENTIALS') {
+        setQueueTicket(null);
+        setPassword('');
+        setIsQueueOpen(false);
+        clearLoginOperationId();
+        onLoginFailure?.();
+        await showCredentialFailure(normalizedEmail, isCurrent);
       } else if (ticket.status === 'CONSUMED') {
         setRequestError('이전 로그인 시도가 종료되었어요. 비밀번호를 다시 입력해 주세요.');
         setPassword('');
@@ -707,11 +756,18 @@ export function useLoginQueueFlow({
 
   const retryCapacityWait = useCallback(async () => {
     if (capacityRetryActive.current || !capacityWait) return;
+    const requestSequence = statusRequestSequence.current;
+    const sharedGeneration = getLoginQueueGeneration();
+    const submittedEmail = normalizeEmail(email.trim());
+    const isCurrent = () =>
+      requestSequence === statusRequestSequence.current &&
+      sharedGeneration === getLoginQueueGeneration();
     capacityRetryActive.current = true;
     isSubmittingRef.current = true;
     setIsSubmitting(true);
     try {
       const ticket = await confirmNewWaitingTicket(await startOrResumeLoginQueue());
+      if (!isCurrent()) return;
       setCapacityWait(null);
       setQueueTicket(ticket);
       if (closeTerminalQueue(ticket)) return;
@@ -734,6 +790,13 @@ export function useLoginQueueFlow({
       } else if (ticket.status === 'CONSUMED' && ticket.loginOutcome === 'SUCCESS') {
         const recovered = await recoverQueuedLogin();
         finishLogin({ message: 'login success', data: recovered.data });
+      } else if (ticket.status === 'CONSUMED' && ticket.loginOutcome === 'INVALID_CREDENTIALS') {
+        setQueueTicket(null);
+        setPassword('');
+        setIsQueueOpen(false);
+        clearLoginOperationId();
+        onLoginFailure?.();
+        await showCredentialFailure(submittedEmail, isCurrent);
       } else if (ticket.status === 'CONSUMED') {
         setPassword('');
         setIsQueueOpen(false);
@@ -791,18 +854,27 @@ export function useLoginQueueFlow({
     email,
     finishLogin,
     isSubmittingRef,
+    onLoginFailure,
     password,
     setIsSubmitting,
     setPassword,
     setRequestError,
+    showCredentialFailure,
     submitReadyLogin,
   ]);
 
   async function reconcileExhaustedQueue() {
     if (isSubmitting) return;
+    const requestSequence = statusRequestSequence.current;
+    const sharedGeneration = getLoginQueueGeneration();
+    const submittedEmail = normalizeEmail(email.trim());
+    const isCurrent = () =>
+      requestSequence === statusRequestSequence.current &&
+      sharedGeneration === getLoginQueueGeneration();
     setIsSubmitting(true);
     try {
       const ticket = await reconcileLoginQueueStatus();
+      if (!isCurrent()) return;
       setCapacityWait(null);
       setQueueTicket(ticket);
       if (closeTerminalQueue(ticket)) return;
@@ -811,6 +883,13 @@ export function useLoginQueueFlow({
       if (ticket.status === 'CONSUMED' && ticket.loginOutcome === 'SUCCESS') {
         const recovered = await recoverQueuedLogin();
         finishLogin({ message: 'login success', data: recovered.data });
+      } else if (ticket.status === 'CONSUMED' && ticket.loginOutcome === 'INVALID_CREDENTIALS') {
+        setQueueTicket(null);
+        setPassword('');
+        setIsQueueOpen(false);
+        clearLoginOperationId();
+        onLoginFailure?.();
+        await showCredentialFailure(submittedEmail, isCurrent);
       } else if (ticket.status === 'CONSUMED') {
         setPassword('');
         setRequestError('대기 요청이 이미 종료되었어요. 새 로그인을 시작할 수 있어요.');
@@ -1014,8 +1093,15 @@ export function useLoginQueueFlow({
           }
         } else if (ticket.status === 'CONSUMED' && ticket.loginOutcome === 'INVALID_CREDENTIALS') {
           setPassword('');
-          setQueueMessage('다른 탭에서 로그인에 실패했어요. 비밀번호를 다시 입력해 주세요.');
           setIsQueueOpen(false);
+          terminalStatusSeen = true;
+          await showCredentialFailure(
+            normalizeEmail(email.trim()),
+            () =>
+              generation === queueGeneration.current &&
+              requestSequence === statusRequestSequence.current &&
+              getLoginQueueGeneration() === sharedGeneration,
+          );
         }
       } catch (error) {
         if (
@@ -1069,6 +1155,7 @@ export function useLoginQueueFlow({
     setPassword,
     retryCapacityWait,
     setRequestError,
+    showCredentialFailure,
     submitReadyLogin,
   ]);
 

@@ -5,6 +5,7 @@ import type { LoginSuccessResponse } from '../api/loginApi';
 import { LoginQueueDialog } from './LoginQueueDialog';
 import { useLoginQueueFlow } from '../hooks/useLoginQueueFlow';
 import { validate } from '../hooks/loginQueueFlowUtils';
+import { EMAIL_NOT_REGISTERED_ERROR } from '../hooks/loginQueueFlowUtils';
 import type { FieldErrors } from '../hooks/loginQueueFlowUtils';
 import './LoginPage.css';
 
@@ -173,7 +174,17 @@ export function LoginPage({
                 </div>
                 {fieldErrors.email && (
                   <p id="email-error" className="login-error" role="alert">
-                    {fieldErrors.email}
+                    {fieldErrors.emailNeedsSignup ? (
+                      <>
+                        {EMAIL_NOT_REGISTERED_ERROR}{' '}
+                        <a className="login-inline-signup-link" href="/signup">
+                          회원가입
+                        </a>
+                        을 진행해 주세요.
+                      </>
+                    ) : (
+                      fieldErrors.email
+                    )}
                   </p>
                 )}
               </div>

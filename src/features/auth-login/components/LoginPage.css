@@ -255,6 +255,17 @@
   color: var(--color-text-error);
 }
 
+.login-inline-signup-link {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.login-inline-signup-link:focus-visible {
+  outline: 2px solid var(--color-border-interactive-primary);
+  outline-offset: 2px;
+}
+
 .login-success {
   color: var(--color-text-success);
 }

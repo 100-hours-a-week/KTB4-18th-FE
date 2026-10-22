@@ -31,6 +31,10 @@ vi.mock('../api/loginQueueApi', async (importOriginal) => ({
   recoverQueuedLogin: vi.fn(),
 }));
 
+vi.mock('../../user-signup/api/userAvailabilityApi', () => ({
+  checkUserAvailability: vi.fn(),
+}));
+
 import {
   clearLoginOperationId,
   retireAmbiguousLoginOperation,
@@ -42,6 +46,7 @@ import {
   submitQueuedLogin,
   cancelLoginQueue,
 } from '../api/loginQueueApi';
+import { checkUserAvailability } from '../../user-signup/api/userAvailabilityApi';
 
 const successResponse: LoginSuccessResponse = {
   message: 'login success',
@@ -65,10 +70,12 @@ beforeEach(() => {
   vi.mocked(recoverQueuedLogin).mockReset();
   vi.mocked(cancelLoginQueue).mockReset().mockResolvedValue(undefined);
   vi.mocked(getLoginQueueGeneration).mockReturnValue('live-generation');
+  vi.mocked(checkUserAvailability).mockReset().mockResolvedValue(false);
   queueSignals.listener = null;
 });
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -556,9 +563,11 @@ describe('LoginPage email input', () => {
   });
 
   it('keeps normalized ASCII input and the existing authentication error on login failure', async () => {
-    vi.mocked(submitQueuedLogin).mockRejectedValueOnce(
-      new QueueRequestError(401, 'INVALID_CREDENTIALS'),
-    );
+    vi.mocked(submitQueuedLogin).mockImplementationOnce(async () => {
+      vi.mocked(getLoginQueueGeneration).mockReturnValue('consumed-generation');
+      throw new QueueRequestError(401, 'INVALID_CREDENTIALS');
+    });
+    vi.mocked(checkUserAvailability).mockRejectedValueOnce(new Error('too many requests'));
     const user = userEvent.setup();
     render(<LoginPage />);
     await user.type(screen.getByLabelText('이메일'), 'abc@Example.com');
@@ -570,6 +579,43 @@ describe('LoginPage email input', () => {
     expect(screen.getByLabelText('이메일')).toHaveValue('abc@example.com');
     expect(screen.getByLabelText('비밀번호')).toHaveValue('');
     expect(screen.getByRole('button', { name: '로그인' })).toBeDisabled();
+    expect(checkUserAvailability).toHaveBeenCalledExactlyOnceWith('email', 'abc@example.com');
+  });
+
+  it('shows an inline signup link when the rejected email is available for signup', async () => {
+    vi.mocked(submitQueuedLogin).mockImplementationOnce(async () => {
+      vi.mocked(getLoginQueueGeneration).mockReturnValue('consumed-generation');
+      throw new QueueRequestError(401, 'INVALID_CREDENTIALS');
+    });
+    const { checkUserAvailability: checkAvailability } = await vi.importActual<
+      typeof import('../../user-signup/api/userAvailabilityApi')
+    >('../../user-signup/api/userAvailabilityApi');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ message: 'availability checked', data: { available: true } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.mocked(checkUserAvailability).mockImplementation(checkAvailability);
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'abc@Example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    expect(screen.getByRole('link', { name: '회원가입' })).toHaveAttribute('href', '/signup');
+    expect(screen.getByRole('alert')).toHaveTextContent('가입된 계정이 없는 이메일이에요.');
+    expect(checkUserAvailability).toHaveBeenCalledExactlyOnceWith('email', 'abc@example.com');
+    expect(fetchSpy).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining('/api/v1/users/availability/email?value=abc%40example.com'),
+      { cache: 'no-store' },
+    );
+    expect(screen.getByLabelText('이메일')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('비밀번호')).toHaveValue('');
+
+    await user.clear(screen.getByLabelText('이메일'));
+    expect(screen.queryByRole('link', { name: '회원가입' })).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('이메일을 입력해 주세요.');
   });
 
   it('blocks duplicate submits while the login request is pending', async () => {
@@ -812,6 +858,69 @@ describe('LoginPage email input', () => {
 
     expect(submitQueuedLogin).toHaveBeenCalledOnce();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('shows the signup hint when a polled login result rejects an unregistered email', async () => {
+    vi.mocked(startOrResumeLoginQueue).mockResolvedValueOnce({
+      status: 'WAITING',
+      loginOutcome: null,
+      usersAhead: 1,
+      nextPollSeconds: 0,
+      statusFetchedAt: Date.now(),
+    });
+    vi.mocked(getLoginQueueStatus)
+      .mockRejectedValueOnce(new QueueRequestError(404))
+      .mockResolvedValueOnce({
+        status: 'CONSUMED',
+        loginOutcome: 'INVALID_CREDENTIALS',
+        usersAhead: 0,
+        nextPollSeconds: 10,
+      });
+    vi.mocked(checkUserAvailability).mockResolvedValueOnce(true);
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'abc@Example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    expect(await screen.findByRole('link', { name: '회원가입' })).toHaveAttribute(
+      'href',
+      '/signup',
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('가입된 계정이 없는 이메일이에요.');
+    expect(checkUserAvailability).toHaveBeenCalledExactlyOnceWith('email', 'abc@example.com');
+    expect(screen.getByLabelText('비밀번호')).toHaveValue('');
+  });
+
+  it('shows the signup hint when the initial queue confirmation rejects an unregistered email', async () => {
+    vi.mocked(startOrResumeLoginQueue).mockResolvedValueOnce({
+      status: 'WAITING',
+      loginOutcome: null,
+      usersAhead: 1,
+      nextPollSeconds: 10,
+    });
+    vi.mocked(getLoginQueueStatus)
+      .mockRejectedValueOnce(new QueueRequestError(404))
+      .mockResolvedValueOnce({
+        status: 'CONSUMED',
+        loginOutcome: 'INVALID_CREDENTIALS',
+        usersAhead: 0,
+        nextPollSeconds: 10,
+      });
+    vi.mocked(checkUserAvailability).mockResolvedValueOnce(true);
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText('이메일'), 'abc@Example.com');
+    await user.type(screen.getByLabelText('비밀번호'), 'password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    expect(await screen.findByRole('link', { name: '회원가입' })).toHaveAttribute(
+      'href',
+      '/signup',
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('가입된 계정이 없는 이메일이에요.');
+    expect(checkUserAvailability).toHaveBeenCalledExactlyOnceWith('email', 'abc@example.com');
+    expect(screen.getByLabelText('비밀번호')).toHaveValue('');
   });
 
   it('keeps Escape cancellation pending until confirmed, then focuses email', async () => {
