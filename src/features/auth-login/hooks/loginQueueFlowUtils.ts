@@ -6,7 +6,10 @@ const INVALID_EMAIL_CHARACTER_PATTERN = /[^\p{Script=Hangul}A-Za-z0-9._+@-]/gu;
 export type FieldErrors = {
   email?: string;
   password?: string;
+  emailNeedsSignup?: boolean;
 };
+
+export const EMAIL_NOT_REGISTERED_ERROR = '가입된 계정이 없는 이메일이에요.';
 
 export type CapacityWait = {
   reason: 'QUEUE_FULL' | 'RATE_LIMITED' | 'OPERATION_IN_PROGRESS' | 'TRANSPORT' | 'EXHAUSTED';
