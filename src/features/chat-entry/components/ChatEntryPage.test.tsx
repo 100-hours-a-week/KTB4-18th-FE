@@ -67,7 +67,10 @@ describe('ChatEntryPage', () => {
     vi.restoreAllMocks();
   });
 
-  it('연결 전에는 입력을 막고 텍스트는 HTML을 해석하지 않고 표시한다', () => {
+  it.each([
+    { kind: 'HTML 형태', nickname: '<img src=x onerror=alert(1)>' },
+    { kind: '긴 무공백', nickname: '긴닉네임'.repeat(100) },
+  ])('$kind 닉네임과 본문을 원문으로 표시하고 연결 전 입력을 막는다', ({ nickname }) => {
     const state = useChatParticipation();
     vi.mocked(useChatParticipation).mockReturnValue({
       ...state,
@@ -77,7 +80,7 @@ describe('ChatEntryPage', () => {
           clientMessageId: 'id',
           roomId: 700,
           userId: 7,
-          nickname: '닉네임',
+          nickname,
           content: '<img src=x onerror=alert(1)>',
           createdAt: '2026-10-08T00:00:00Z',
         },
@@ -87,6 +90,11 @@ describe('ChatEntryPage', () => {
     expect(screen.getByRole('textbox', { name: '메시지' })).toBeDisabled();
     expect(screen.getByRole('log')).toHaveTextContent('<img src=x onerror=alert(1)>');
     expect(screen.getByRole('log').querySelector('img')).toBeNull();
+    const author = screen.getByRole('article').querySelector('strong');
+    expect(author).toHaveClass('region-chat-nickname');
+    expect(author).not.toHaveClass('chat-entry-visually-hidden');
+    expect(author?.textContent).toBe(nickname);
+    expect(author?.children).toHaveLength(0);
   });
 
   it('복원한 이전 대화와 새 참여 대화를 구분하고 복원만으로 전송을 허용하지 않는다', () => {
@@ -162,6 +170,10 @@ describe('ChatEntryPage', () => {
     render(<ChatEntryPage />);
     expect(screen.getByText('내 메시지').closest('article')).toHaveClass('region-chat-own');
     expect(screen.getByText('다른 메시지').closest('article')).not.toHaveClass('region-chat-own');
+    expect(screen.getByText('나')).toHaveClass('chat-entry-visually-hidden');
+    expect(screen.getByText('나')).not.toHaveClass('region-chat-nickname');
+    expect(screen.getByText('동료')).toHaveClass('region-chat-nickname');
+    expect(screen.getByRole('log').querySelectorAll('.region-chat-nickname')).toHaveLength(1);
     expect(screen.getByLabelText('현재 접속 인원')).toHaveTextContent('인원 확인 중');
   });
 
@@ -421,20 +433,92 @@ describe('ChatEntryPage', () => {
     const articles = screen.getAllByRole('article');
     expect(articles).toHaveLength(6);
     expect(articles[1]).toHaveClass('region-chat-continuation');
-    for (const index of [0, 2, 3, 4, 5])
+    for (const index of [0, 2, 3, 4, 5]) {
       expect(articles[index]).not.toHaveClass('region-chat-continuation');
+      const author = within(articles[index]).getByText('같은 닉네임');
+      expect(author).toHaveClass('region-chat-nickname');
+      expect(author).not.toHaveClass('chat-entry-visually-hidden');
+    }
+    const continuedAuthor = within(articles[1]).getByText('같은 닉네임');
+    expect(continuedAuthor).toHaveClass('chat-entry-visually-hidden');
+    expect(continuedAuthor).not.toHaveClass('region-chat-nickname');
+    expect(continuedAuthor).not.toHaveAttribute('aria-hidden');
+    expect(continuedAuthor).not.toHaveAttribute('hidden');
     expect(articles[0].querySelector('time')).toHaveClass('chat-entry-visually-hidden');
     expect(articles[1].querySelector('time')).toHaveClass('region-chat-time');
     expect(articles[1].querySelector('time')).toHaveAttribute('dateTime', '2026-10-01T07:37:59Z');
     expect(screen.getByRole('log').querySelectorAll('.region-chat-date')).toHaveLength(2);
     expect(screen.getByRole('log').querySelectorAll('.region-chat-time')).toHaveLength(5);
-    expect(within(articles[0]).getByText('같은 닉네임')).toHaveClass('chat-entry-visually-hidden');
+    expect(screen.getByRole('log').querySelectorAll('.region-chat-nickname')).toHaveLength(5);
+  });
+
+  it('사용자 1이 같은 분에 연속으로 5개 보내면 닉네임을 첫 메시지에만 표시한다', () => {
+    vi.mocked(useChatParticipation).mockReturnValue({
+      ...readyState(),
+      messages: [1, 2, 3, 4, 5].map((messageId) => ({
+        ...message(messageId, 1),
+        nickname: '사용자 1',
+      })),
+    });
+
+    render(<ChatEntryPage />);
+
+    const articles = screen.getAllByRole('article');
+    expect(articles).toHaveLength(5);
+    expect(articles[0]).not.toHaveClass('region-chat-continuation');
+    expect(within(articles[0]).getByText('사용자 1')).toHaveClass('region-chat-nickname');
+    for (const article of articles.slice(1)) {
+      expect(article).toHaveClass('region-chat-continuation');
+      const continuedNickname = within(article).getByText('사용자 1');
+      expect(continuedNickname).toHaveClass('chat-entry-visually-hidden');
+      expect(continuedNickname).not.toHaveClass('region-chat-nickname');
+    }
+    expect(screen.getByRole('log').querySelectorAll('.region-chat-nickname')).toHaveLength(1);
+  });
+
+  it('사용자 1의 6개 메시지 사이에 사용자 2가 끼면 사용자 1 닉네임을 다시 표시한다', () => {
+    const messages = [
+      { userId: 1, nickname: '사용자 1', content: '사용자 1 메시지 1' },
+      { userId: 1, nickname: '사용자 1', content: '사용자 1 메시지 2' },
+      { userId: 1, nickname: '사용자 1', content: '사용자 1 메시지 3' },
+      { userId: 2, nickname: '사용자 2', content: '사용자 2의 중간 메시지' },
+      { userId: 1, nickname: '사용자 1', content: '사용자 1 메시지 4' },
+      { userId: 1, nickname: '사용자 1', content: '사용자 1 메시지 5' },
+      { userId: 1, nickname: '사용자 1', content: '사용자 1 메시지 6' },
+    ];
+    vi.mocked(useChatParticipation).mockReturnValue({
+      ...readyState(),
+      messages: messages.map((item, index) => ({
+        ...message(index + 1, item.userId),
+        nickname: item.nickname,
+        content: item.content,
+      })),
+    });
+
+    render(<ChatEntryPage />);
+
+    const articles = screen.getAllByRole('article');
+    expect(articles).toHaveLength(7);
+    for (const [index, nickname] of [
+      [0, '사용자 1'],
+      [3, '사용자 2'],
+      [4, '사용자 1'],
+    ] as const) {
+      expect(within(articles[index]).getByText(nickname)).toHaveClass('region-chat-nickname');
+    }
+    for (const index of [1, 2, 5, 6]) {
+      expect(articles[index]).toHaveClass('region-chat-continuation');
+      const continuedNickname = within(articles[index]).getByText('사용자 1');
+      expect(continuedNickname).toHaveClass('chat-entry-visually-hidden');
+      expect(continuedNickname).not.toHaveClass('region-chat-nickname');
+    }
+    expect(screen.getByRole('log').querySelectorAll('.region-chat-nickname')).toHaveLength(3);
   });
 
   it('같은 작성자와 분이어도 복원·부재·보관 경계는 유지하고 그룹을 나눈다', () => {
     vi.mocked(useChatParticipation).mockReturnValue({
       ...readyState(),
-      messages: [message(1), message(2), message(3)],
+      messages: [message(1), message(2), message(3), message(4)],
       restoredThroughMessageId: 1,
       gaps: [
         { reason: 'ABSENCE', beforeMessageId: 2, resumedAt: '2026-10-01T07:37:10Z' },
@@ -452,7 +536,13 @@ describe('ChatEntryPage', () => {
       'role',
       'status',
     );
-    expect(screen.getByRole('log').querySelectorAll('.region-chat-time')).toHaveLength(3);
+    expect(screen.getByRole('log').querySelectorAll('.region-chat-time')).toHaveLength(4);
+    for (const article of screen.getAllByRole('article')) {
+      expect(article).not.toHaveClass('region-chat-continuation');
+      const author = within(article).getByText('같은 닉네임');
+      expect(author).toHaveClass('region-chat-nickname');
+      expect(author).not.toHaveClass('chat-entry-visually-hidden');
+    }
   });
 
   it('ACK와 같은 pending을 중복 표시하지 않고 불확실·거절 안내와 재전송을 보존한다', () => {
@@ -481,6 +571,14 @@ describe('ChatEntryPage', () => {
     });
     const view = render(<ChatEntryPage />);
     expect(screen.queryByText('중복 pending')).not.toBeInTheDocument();
+    expect(screen.getByRole('log').querySelectorAll('.region-chat-nickname')).toHaveLength(0);
+    const articles = screen.getAllByRole('article');
+    expect(articles).toHaveLength(4);
+    expect(articles[0]).toHaveClass('region-chat-own');
+    expect(within(articles[0]).getByText('나')).toHaveClass('chat-entry-visually-hidden');
+    expect(within(articles[1]).getByText('나')).toHaveClass('chat-entry-visually-hidden');
+    expect(within(articles[2]).getByText('나')).toHaveClass('chat-entry-visually-hidden');
+    expect(within(articles[3]).getByText('나')).toHaveClass('chat-entry-visually-hidden');
     expect(screen.getByText('전송 완료')).toHaveClass('chat-entry-visually-hidden');
     expect(screen.getByText('전송 중')).toHaveClass('chat-entry-visually-hidden');
     expect(screen.getByText('결과 확인 필요')).not.toHaveClass('chat-entry-visually-hidden');
