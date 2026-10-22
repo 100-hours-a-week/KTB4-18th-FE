@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { QueueRequestError, type LoginQueueTicket } from '../api/loginQueueApi';
 import type { LoginSuccessResponse } from '../api/loginApi';
-import * as authSession from '../api/authSession';
 import { LoginPage } from './LoginPage';
 
 const queueSignals = vi.hoisted(() => ({
@@ -26,6 +25,7 @@ vi.mock('../api/loginQueueApi', async (importOriginal) => ({
   getLoginOperationId: vi.fn(() => 'operation-id'),
   getLoginQueueGeneration: vi.fn(() => 'live-generation'),
   clearLoginOperationId: vi.fn(),
+  retireAmbiguousLoginOperation: vi.fn(),
   publishQueueSignal: vi.fn(),
   cancelLoginQueue: vi.fn(),
   recoverQueuedLogin: vi.fn(),
@@ -33,6 +33,7 @@ vi.mock('../api/loginQueueApi', async (importOriginal) => ({
 
 import {
   clearLoginOperationId,
+  retireAmbiguousLoginOperation,
   getLoginQueueGeneration,
   getLoginQueueStatus,
   reconcileLoginQueueStatus,
@@ -60,6 +61,7 @@ beforeEach(() => {
   vi.mocked(submitQueuedLogin).mockReset().mockResolvedValue(successResponse);
   vi.mocked(getLoginQueueStatus).mockReset().mockRejectedValue(new QueueRequestError(404));
   vi.mocked(clearLoginOperationId).mockReset();
+  vi.mocked(retireAmbiguousLoginOperation).mockReset();
   vi.mocked(recoverQueuedLogin).mockReset();
   vi.mocked(cancelLoginQueue).mockReset().mockResolvedValue(undefined);
   vi.mocked(getLoginQueueGeneration).mockReturnValue('live-generation');
@@ -237,40 +239,68 @@ describe('LoginPage email input', () => {
     expect(startOrResumeLoginQueue).toHaveBeenCalledOnce();
   });
 
-  it('restores the existing refresh-cookie session when selected after an ambiguous login', async () => {
+  it('requires a newly entered password and an explicit resubmit after an ambiguous result', async () => {
     vi.mocked(submitQueuedLogin).mockRejectedValueOnce(new QueueRequestError(null));
-    vi.mocked(getLoginQueueStatus).mockRejectedValue(new QueueRequestError(404));
-    vi.spyOn(authSession, 'refreshAccessToken').mockResolvedValue('restored-token');
-    vi.spyOn(authSession, 'getAccessTokenExpiresAt').mockReturnValue(Date.now() + 60_000);
+    vi.mocked(getLoginQueueStatus)
+      .mockReset()
+      .mockRejectedValueOnce(new QueueRequestError(404))
+      .mockResolvedValueOnce({ ...readyTicket });
     const onLoginSuccess = vi.fn();
     const user = userEvent.setup();
-    render(<LoginPage onLoginSuccess={onLoginSuccess} />);
+    render(<LoginPage skipInitialQueueRestore onLoginSuccess={onLoginSuccess} />);
     await user.type(screen.getByLabelText('이메일'), 'user@example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'password');
     await user.click(screen.getByRole('button', { name: '로그인' }));
-    await user.click(await screen.findByRole('button', { name: '이전 로그인 상태 계속하기' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('로그인 결과를 확인하지 못했어요');
+    expect(screen.getByLabelText('비밀번호')).toHaveValue('');
+    expect(
+      screen.queryByRole('button', { name: '이전 로그인 상태 계속하기' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '새로 로그인하기' })).not.toBeInTheDocument();
+    expect(submitQueuedLogin).toHaveBeenCalledOnce();
 
-    expect(authSession.refreshAccessToken).toHaveBeenCalledOnce();
+    await user.type(screen.getByLabelText('비밀번호'), 'new-password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+
+    expect(getLoginQueueStatus).toHaveBeenCalledTimes(2);
+    expect(submitQueuedLogin).toHaveBeenCalledTimes(2);
+    expect(submitQueuedLogin).toHaveBeenLastCalledWith(
+      { email: 'user@example.com', password: 'new-password' },
+      'live-generation',
+    );
     expect(onLoginSuccess).toHaveBeenCalledOnce();
     expect(onLoginSuccess.mock.calls[0][0]).toMatchObject({
       message: 'login success',
-      data: { access_token: 'restored-token', expires_in: expect.any(Number) },
+      data: { access_token: 'test-token', expires_in: 3600 },
     });
-    expect(onLoginSuccess.mock.calls[0][0].data.expires_in).toBeGreaterThan(0);
-    expect(onLoginSuccess.mock.calls[0][0].data.expires_in).toBeLessThanOrEqual(60);
   });
 
-  it('retains the login operation ID when restarting an ambiguous attempt', async () => {
+  it('does not send credentials on ambiguous resubmit while the old ticket is waiting', async () => {
     vi.mocked(submitQueuedLogin).mockRejectedValueOnce(new QueueRequestError(null));
-    vi.mocked(getLoginQueueStatus).mockRejectedValue(new QueueRequestError(404));
+    vi.mocked(getLoginQueueStatus)
+      .mockReset()
+      .mockRejectedValueOnce(new QueueRequestError(404))
+      .mockResolvedValueOnce({
+        status: 'WAITING',
+        loginOutcome: null,
+        usersAhead: 3,
+        nextPollSeconds: 10,
+      });
     const user = userEvent.setup();
-    render(<LoginPage />);
+    render(<LoginPage skipInitialQueueRestore />);
     await user.type(screen.getByLabelText('이메일'), 'user@example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'password');
     await user.click(screen.getByRole('button', { name: '로그인' }));
-    await user.click(await screen.findByRole('button', { name: '새로 로그인하기' }));
+    await screen.findByText(/로그인 결과를 확인하지 못했어요/);
+    await user.type(screen.getByLabelText('비밀번호'), 'new-password');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
 
-    expect(clearLoginOperationId).not.toHaveBeenCalled();
+    expect(submitQueuedLogin).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText('비밀번호')).toHaveValue('new-password');
+    expect(
+      screen.queryByRole('button', { name: '이전 로그인 상태 계속하기' }),
+    ).not.toBeInTheDocument();
+    expect(retireAmbiguousLoginOperation).not.toHaveBeenCalled();
   });
 
   it('keeps Korean characters as typed', async () => {
@@ -668,7 +698,9 @@ describe('LoginPage email input', () => {
     await user.type(screen.getByLabelText('비밀번호'), 'password');
     await user.click(screen.getByRole('button', { name: '로그인' }));
 
-    expect(await screen.findByRole('group', { name: '로그인 결과 선택' })).toBeInTheDocument();
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      '다시 로그인하려면 비밀번호를 입력하고 로그인 버튼을 눌러 주세요.',
+    );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(submitQueuedLogin).toHaveBeenCalledOnce();
   });

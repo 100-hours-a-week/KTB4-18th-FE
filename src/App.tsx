@@ -12,7 +12,11 @@ import {
 } from './features/music-record/components/MusicRecordPages';
 import { MusicRecordDetailPage } from './features/music-record/components/MusicRecordDetailPage';
 import { MyPage } from './features/mypage/components/MyPage';
-import { logout, LogoutRequestError } from './features/auth-login/api/logoutApi';
+import {
+  logout,
+  LogoutFinalizationError,
+  LogoutRequestError,
+} from './features/auth-login/api/logoutApi';
 import {
   ACCESS_TOKEN_CHANGED_EVENT,
   ACCESS_TOKEN_REFRESH_EARLY_MS,
@@ -20,6 +24,7 @@ import {
   AUTH_SESSION_AVAILABLE_EVENT,
   AuthRequestError,
   clearAccessToken,
+  getAuthRestoreState,
   getAccessToken,
   getAccessTokenExpiresAt,
   getLastAccessTokenRefreshAt,
@@ -27,6 +32,12 @@ import {
   shouldRefreshAccessToken,
   type AuthStatus,
 } from './features/auth-login/api/authSession';
+import {
+  beginLogoutCleanupGate,
+  isLogoutCleanupPending,
+  LOGOUT_CLEANUP_STATE_CHANGED_EVENT,
+} from './features/auth-login/api/logoutCleanupGate';
+import { abortActiveCreate } from './features/auth-login/api/loginQueueCoordination';
 import {
   getAuthCapabilityMessage,
   probeAuthCapabilities,
@@ -55,6 +66,8 @@ const MUSIC_RECORD_CREATE_PATH = '/music-records/new';
 const CHAT_PATH = '/chat';
 const MY_PATH = '/my';
 const MAX_TIMEOUT_DELAY_MS = 2_147_483_647;
+const AUTH_RESTORE_UNAVAILABLE_MESSAGE =
+  '저장된 로그인 상태를 확인할 수 없어요. 확인 후 다시 시도해 주세요.';
 
 type ChatMessage = { id: string; sentAt: Date } & (
   | { role: 'user'; text: string }
@@ -74,10 +87,26 @@ const formatTime = (date: Date) =>
 function App() {
   const [routeLocation, setRouteLocation] = useState(() => readRouteLocation());
   const pathname = routeLocation.pathname;
+  const [initialAuthRestoreState] = useState(() => getAuthRestoreState());
   const [authStatus, setAuthStatus] = useState<AuthStatus>('restoring');
   const [authCapability] = useState(() => probeAuthCapabilities());
   const [passwordChangedNotice, setPasswordChangedNotice] = useState(false);
-  const [skipQueueRestoreAfterLogout, setSkipQueueRestoreAfterLogout] = useState(false);
+  const [skipQueueRestoreAfterLogout, setSkipQueueRestoreAfterLogout] = useState(
+    () => initialAuthRestoreState !== 'ready',
+  );
+  const [logoutCleanupPending, setLogoutCleanupPending] = useState(
+    () => initialAuthRestoreState === 'cleanup-pending',
+  );
+  const [isLogoutCleanupRetrying, setIsLogoutCleanupRetrying] = useState(false);
+  const logoutCleanupRetryRef = useRef(false);
+  const [logoutCleanupError, setLogoutCleanupError] = useState('');
+  const [authRestoreBlocked, setAuthRestoreBlocked] = useState(
+    () => initialAuthRestoreState === 'unavailable',
+  );
+  const [authRestoreError, setAuthRestoreError] = useState(() =>
+    initialAuthRestoreState === 'unavailable' ? AUTH_RESTORE_UNAVAILABLE_MESSAGE : '',
+  );
+  const [loginFormVersion, setLoginFormVersion] = useState(0);
   const authIntent = useRef(0);
   const [authIntentVersion, setAuthIntentVersion] = useState(0);
   const isLoggingOutRef = useRef(false);
@@ -109,12 +138,56 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const onLogoutCleanupStateChanged = (event: Event) => {
+      const pending = Boolean((event as CustomEvent<{ pending?: boolean }>).detail?.pending);
+      setLogoutCleanupPending(pending);
+      setLoginFormVersion((version) => version + 1);
+      if (pending) {
+        advanceAuthIntent();
+        setSkipQueueRestoreAfterLogout(true);
+        setLogoutCleanupError('');
+        abortActiveCreate();
+        clearAccessToken();
+        setAuthStatus('guest');
+      } else {
+        setLogoutCleanupError('');
+      }
+    };
+    window.addEventListener(LOGOUT_CLEANUP_STATE_CHANGED_EVENT, onLogoutCleanupStateChanged);
+    return () =>
+      window.removeEventListener(LOGOUT_CLEANUP_STATE_CHANGED_EVENT, onLogoutCleanupStateChanged);
+  }, []);
+
   const restore = useCallback(async () => {
     const currentIntent = authIntent.current;
     if (!authCapability.supported) {
       setAuthStatus('retryable-error');
       return;
     }
+    const restoreState = getAuthRestoreState();
+    if (restoreState === 'cleanup-pending') {
+      setLogoutCleanupPending(true);
+      setSkipQueueRestoreAfterLogout(true);
+      clearAccessToken();
+      setAuthStatus('guest');
+      return;
+    }
+    if (restoreState === 'signed-out') {
+      setAuthRestoreBlocked(false);
+      setSkipQueueRestoreAfterLogout(true);
+      clearAccessToken();
+      setAuthStatus('guest');
+      return;
+    }
+    if (restoreState === 'unavailable') {
+      setAuthRestoreBlocked(true);
+      setAuthRestoreError(AUTH_RESTORE_UNAVAILABLE_MESSAGE);
+      setAuthStatus('retryable-error');
+      return;
+    }
+    setAuthRestoreBlocked(false);
+    setAuthRestoreError('');
     setAuthStatus('restoring');
     try {
       if (getAccessToken() && !shouldRefreshAccessToken()) {
@@ -125,6 +198,12 @@ function App() {
       if (currentIntent === authIntent.current) setAuthStatus('authenticated');
     } catch (caught) {
       if (currentIntent !== authIntent.current) return;
+      if (getAuthRestoreState() === 'unavailable') {
+        setAuthRestoreBlocked(true);
+        setAuthRestoreError(AUTH_RESTORE_UNAVAILABLE_MESSAGE);
+        setAuthStatus('retryable-error');
+        return;
+      }
       if (caught instanceof AuthRequestError && caught.status === 401) {
         setAuthStatus('guest');
       } else {
@@ -295,6 +374,8 @@ function App() {
     setAuthStatus('authenticated');
     setLogoutError('');
     setManualLogoutError('');
+    setAuthRestoreBlocked(false);
+    setAuthRestoreError('');
     navigate(getSafeReturnTo(window.location.search));
   };
 
@@ -309,14 +390,39 @@ function App() {
     setAuthStatus('logging-out');
     setLogoutError('');
     setManualLogoutError('');
+    setLogoutCleanupError('');
+    let serverLogoutSucceeded = false;
     try {
-      await logout();
-      await resetQueueAfterLogoutSafely();
+      await logout(() => {
+        serverLogoutSucceeded = true;
+        beginLogoutCleanupGate();
+        abortActiveCreate();
+        setLogoutCleanupPending(true);
+        setLoginFormVersion((version) => version + 1);
+      });
+      serverLogoutSucceeded = true;
+      await resetLoginQueueAfterLogout();
+      setLogoutCleanupPending(false);
       setSkipQueueRestoreAfterLogout(true);
       clearAccessToken();
       setAuthStatus('guest');
       navigate(LOGIN_PATH);
     } catch (error) {
+      if (
+        serverLogoutSucceeded ||
+        error instanceof LogoutFinalizationError ||
+        isLogoutCleanupPending()
+      ) {
+        setLogoutCleanupPending(true);
+        setLogoutCleanupError(
+          '로그아웃은 완료됐지만 로그인 준비를 끝내지 못했어요. 다시 시도해 주세요.',
+        );
+        setSkipQueueRestoreAfterLogout(true);
+        clearAccessToken();
+        setAuthStatus('guest');
+        navigate(LOGIN_PATH);
+        return;
+      }
       setAuthStatus(getAccessToken() ? 'authenticated' : 'retryable-error');
       const message =
         error instanceof LogoutRequestError && error.status === null
@@ -335,20 +441,67 @@ function App() {
     setManualLogoutError('');
     setAuthStatus('logging-out');
     setLogoutError('');
+    let serverLogoutSucceeded = false;
     try {
-      await logout();
-      await resetQueueAfterLogoutSafely();
+      await logout(() => {
+        serverLogoutSucceeded = true;
+        beginLogoutCleanupGate();
+        abortActiveCreate();
+        setLogoutCleanupPending(true);
+        setLoginFormVersion((version) => version + 1);
+      });
+      serverLogoutSucceeded = true;
+      await resetLoginQueueAfterLogout();
+      setLogoutCleanupPending(false);
       setSkipQueueRestoreAfterLogout(true);
       clearAccessToken();
       setAuthStatus('guest');
       navigate(LOGIN_PATH);
     } catch (error) {
+      if (
+        serverLogoutSucceeded ||
+        error instanceof LogoutFinalizationError ||
+        isLogoutCleanupPending()
+      ) {
+        setLogoutCleanupPending(true);
+        setLogoutCleanupError(
+          '로그아웃은 완료됐지만 로그인 준비를 끝내지 못했어요. 다시 시도해 주세요.',
+        );
+        setSkipQueueRestoreAfterLogout(true);
+        clearAccessToken();
+        setAuthStatus('guest');
+        navigate(LOGIN_PATH);
+        return;
+      }
       setAuthStatus('retryable-error');
       setLogoutError(
         error instanceof LogoutRequestError && error.status === null
           ? '네트워크 상태를 확인한 뒤 다시 시도해 주세요.'
           : '회원 탈퇴 후 세션 폐기에 실패했어요. 다시 로그인하거나 로그아웃을 재시도해 주세요.',
       );
+    }
+  };
+
+  const retryLogoutCleanup = async () => {
+    if (logoutCleanupRetryRef.current) return;
+    logoutCleanupRetryRef.current = true;
+    setIsLogoutCleanupRetrying(true);
+    setLogoutCleanupError('');
+    try {
+      await resetLoginQueueAfterLogout();
+      setLogoutCleanupPending(false);
+      setSkipQueueRestoreAfterLogout(true);
+      clearAccessToken();
+      setAuthStatus('guest');
+      navigate(LOGIN_PATH);
+    } catch {
+      setLogoutCleanupPending(true);
+      setLogoutCleanupError(
+        '로그인 준비를 완료하지 못했어요. 연결 상태를 확인한 뒤 다시 시도해 주세요.',
+      );
+    } finally {
+      logoutCleanupRetryRef.current = false;
+      setIsLogoutCleanupRetrying(false);
     }
   };
 
@@ -367,10 +520,17 @@ function App() {
   if (pathname === LOGIN_PATH) {
     return (
       <LoginPage
-        skipInitialQueueRestore={skipQueueRestoreAfterLogout}
+        key={loginFormVersion}
+        skipInitialQueueRestore={skipQueueRestoreAfterLogout || logoutCleanupPending}
         authCapabilityMessage={
           authCapability.supported ? undefined : getAuthCapabilityMessage(authCapability.reason)
         }
+        authRestoreError={authRestoreBlocked ? authRestoreError : undefined}
+        onRetryAuthRestore={() => void restore()}
+        logoutCleanupPending={logoutCleanupPending}
+        logoutCleanupError={logoutCleanupError}
+        logoutCleanupRetrying={isLogoutCleanupRetrying}
+        onRetryLogoutCleanup={() => void retryLogoutCleanup()}
         passwordChangedNotice={passwordChangedNotice}
         onPasswordChangedNoticeDismiss={() => setPasswordChangedNotice(false)}
         onLoginSuccess={handleLoginSuccess}
@@ -470,14 +630,6 @@ function App() {
   }
 
   return <MainPage onChat={() => navigate(CHAT_PATH)} />;
-}
-
-async function resetQueueAfterLogoutSafely(): Promise<void> {
-  try {
-    await resetLoginQueueAfterLogout();
-  } catch {
-    // Logout must finish even if local queue storage is temporarily unavailable.
-  }
 }
 
 function getSafeReturnTo(search: string): string {

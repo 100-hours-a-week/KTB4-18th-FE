@@ -4,6 +4,7 @@ import {
   syncChatCacheAccount,
 } from '../../chat-entry/services/chatConversationCache';
 import { probeAuthCapabilities } from './authCapabilities';
+import { isLogoutCleanupPending, resetLogoutCleanupGateForTests } from './logoutCleanupGate';
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 const ACCESS_TOKEN_KEY = 'access_token';
@@ -23,6 +24,7 @@ type AuthEpochState = 'available' | 'signed-out';
 
 export type AuthStatus =
   'restoring' | 'authenticated' | 'guest' | 'retryable-error' | 'logging-in' | 'logging-out';
+export type AuthRestoreState = 'ready' | 'signed-out' | 'cleanup-pending' | 'unavailable';
 export const AUTH_EXPIRED_EVENT = 'meomuneum:auth-expired';
 export const AUTH_SESSION_AVAILABLE_EVENT = 'meomuneum:session-available';
 export const ACCESS_TOKEN_CHANGED_EVENT = 'meomuneum:access-token-changed';
@@ -91,6 +93,23 @@ function sharedAuthEpoch(): string {
   } catch {
     throw new AuthRequestError(null);
   }
+}
+
+export function getAuthRestoreState(): AuthRestoreState {
+  if (isLogoutCleanupPending()) return 'cleanup-pending';
+  try {
+    return epochState(sharedAuthEpoch()) === 'signed-out' ? 'signed-out' : 'ready';
+  } catch {
+    return 'unavailable';
+  }
+}
+
+function assertLogoutCleanupComplete(): void {
+  if (isLogoutCleanupPending()) throw new AuthRequestError(null);
+}
+
+export function assertAuthEpochReadable(): void {
+  void sharedAuthEpoch();
 }
 
 function advanceSharedAuthEpoch(): void {
@@ -435,8 +454,11 @@ export async function getCsrfToken(signal?: AbortSignal): Promise<string> {
 }
 
 async function refreshOnce(retryCsrf: boolean, requestEpoch: string): Promise<string> {
+  assertLogoutCleanupComplete();
   const refreshOperation = readRefreshOperation();
   const csrf = await getCsrfToken();
+  assertLogoutCleanupComplete();
+  if (epochState(sharedAuthEpoch()) === 'signed-out') throw new AuthRequestError(null);
   if (Date.now() >= refreshOperation.retryCutoffAt) throw new AuthRequestError(null, true);
   if (sharedAuthEpoch() !== requestEpoch) {
     throw new AuthRequestError(null);
@@ -501,9 +523,12 @@ export async function refreshAccessToken(
   expectedTransitionGeneration?: number,
   expectedSharedAuthEpoch?: string,
 ): Promise<string> {
+  assertLogoutCleanupComplete();
   assertAuthCapabilities();
   await waitForAuthTransition();
+  assertLogoutCleanupComplete();
   const startSharedAuthEpoch = sharedAuthEpoch();
+  if (epochState(startSharedAuthEpoch) === 'signed-out') throw new AuthRequestError(null);
   if (expectedSharedAuthEpoch !== undefined && startSharedAuthEpoch !== expectedSharedAuthEpoch) {
     throw new AuthRequestError(null);
   }
@@ -521,6 +546,7 @@ export async function refreshAccessToken(
   const requestTransitionGeneration = authTransitionGeneration;
   const tokenAtStart = existingToken;
   const request = requestAuthLock(async () => {
+    assertLogoutCleanupComplete();
     if (
       generation !== requestGeneration ||
       authTransitionGeneration !== requestTransitionGeneration ||
@@ -530,6 +556,7 @@ export async function refreshAccessToken(
       throw new AuthRequestError(null);
     }
     const token = await refreshOnce(true, startSharedAuthEpoch);
+    assertLogoutCleanupComplete();
     if (
       generation !== requestGeneration ||
       authTransitionGeneration !== requestTransitionGeneration ||
@@ -587,7 +614,9 @@ async function dispatchWithEpochGuard(
   expectedEpoch: string,
   expectedTransitionGeneration: number,
 ): Promise<Response> {
+  assertLogoutCleanupComplete();
   const pending = await requestAuthLock(async () => {
+    assertLogoutCleanupComplete();
     if (
       authTransitionGeneration !== expectedTransitionGeneration ||
       sharedAuthEpoch() !== expectedEpoch ||
@@ -598,6 +627,7 @@ async function dispatchWithEpochGuard(
     return { response: sendProtectedRequest(input, init, token) };
   });
   const response = await pending.response;
+  assertLogoutCleanupComplete();
   if (
     authTransitionGeneration !== expectedTransitionGeneration ||
     sharedAuthEpoch() !== expectedEpoch
@@ -816,6 +846,8 @@ export async function authenticatedFetchWithinAuthTransition(
 
 // Login, logout, and account changes hold a cross-tab lock while the refresh cookie changes.
 export function runAuthTransition<T>(action: () => Promise<T>): Promise<T> {
+  assertLogoutCleanupComplete();
+  assertAuthEpochReadable();
   clearChatConversationCache();
   assertAuthCapabilities();
   generation += 1;
@@ -851,6 +883,7 @@ export function runAuthTransition<T>(action: () => Promise<T>): Promise<T> {
 }
 
 export function resetAuthSessionForTests(): void {
+  resetLogoutCleanupGateForTests();
   pendingRefresh = null;
   transitionQueue = Promise.resolve();
   pendingTransitions = 0;
