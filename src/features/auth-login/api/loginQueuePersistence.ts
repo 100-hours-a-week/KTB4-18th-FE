@@ -56,10 +56,12 @@ export function getLoginQueueGeneration(): string {
   return queueGeneration();
 }
 
-export function beginQueueGeneration(): void {
+export function beginQueueGeneration(): string {
   try {
-    storage().setItem(QUEUE_GENERATION_STORAGE, crypto.randomUUID());
+    const nextGeneration = crypto.randomUUID();
+    storage().setItem(QUEUE_GENERATION_STORAGE, nextGeneration);
     storage().removeItem(LOGIN_OPERATION_STORAGE);
+    return nextGeneration;
   } catch {
     throw new QueueRequestError(null);
   }

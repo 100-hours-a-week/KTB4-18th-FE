@@ -1,5 +1,5 @@
 import { ActionButton } from '@seed-design/react';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import type { LoginSuccessResponse } from '../api/loginApi';
 import { LoginQueueDialog } from './LoginQueueDialog';
@@ -8,6 +8,8 @@ import { validate } from '../hooks/loginQueueFlowUtils';
 import { EMAIL_NOT_REGISTERED_ERROR } from '../hooks/loginQueueFlowUtils';
 import type { FieldErrors } from '../hooks/loginQueueFlowUtils';
 import './LoginPage.css';
+
+type RequestToast = { message: string; sequence: number };
 
 type LoginPageProps = {
   authCapabilityMessage?: string;
@@ -44,11 +46,17 @@ export function LoginPage({
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [requestError, setRequestError] = useState('');
+  const [requestToast, setRequestToast] = useState<RequestToast | null>(null);
+  const requestToastSequence = useRef(0);
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
   const [isLoginSuccessful, setIsLoginSuccessful] = useState(false);
   const isFormValid = Object.keys(validate(email, password)).length === 0;
+  const showRequestToast = useCallback((message: string) => {
+    setRequestToast({ message, sequence: ++requestToastSequence.current });
+  }, []);
+  const clearRequestToast = useCallback(() => setRequestToast(null), []);
 
   const flow = useLoginQueueFlow({
     email,
@@ -57,6 +65,8 @@ export function LoginPage({
     setPassword,
     setFieldErrors,
     setRequestError,
+    showRequestToast,
+    clearRequestToast,
     setIsSubmitting,
     isSubmitting,
     isSubmittingRef,
@@ -77,8 +87,8 @@ export function LoginPage({
     queueDialogRef,
     emailInputRef,
     isAuthSupported,
-    invalidateStatusReads,
     updateEmail,
+    updatePassword,
     handleSubmit,
     retryCapacityWait,
     reconcileExhaustedQueue,
@@ -88,6 +98,19 @@ export function LoginPage({
   return (
     <main className="login-screen">
       <section className="login-content" aria-labelledby="login-title">
+        {requestToast && (
+          <div
+            key={requestToast.sequence}
+            className="login-request-toast"
+            role="alert"
+            aria-atomic="true"
+          >
+            <span>{requestToast.message}</span>
+            <button type="button" aria-label="알림 닫기" onClick={clearRequestToast}>
+              닫기
+            </button>
+          </div>
+        )}
         <div className="login-layout" inert={isQueueOpen}>
           <header className="login-brand">
             <span className="login-symbol-grid" aria-hidden="true">
@@ -201,10 +224,7 @@ export function LoginPage({
                     autoComplete="current-password"
                     placeholder="비밀번호를 입력해주세요"
                     value={password}
-                    onChange={(event) => {
-                      invalidateStatusReads();
-                      setPassword(event.target.value);
-                    }}
+                    onChange={(event) => updatePassword(event.target.value)}
                     aria-invalid={Boolean(fieldErrors.password)}
                     aria-describedby={fieldErrors.password ? 'password-error' : undefined}
                     disabled={

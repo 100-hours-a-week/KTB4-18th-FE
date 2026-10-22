@@ -60,6 +60,16 @@ import type { LoginQueueTicket } from './loginQueueHttp';
 export { parseQueueRetryAfter } from './loginQueueHttp';
 export type { LoginOutcome, LoginQueueStatus, LoginQueueTicket } from './loginQueueHttp';
 
+export type LoginQueueStartResult = {
+  ticket: LoginQueueTicket;
+  queueGeneration: string;
+};
+
+export type LoginQueueReconciliationResult = {
+  ticket: LoginQueueTicket;
+  queueGeneration: string;
+};
+
 export { QueueRequestError } from './loginQueueErrors';
 export { promiseWithTimeout } from './loginQueueHttp';
 
@@ -116,7 +126,7 @@ async function requestTicketStatus(signal?: AbortSignal): Promise<LoginQueueTick
 async function createTicketWithKey(
   idempotencyKey: string,
   expectedGeneration: string,
-): Promise<LoginQueueTicket> {
+): Promise<LoginQueueStartResult> {
   assertLogoutCleanupComplete();
   let response: Response;
   const controller = new AbortController();
@@ -152,8 +162,8 @@ async function createTicketWithKey(
   } catch {
     throw new QueueRequestError(null);
   }
-  beginQueueGeneration();
-  return ticket;
+  const nextGeneration = beginQueueGeneration();
+  return { ticket, queueGeneration: nextGeneration };
 }
 
 async function currentTicketBeforeCreate(
@@ -217,7 +227,18 @@ async function cancelKnownCurrentTicket(): Promise<void> {
   );
 }
 
-async function createUnderLock(expectedGeneration: string): Promise<LoginQueueTicket | null> {
+function confirmQueueCancellation(generation: string) {
+  try {
+    storage().removeItem(CREATE_KEY_STORAGE);
+    publishQueueSignal({ type: 'queue-create-cancelled', queueGeneration: generation });
+    beginQueueGeneration();
+    return { kind: 'confirmed' as const };
+  } catch {
+    throw new QueueRequestError(null, 'QUEUE_CANCEL_UNCONFIRMED');
+  }
+}
+
+async function createUnderLock(expectedGeneration: string): Promise<LoginQueueStartResult | null> {
   const lockManager = navigator.locks;
   if (!lockManager?.request) throw new QueueRequestError(null, 'AUTH_CAPABILITY_UNAVAILABLE');
   return lockManager.request(
@@ -268,12 +289,13 @@ async function createUnderLock(expectedGeneration: string): Promise<LoginQueueTi
         }
       }
       if (current) {
+        let currentGeneration = expectedGeneration;
         if (marker) {
           storage().removeItem(CREATE_KEY_STORAGE);
           retryBaselines.delete(marker.id);
-          beginQueueGeneration();
+          currentGeneration = beginQueueGeneration();
         }
-        return current;
+        return { ticket: current, queueGeneration: currentGeneration };
       }
       marker = readMarker(CREATE_KEY_STORAGE);
       if (marker?.status === 'CANCEL_REQUESTED') {
@@ -376,8 +398,8 @@ async function createUnderLock(expectedGeneration: string): Promise<LoginQueueTi
               } catch {
                 throw new QueueRequestError(null);
               }
-              beginQueueGeneration();
-              return ticket;
+              const nextGeneration = beginQueueGeneration();
+              return { ticket, queueGeneration: nextGeneration };
             }
           }
           if (Date.now() >= (marker.deadlineAt ?? marker.createdAt + QUEUE_CREATE_DEADLINE_MS))
@@ -443,7 +465,7 @@ function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
-export async function startOrResumeLoginQueue(): Promise<LoginQueueTicket> {
+export async function startOrResumeLoginQueue(): Promise<LoginQueueStartResult> {
   assertLogoutCleanupComplete();
   if (!probeAuthCapabilities().supported) {
     throw new QueueRequestError(null, 'AUTH_CAPABILITY_UNAVAILABLE');
@@ -461,9 +483,9 @@ export async function startOrResumeLoginQueue(): Promise<LoginQueueTicket> {
       Math.max(0, lockDeadline - Date.now()),
     );
     try {
-      const ticket = await createUnderLock(expectedGeneration);
+      const result = await createUnderLock(expectedGeneration);
       assertLogoutCleanupComplete();
-      if (ticket) return ticket;
+      if (result) return result;
       const remaining = lockDeadline - Date.now();
       if (remaining <= 0) throw new QueueRequestError(409, 'QUEUE_LOCK_TIMEOUT');
       await wait(Math.min(200 + Math.floor(Math.random() * 201), remaining));
@@ -515,7 +537,7 @@ export async function getLoginQueueStatus(): Promise<LoginQueueTicket> {
 }
 
 /** Performs a GET-only recovery check for an exhausted create operation. */
-export async function reconcileLoginQueueStatus(): Promise<LoginQueueTicket> {
+export async function reconcileLoginQueueStatus(): Promise<LoginQueueReconciliationResult> {
   assertLogoutCleanupComplete();
   const lockManager = navigator.locks;
   if (!lockManager?.request) throw new QueueRequestError(null, 'AUTH_CAPABILITY_UNAVAILABLE');
@@ -531,16 +553,15 @@ export async function reconcileLoginQueueStatus(): Promise<LoginQueueTicket> {
       const expectedGeneration = queueGeneration();
       const ticket = await requestTicketStatus();
       assertLogoutCleanupComplete();
-      if (
-        marker &&
-        queueGeneration() === expectedGeneration &&
-        readMarker(CREATE_KEY_STORAGE)?.id === marker.id
-      ) {
+      if (queueGeneration() !== expectedGeneration)
+        throw new QueueRequestError(409, 'QUEUE_TICKET_REPLACED');
+      let reconciledGeneration = expectedGeneration;
+      if (marker && readMarker(CREATE_KEY_STORAGE)?.id === marker.id) {
         storage().removeItem(CREATE_KEY_STORAGE);
         retryBaselines.delete(marker.id);
-        beginQueueGeneration();
+        reconciledGeneration = beginQueueGeneration();
       }
-      return ticket;
+      return { ticket, queueGeneration: reconciledGeneration };
     },
   );
 }
@@ -586,7 +607,7 @@ export async function cancelLoginQueue(): Promise<void> {
           }
           if (flowController.signal.aborted)
             throw new QueueRequestError(null, 'QUEUE_CANCEL_UNCONFIRMED');
-          if (!current && !marker) return { kind: 'confirmed' as const };
+          if (!current && !marker) return confirmQueueCancellation(generation);
           if (current && !marker) {
             marker = {
               ...newMarker(),
@@ -622,7 +643,7 @@ export async function cancelLoginQueue(): Promise<void> {
             signal: flowController.signal,
           });
           assertLogoutCleanupComplete();
-          if (response.status === 204) return { kind: 'confirmed' as const };
+          if (response.status === 204) return confirmQueueCancellation(generation);
           const body = (await response.json().catch(() => null)) as
             (ApiEnvelope<{ status?: string }> & { code?: string }) | null;
           if (response.status === 403) return { kind: 'csrf' as const };
@@ -632,7 +653,7 @@ export async function cancelLoginQueue(): Promise<void> {
           if (response.status !== 200 || body?.data?.status !== 'CANCELLED') {
             throw new QueueRequestError(response.status, errorCode(body), retryAfter(response));
           }
-          return { kind: 'confirmed' as const };
+          return confirmQueueCancellation(generation);
         },
       );
       const outcome = await promiseWithTimeout(
@@ -640,16 +661,7 @@ export async function cancelLoginQueue(): Promise<void> {
         Math.max(1, CANCEL_TIMEOUT_MS - (Date.now() - flowStartedAt)),
         'QUEUE_CANCEL_UNCONFIRMED',
       );
-      if (outcome.kind === 'confirmed') {
-        try {
-          storage().removeItem(CREATE_KEY_STORAGE);
-          publishQueueSignal({ type: 'queue-create-cancelled', queueGeneration: generation });
-          beginQueueGeneration();
-          return;
-        } catch {
-          throw new QueueRequestError(null, 'QUEUE_CANCEL_UNCONFIRMED');
-        }
-      }
+      if (outcome.kind === 'confirmed') return;
       if (outcome.kind === 'csrf') {
         if (csrfRejected) throw new QueueRequestError(403, 'QUEUE_CANCEL_UNCONFIRMED');
         csrfRejected = true;
@@ -749,18 +761,23 @@ export function clearLoginOperationId(): void {
   }
 }
 
-export function retireAmbiguousLoginOperation(): void {
+export async function retireAmbiguousLoginOperation(): Promise<void> {
   assertLogoutCleanupComplete();
-  const marker = readMarker(CREATE_KEY_STORAGE);
-  try {
-    storage().removeItem(CREATE_KEY_STORAGE);
-    storage().removeItem(LOGIN_OPERATION_STORAGE);
-  } catch {
-    throw new QueueRequestError(null, 'AUTH_STATE_UNAVAILABLE');
-  }
-  if (marker) retryBaselines.delete(marker.id);
-  beginQueueGeneration();
-  publishQueueSignal({ type: 'queue-attempt-consumed', queueGeneration: queueGeneration() });
+  const lockManager = navigator.locks;
+  if (!lockManager?.request) throw new QueueRequestError(null, 'AUTH_CAPABILITY_UNAVAILABLE');
+  await lockManager.request(QUEUE_FLOW_LOCK, { mode: 'exclusive' }, () => {
+    assertLogoutCleanupComplete();
+    const marker = readMarker(CREATE_KEY_STORAGE);
+    try {
+      storage().removeItem(CREATE_KEY_STORAGE);
+      storage().removeItem(LOGIN_OPERATION_STORAGE);
+    } catch {
+      throw new QueueRequestError(null, 'AUTH_STATE_UNAVAILABLE');
+    }
+    if (marker) retryBaselines.delete(marker.id);
+    const generation = beginQueueGeneration();
+    publishQueueSignal({ type: 'queue-attempt-consumed', queueGeneration: generation });
+  });
 }
 
 export async function submitQueuedLogin(
@@ -807,19 +824,25 @@ export async function submitQueuedLogin(
             body: JSON.stringify(request),
           });
         } catch {
+          if (queueGeneration() !== expectedGeneration) return { kind: 'ticket-replaced' as const };
           return { kind: 'ambiguous' as const, status: null, retryAfter: null };
         }
         assertLogoutCleanupComplete();
+        if (queueGeneration() !== expectedGeneration) return { kind: 'ticket-replaced' as const };
         const body = (await response.json().catch(() => null)) as ApiEnvelope<{
           access_token?: string;
           expires_in?: number;
         }> | null;
+        if (queueGeneration() !== expectedGeneration) return { kind: 'ticket-replaced' as const };
         if (
           response.ok &&
           (body?.message === 'login success' || body?.message === 'login recovered') &&
           typeof body.data?.access_token === 'string' &&
           typeof body.data.expires_in === 'number'
         ) {
+          assertLogoutCleanupComplete();
+          if (queueGeneration() !== expectedGeneration) return { kind: 'ticket-replaced' as const };
+          setAccessToken(body.data.access_token);
           return {
             kind: 'success' as const,
             body: body as LoginSuccessEnvelope,
@@ -831,7 +854,11 @@ export async function submitQueuedLogin(
             type: 'queue-attempt-consumed',
             queueGeneration: queueGeneration(),
           });
-          return { kind: 'invalid' as const, code: body?.message ?? null };
+          return {
+            kind: 'invalid' as const,
+            code: body?.message ?? null,
+            queueGeneration: queueGeneration(),
+          };
         }
         if (response.status === 429) {
           return {
@@ -852,12 +879,9 @@ export async function submitQueuedLogin(
     if (result.kind === 'peer-owned') throw new QueueRequestError(409, 'QUEUE_LOGIN_IN_PROGRESS');
     if (result.kind === 'ticket-replaced')
       throw new QueueRequestError(409, 'QUEUE_TICKET_REPLACED');
-    if (result.kind === 'success') {
-      assertLogoutCleanupComplete();
-      setAccessToken(result.body.data.access_token);
-      return result.body;
-    }
-    if (result.kind === 'invalid') throw new QueueRequestError(401, result.code);
+    if (result.kind === 'success') return result.body;
+    if (result.kind === 'invalid')
+      throw new QueueRequestError(401, result.code, null, result.queueGeneration);
     if (result.kind === 'retry') throw new QueueRequestError(429, result.code, result.retryAfter);
     throw new QueueRequestError(
       result.status ?? null,
@@ -867,12 +891,21 @@ export async function submitQueuedLogin(
   });
 }
 
-export async function recoverQueuedLogin(operationId?: string): Promise<LoginSuccessEnvelope> {
+export async function recoverQueuedLogin(
+  operationId?: string,
+  expectedGeneration = queueGeneration(),
+  isCurrent: () => boolean = () => true,
+): Promise<LoginSuccessEnvelope> {
+  if (!isCurrent()) throw new QueueRequestError(409, 'QUEUE_TICKET_REPLACED');
   assertLogoutCleanupComplete();
   const csrf = await getCsrfToken();
   assertLogoutCleanupComplete();
+  if (!isCurrent() || queueGeneration() !== expectedGeneration)
+    throw new QueueRequestError(409, 'QUEUE_TICKET_REPLACED');
   return runAuthTransition(async () => {
     assertLogoutCleanupComplete();
+    if (!isCurrent() || queueGeneration() !== expectedGeneration)
+      throw new QueueRequestError(409, 'QUEUE_TICKET_REPLACED');
     const lockManager = navigator.locks;
     if (!lockManager?.request) throw new QueueRequestError(null, 'AUTH_CAPABILITY_UNAVAILABLE');
     const recovery = await lockManager.request(
@@ -881,6 +914,8 @@ export async function recoverQueuedLogin(operationId?: string): Promise<LoginSuc
       async (lock) => {
         assertLogoutCleanupComplete();
         if (!lock) throw new QueueRequestError(409, 'QUEUE_LOGIN_IN_PROGRESS');
+        if (!isCurrent() || queueGeneration() !== expectedGeneration)
+          throw new QueueRequestError(409, 'QUEUE_TICKET_REPLACED');
         const stableOperationId = operationId ?? getLoginOperationId();
         let response: Response;
         try {
@@ -893,6 +928,8 @@ export async function recoverQueuedLogin(operationId?: string): Promise<LoginSuc
           throw new QueueRequestError(null, 'AUTH_STATE_UNAVAILABLE');
         }
         assertLogoutCleanupComplete();
+        if (!isCurrent() || queueGeneration() !== expectedGeneration)
+          throw new QueueRequestError(409, 'QUEUE_TICKET_REPLACED');
         const body = (await response.json().catch(() => null)) as ApiEnvelope<{
           access_token?: string;
           expires_in?: number;
@@ -904,6 +941,8 @@ export async function recoverQueuedLogin(operationId?: string): Promise<LoginSuc
           typeof body.data.expires_in === 'number'
         ) {
           assertLogoutCleanupComplete();
+          if (!isCurrent() || queueGeneration() !== expectedGeneration)
+            throw new QueueRequestError(409, 'QUEUE_TICKET_REPLACED');
           setAccessToken(body.data.access_token);
           return body as LoginSuccessEnvelope;
         }
