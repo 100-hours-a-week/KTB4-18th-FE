@@ -81,6 +81,26 @@ beforeEach(async () => {
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), 'http://localhost');
+      if (url.pathname.endsWith('/songs') && init?.method === 'POST')
+        return Response.json(
+          {
+            data: {
+              music: {
+                music_id: 12,
+                provider: 'ITUNES',
+                external_music_id: '123',
+                title: '새 음악',
+                artist_name: '가수',
+                album_cover_url: null,
+                preview_url: null,
+                youtube_video_id: null,
+                is_queueable: false,
+              },
+              created: true,
+            },
+          },
+          { status: 201 },
+        );
       if (url.pathname.endsWith('/auth/token/csrf'))
         return Response.json({ data: { csrf_token: 'csrf' } });
       if (url.pathname.endsWith('/music-records') && init?.method === 'DELETE') {
