@@ -1518,8 +1518,35 @@ describe('음악 기록 생성·상세 경로 연결', () => {
     window.history.replaceState(null, '', '/music-records/new');
     vi.stubGlobal(
       'fetch',
-      vi.fn((input: string | URL) => {
+      vi.fn((input: string | URL, init?: RequestInit) => {
         const url = String(input);
+        if (url.endsWith('/api/v1/auth/token/csrf')) {
+          return Promise.resolve(Response.json({ data: { csrf_token: 'test-csrf-token' } }));
+        }
+        if (url.endsWith('/api/v1/songs') && init?.method === 'POST') {
+          return Promise.resolve(
+            Response.json(
+              {
+                message: 'song registered',
+                data: {
+                  music: {
+                    music_id: 11,
+                    provider: 'ITUNES',
+                    external_music_id: '123',
+                    title: '밤편지',
+                    artist_name: '아이유',
+                    album_cover_url: null,
+                    preview_url: null,
+                    youtube_video_id: null,
+                    is_queueable: false,
+                  },
+                  created: true,
+                },
+              },
+              { status: 201 },
+            ),
+          );
+        }
         if (url.includes('/api/v1/music/search')) {
           return Promise.resolve(
             Response.json({

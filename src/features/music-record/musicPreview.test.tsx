@@ -1,13 +1,14 @@
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { searchMusic, type Music } from './api/musicRecordsApi';
+import { registerSelectedMusic, searchMusic, type Music } from './api/musicRecordsApi';
 import { MusicRecordCreatePage } from './components/MusicRecordPages';
 import { useMusicPreview } from './hooks/useMusicPreview';
 
 vi.mock('./api/musicRecordsApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./api/musicRecordsApi')>()),
   searchMusic: vi.fn(),
+  registerSelectedMusic: vi.fn(),
 }));
 
 class PreviewAudio {
@@ -46,6 +47,11 @@ describe('음악 검색 미리 듣기', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     PreviewAudio.instances = [];
+    vi.mocked(registerSelectedMusic).mockImplementation(async (id) => ({
+      ...music,
+      external_music_id: id,
+      music_id: 12,
+    }));
     vi.stubGlobal('Audio', PreviewAudio);
     vi.mocked(searchMusic).mockResolvedValue({
       items: [music, { ...music, external_music_id: '456', title: '팔레트', preview_url: null }],
@@ -86,6 +92,7 @@ describe('음악 검색 미리 듣기', () => {
     fireEvent.click(screen.getByRole('button', { name: '팔레트아이유' }));
     expect(next).toBeEnabled();
     expect(PreviewAudio.instances).toHaveLength(1);
+    expect(registerSelectedMusic).not.toHaveBeenCalled();
   });
 
   it('일시정지 후 같은 음원을 같은 위치에서 이어 듣는다', async () => {
@@ -121,7 +128,7 @@ describe('음악 검색 미리 듣기', () => {
       fireEvent.click(screen.getByRole('button', { name: '밤편지 아이유 미리 듣기 재생' })),
     );
     fireEvent.click(screen.getByRole('button', { name: '밤편지아이유' }));
-    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
     expect(PreviewAudio.instances[1].pause).toHaveBeenCalled();
     expect(screen.getByRole('region', { name: '음악 기록 입력' })).toBeInTheDocument();
   });
