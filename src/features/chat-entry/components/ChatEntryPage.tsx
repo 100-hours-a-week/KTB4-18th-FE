@@ -233,7 +233,13 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
                   <article
                     className={`region-chat-message${message.userId === chat.currentUserId ? ' region-chat-own' : ''}${isContinuation ? ' region-chat-continuation' : ''}`}
                   >
-                    <strong className="chat-entry-visually-hidden">
+                    <strong
+                      className={
+                        message.userId !== chat.currentUserId && !isContinuation
+                          ? 'region-chat-nickname'
+                          : 'chat-entry-visually-hidden'
+                      }
+                    >
                       {message.userId === chat.currentUserId ? '나' : message.nickname}
                     </strong>
                     <p className="region-chat-bubble">{message.content}</p>

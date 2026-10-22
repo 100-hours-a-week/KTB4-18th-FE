@@ -193,6 +193,18 @@
   margin-top: 8px;
 }
 
+.region-chat-nickname {
+  min-width: 0;
+  max-width: 100%;
+  margin: 0 0 8px;
+  color: #171717;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  letter-spacing: 0.145px;
+  overflow-wrap: anywhere;
+}
+
 .region-chat-bubble {
   width: max-content;
   max-width: min(340px, 100%);
