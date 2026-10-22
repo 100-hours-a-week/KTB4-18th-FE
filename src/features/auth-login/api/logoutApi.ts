@@ -7,11 +7,29 @@ export class LogoutRequestError extends Error {
   }
 }
 
-export async function logout(): Promise<void> {
-  return runAuthTransition(submitLogout);
+export class LogoutFinalizationError extends Error {
+  constructor() {
+    super('Logout succeeded, but local authentication state could not be finalized');
+    this.name = 'LogoutFinalizationError';
+  }
 }
 
-async function submitLogout(): Promise<void> {
+export async function logout(onServerSuccess?: () => void): Promise<void> {
+  let serverSucceeded = false;
+  try {
+    await runAuthTransition(() =>
+      submitLogout(() => {
+        serverSucceeded = true;
+        onServerSuccess?.();
+      }),
+    );
+  } catch (error) {
+    if (serverSucceeded) throw new LogoutFinalizationError();
+    throw error;
+  }
+}
+
+async function submitLogout(onServerSuccess: () => void): Promise<void> {
   let response: Response;
 
   try {
@@ -34,6 +52,7 @@ async function submitLogout(): Promise<void> {
   if (!response.ok) {
     throw new LogoutRequestError(response.status);
   }
+  onServerSuccess();
   clearAccessToken();
 }
 import { clearAccessToken, getAccessToken, getCsrfToken, runAuthTransition } from './authSession';

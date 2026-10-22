@@ -64,7 +64,7 @@ export async function fetchWithTimeout(input: string, init: RequestInit = {}): P
       controller.abort();
       throw new QueueRequestError(response.status, 'AUTH_RESPONSE_TOO_LARGE');
     }
-    if (!response.body) return response;
+    if (!response.body || [204, 205, 304].includes(response.status)) return response;
     const reader = response.body.getReader();
     const chunks: Uint8Array[] = [];
     let total = 0;

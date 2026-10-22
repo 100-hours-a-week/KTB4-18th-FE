@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCsrfToken, runAuthTransition } from './authSession';
+import { isLogoutCleanupPending, resetLogoutCleanupGateForTests } from './logoutCleanupGate';
 
 vi.mock('./authSession', () => ({
+  assertAuthEpochReadable: vi.fn(),
   getCsrfToken: vi.fn(),
   runAuthTransition: vi.fn(),
   setAccessToken: vi.fn(),
@@ -37,6 +39,8 @@ function ticket(status: 'READY' | 'CONSUMED') {
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
+  resetLogoutCleanupGateForTests();
   vi.clearAllMocks();
   vi.useRealTimers();
 });
@@ -372,7 +376,7 @@ describe('login queue response contract', () => {
     expect(replacementKey).not.toBe(originalKey);
   });
 
-  it('resets local queue state after logout without sending a remote request and preserves ambiguous create identity', async () => {
+  it('deletes the server ticket before resetting local queue state and clearing the gate', async () => {
     vi.stubGlobal(
       'navigator',
       Object.assign(Object.create(Object.getPrototypeOf(navigator)), navigator, {
@@ -382,6 +386,7 @@ describe('login queue response contract', () => {
         },
       }),
     );
+    vi.mocked(getCsrfToken).mockResolvedValue('csrf-token');
     const now = Date.now();
     localStorage.setItem(
       'meomuneum:queue-create-idempotency',
@@ -398,25 +403,54 @@ describe('login queue response contract', () => {
         lastFailureKind: 'TRANSIENT',
       }),
     );
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      void input;
+      void init;
+      return new Response(null, { status: 204 });
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     await resetLoginQueueAfterLogout();
 
-    const marker = JSON.parse(localStorage.getItem('meomuneum:queue-create-idempotency') ?? '{}');
     const reset = JSON.parse(localStorage.getItem('meomuneum:queue-logout-reset') ?? '{}');
-    expect(marker).toMatchObject({
-      id: 'ambiguous-key',
-      status: 'CANCEL_REQUESTED',
-      cancelTarget: 'IDEMPOTENCY_KEY',
-      retryCount: 2,
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      method: 'DELETE',
+      credentials: 'include',
+      headers: { 'X-CSRF-TOKEN': 'csrf-token' },
     });
-    expect(marker.nextAttemptAt).toBeUndefined();
-    expect(marker.retryAfterMs).toBeUndefined();
-    expect(reset.generation).toBe(marker.generation);
+    expect(localStorage.getItem('meomuneum:queue-create-idempotency')).toBeNull();
+    expect(reset.generation).toBe(getLoginQueueGeneration());
     expect(reset.eventId).toBeTruthy();
     expect(localStorage.getItem('meomuneum:queue-login-operation')).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(isLogoutCleanupPending()).toBe(false);
+  });
+
+  it('sends the logout DELETE even when the browser has no local queue markers', async () => {
+    vi.stubGlobal(
+      'navigator',
+      Object.assign(Object.create(Object.getPrototypeOf(navigator)), navigator, {
+        locks: {
+          request: async (_name: string, _options: unknown, callback: (lock: object) => unknown) =>
+            callback({}),
+        },
+      }),
+    );
+    vi.mocked(getCsrfToken).mockResolvedValue('csrf-token');
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      void input;
+      void init;
+      return new Response(null, { status: 204 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await resetLoginQueueAfterLogout();
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/v1/auth/login-queue/tickets/current');
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'DELETE', credentials: 'include' });
+    expect(localStorage.getItem('meomuneum:queue-create-idempotency')).toBeNull();
+    expect(localStorage.getItem('meomuneum:queue-login-operation')).toBeNull();
   });
 
   it('resolves an ambiguous create with the same key without calling an unsupported by-key route', async () => {

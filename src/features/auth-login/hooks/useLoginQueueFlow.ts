@@ -14,12 +14,12 @@ import {
   promiseWithTimeout,
   QueueRequestError,
   recoverQueuedLogin,
+  retireAmbiguousLoginOperation,
   startOrResumeLoginQueue,
   submitQueuedLogin,
   subscribeQueueSignals,
   type LoginQueueTicket,
 } from '../api/loginQueueApi';
-import { clearAccessToken, getAccessTokenExpiresAt, refreshAccessToken } from '../api/authSession';
 import type { LoginSuccessResponse } from '../api/loginApi';
 import type { FieldErrors, CapacityWait } from './loginQueueFlowUtils';
 import {
@@ -469,6 +469,129 @@ export function useLoginQueueFlow({
     ],
   );
 
+  async function submitAgainstExistingAmbiguousOperation(credentials: {
+    email: string;
+    password: string;
+  }): Promise<void> {
+    const generationAtStart = getLoginQueueGeneration();
+    const submitKnownTicket = async (ticket: LoginQueueTicket) => {
+      if (generationAtStart !== getLoginQueueGeneration()) return;
+      activeSharedQueueGeneration.current = getLoginQueueGeneration();
+      setQueueTicket(ticket);
+      if (ticket.status === 'WAITING' || ticket.status === 'VERIFYING') {
+        setAmbiguousLogin(false);
+        setIsQueueOpen(shouldShowQueueDialog(ticket));
+        setQueueMessage(
+          ticket.status === 'VERIFYING'
+            ? '로그인 처리가 진행 중이에요. 결과를 확인하고 있어요.'
+            : '기존 대기 요청을 이어서 확인할게요.',
+        );
+        return;
+      }
+      if (ticket.status === 'READY' || ticket.status === 'RETRYABLE') {
+        setAmbiguousLogin(false);
+        setIsQueueOpen(false);
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
+        await submitReadyLogin(credentials, ticket.diagnosticCorrId);
+        return;
+      }
+      if (ticket.status === 'CONSUMED' && ticket.loginOutcome === 'SUCCESS') {
+        try {
+          const recovered = await recoverQueuedLogin();
+          setAmbiguousLogin(false);
+          finishLogin({ message: 'login success', data: recovered.data });
+        } catch (error) {
+          if (error instanceof QueueRequestError && error.code === 'LOGIN_RECOVERY_UNAVAILABLE') {
+            retireAmbiguousLoginOperation();
+            setQueueTicket(null);
+            setIsQueueOpen(false);
+            setAmbiguousLogin(false);
+            setPassword('');
+            setRequestError(
+              '이전 로그인 확인이 만료되었어요. 새 비밀번호를 입력해 다시 로그인해 주세요.',
+            );
+            return;
+          }
+          throw error;
+        }
+        return;
+      }
+      if (
+        ticket.status === 'CONSUMED' ||
+        ticket.status === 'CANCELLED' ||
+        ticket.status === 'EXPIRED'
+      ) {
+        retireAmbiguousLoginOperation();
+        setQueueTicket(null);
+        setIsQueueOpen(false);
+        setAmbiguousLogin(false);
+        setIsSubmitting(false);
+        isSubmittingRef.current = false;
+        if (ticket.status === 'CONSUMED') {
+          await submitAgainstFreshQueue(credentials);
+        } else {
+          setPassword('');
+          setRequestError(
+            ticket.status === 'EXPIRED'
+              ? '기존 대기 시간이 만료되었어요. 새 비밀번호를 입력해 다시 로그인해 주세요.'
+              : '기존 대기가 취소되었어요. 새 비밀번호를 입력해 다시 로그인해 주세요.',
+          );
+        }
+      }
+    };
+
+    try {
+      const status = await getLoginQueueStatus();
+      if (generationAtStart !== getLoginQueueGeneration()) return;
+      await submitKnownTicket(status);
+    } catch (error) {
+      if (error instanceof QueueRequestError && (error.status === 404 || error.status === 410)) {
+        retireAmbiguousLoginOperation();
+        await submitAgainstFreshQueue(credentials);
+        return;
+      }
+      if (error instanceof QueueRequestError && error.code === 'LOGIN_RECOVERY_UNAVAILABLE') {
+        retireAmbiguousLoginOperation();
+        setQueueTicket(null);
+        setIsQueueOpen(false);
+        setAmbiguousLogin(false);
+        setPassword('');
+        setRequestError(
+          '이전 로그인 확인이 만료되었어요. 새 비밀번호를 입력해 다시 로그인해 주세요.',
+        );
+        return;
+      }
+      setPassword('');
+      setAmbiguousLogin(true);
+      setIsQueueOpen(false);
+      setQueueMessage('로그인 상태를 확인하지 못했어요. 비밀번호를 다시 입력해 시도해 주세요.');
+    }
+  }
+
+  async function submitAgainstFreshQueue(credentials: {
+    email: string;
+    password: string;
+  }): Promise<void> {
+    const ticket = await confirmNewWaitingTicket(await startOrResumeLoginQueue());
+    activeSharedQueueGeneration.current = getLoginQueueGeneration();
+    setQueueTicket(ticket);
+    if (closeTerminalQueue(ticket)) return;
+    if (ticket.status === 'READY' || ticket.status === 'RETRYABLE') {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
+      await submitReadyLogin(credentials, ticket.diagnosticCorrId);
+      return;
+    }
+    if (ticket.status === 'CONSUMED' && ticket.loginOutcome === 'SUCCESS') {
+      const recovered = await recoverQueuedLogin();
+      finishLogin({ message: 'login success', data: recovered.data });
+      return;
+    }
+    setAmbiguousLogin(false);
+    setIsQueueOpen(shouldShowQueueDialog(ticket));
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isSubmittingRef.current) return;
@@ -478,6 +601,7 @@ export function useLoginQueueFlow({
     setEmail(normalizedEmail);
     const nextFieldErrors = validate(normalizedEmail, password);
     setFieldErrors(nextFieldErrors);
+    const wasAmbiguous = ambiguousLogin;
     setRequestError('');
     setIsLoginSuccessful(false);
     setAmbiguousLogin(false);
@@ -490,6 +614,13 @@ export function useLoginQueueFlow({
     setIsSubmitting(true);
     isSubmittingRef.current = true;
     try {
+      if (wasAmbiguous) {
+        await submitAgainstExistingAmbiguousOperation({
+          email: normalizedEmail,
+          password,
+        });
+        return;
+      }
       const ticket = await confirmNewWaitingTicket(await startOrResumeLoginQueue());
       setCapacityWait(null);
       activeSharedQueueGeneration.current = getLoginQueueGeneration();
@@ -1102,80 +1233,6 @@ export function useLoginQueueFlow({
     }
   }
 
-  async function continueWithExistingSession() {
-    setIsSubmitting(true);
-    try {
-      try {
-        const status = await getLoginQueueStatus();
-        setQueueTicket(status);
-        if (closeTerminalQueue(status)) return;
-        if (status.status === 'CONSUMED' && status.loginOutcome === 'SUCCESS') {
-          const recovered = await recoverQueuedLogin();
-          finishLogin({ message: 'login success', data: recovered.data });
-          return;
-        }
-        if (status.status === 'VERIFYING') {
-          setQueueMessage('로그인 결과를 확인하고 있어요. 잠시만 기다려 주세요.');
-          return;
-        }
-        if (status.status === 'WAITING' || status.status === 'READY') {
-          try {
-            await cancelLoginQueue();
-          } catch (error) {
-            if (error instanceof QueueRequestError && error.status === 409) {
-              setQueueMessage('로그인 결과를 확인하고 있어요. 잠시만 기다려 주세요.');
-              return;
-            }
-            throw error;
-          }
-        }
-      } catch (error) {
-        if (!(error instanceof QueueRequestError) || ![404, 410].includes(error.status ?? 0)) {
-          throw error;
-        }
-      }
-
-      const token = await refreshAccessToken();
-      const expiresAt = getAccessTokenExpiresAt();
-      if (expiresAt === null) throw new Error('Refreshed token has no expiry');
-      queueGeneration.current += 1;
-      activeSharedQueueGeneration.current = null;
-      setQueueTicket(null);
-      setQueueMessage('기존 로그인 상태를 복원했어요.');
-      setIsQueueOpen(false);
-      setPassword('');
-      setAmbiguousLogin(false);
-      setIsLoginSuccessful(true);
-      publishQueueSignal({
-        type: 'queue-login-complete',
-        queueGeneration: getLoginQueueGeneration(),
-      });
-      onLoginSuccess?.({
-        message: 'login success',
-        data: {
-          access_token: token,
-          expires_in: Math.max(0, Math.floor((expiresAt - Date.now()) / 1000)),
-        },
-      });
-    } catch {
-      setAmbiguousLogin(true);
-      setQueueMessage('기존 로그인 상태를 복원하지 못했어요. 잠시 후 다시 시도해 주세요.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  function restartAfterAmbiguousLogin() {
-    queueGeneration.current += 1;
-    setAmbiguousLogin(false);
-    setIsQueueOpen(false);
-    setQueueTicket(null);
-    setPassword('');
-    clearAccessToken();
-    onLoginFailure?.();
-    setRequestError('로그인 결과를 확인할 수 없어 새 로그인을 시작해 주세요.');
-  }
-
   return {
     queueTicket,
     isQueueOpen,
@@ -1192,7 +1249,5 @@ export function useLoginQueueFlow({
     retryCapacityWait,
     reconcileExhaustedQueue,
     handleCancelQueue,
-    continueWithExistingSession,
-    restartAfterAmbiguousLogin,
   };
 }

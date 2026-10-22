@@ -6,6 +6,7 @@ import { recommend, streamRecommendation } from './api/recommendations';
 import { login } from './features/auth-login/api/loginApi';
 import {
   cancelLoginQueue,
+  getLoginQueueStatus,
   resetLoginQueueAfterLogout,
 } from './features/auth-login/api/loginQueueApi';
 import { logout, LogoutRequestError } from './features/auth-login/api/logoutApi';
@@ -97,6 +98,11 @@ vi.mock('./features/auth-login/api/loginQueueApi', async (importOriginal) => ({
 }));
 vi.mock('./features/auth-login/api/logoutApi', () => ({
   logout: vi.fn(),
+  LogoutFinalizationError: class LogoutFinalizationError extends Error {
+    constructor() {
+      super('Logout succeeded, but local authentication state could not be finalized');
+    }
+  },
   LogoutRequestError: class LogoutRequestError extends Error {
     readonly status: number | null;
 
@@ -1214,6 +1220,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     await screen.findByRole('button', { name: '마이' });
     await user.click(screen.getByRole('button', { name: '마이' }));
     expect(window.location.pathname).toBe('/my');
+    const queueStatusReadsBeforeLogout = vi.mocked(getLoginQueueStatus).mock.calls.length;
     await user.click(await screen.findByRole('button', { name: '로그아웃' }));
 
     await waitFor(() => {
@@ -1222,6 +1229,46 @@ describe('로그인과 회원가입 화면 연결', () => {
       expect(cancelLoginQueue).not.toHaveBeenCalled();
       expect(screen.getByRole('heading', { name: '머문음' })).toBeInTheDocument();
     });
+    expect(getLoginQueueStatus).toHaveBeenCalledTimes(queueStatusReadsBeforeLogout);
+    expect(screen.getByLabelText('이메일')).toHaveValue('');
+    expect(screen.getByLabelText('비밀번호')).toHaveValue('');
+    expect(
+      screen.queryByRole('button', { name: '이전 로그인 상태 계속하기' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '새로 로그인하기' })).not.toBeInTheDocument();
+  });
+
+  it('signed-out epoch skips automatic queue restore when the login page opens', async () => {
+    window.localStorage.setItem(
+      'meomuneum:auth-epoch',
+      JSON.stringify({ id: 'signed-out', state: 'signed-out' }),
+    );
+    window.history.replaceState(null, '', '/login');
+
+    render(<App />);
+
+    expect(await screen.findByLabelText('이메일')).toHaveValue('');
+    expect(getLoginQueueStatus).not.toHaveBeenCalled();
+  });
+
+  it('auth epoch read failure fails closed before queue restore or credential submission', async () => {
+    const originalGetItem = Storage.prototype.getItem;
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key) {
+      if (key === 'meomuneum:auth-epoch') {
+        throw new DOMException('storage unavailable', 'SecurityError');
+      }
+      return originalGetItem.call(this, key);
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    window.history.replaceState(null, '', '/login');
+
+    render(<App />);
+
+    expect(await screen.findByText(/저장된 로그인 상태를 확인할 수 없어요/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '로그인' })).toBeDisabled();
+    expect(getLoginQueueStatus).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('챗봇 플로팅 버튼과 브라우저 뒤로·앞으로가 렌더된 SPA 경로를 바꾼다', async () => {
@@ -1255,8 +1302,12 @@ describe('로그인과 회원가입 화면 연결', () => {
     resetAuthSessionForTests();
     sessionStorage.clear();
     window.history.replaceState(null, '', '/chatbot');
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementationOnce(() => {
-      throw new DOMException('temporarily blocked', 'SecurityError');
+    const originalGetItem = Storage.prototype.getItem;
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementationOnce(function (this: Storage, key) {
+      if (this === sessionStorage && key === 'access_token') {
+        throw new DOMException('temporarily blocked', 'SecurityError');
+      }
+      return originalGetItem.call(this, key);
     });
     let csrfCount = 0;
     vi.stubGlobal(
@@ -1388,6 +1439,9 @@ describe('로그인과 회원가입 화면 연결', () => {
     expect(getAccessToken()).toBeNull();
     expect(await screen.findByLabelText('이메일')).toBeInTheDocument();
     expect(window.location.pathname).toBe('/login');
+    expect(screen.getByRole('button', { name: '로그인 준비 다시 시도' })).toBeInTheDocument();
+    expect(screen.getByLabelText('이메일')).toBeDisabled();
+    expect(screen.getByLabelText('비밀번호')).toBeDisabled();
   });
 
   it.each([

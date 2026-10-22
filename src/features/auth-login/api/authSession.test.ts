@@ -9,6 +9,7 @@ import {
   clearAccessToken,
   getAccessToken,
   getAccessTokenExpiresAt,
+  getAuthRestoreState,
   getLastAccessTokenRefreshAt,
   refreshAccessToken,
   resetAuthSessionForTests,
@@ -16,6 +17,7 @@ import {
   setAccessToken,
   shouldRefreshAccessToken,
 } from './authSession';
+import { beginLogoutCleanupGate } from './logoutCleanupGate';
 
 function accessTokenWithExpiration(expiresAt: number): string {
   const payload = btoa(JSON.stringify({ exp: Math.floor(expiresAt / 1000) }))
@@ -43,6 +45,35 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     window.localStorage.setItem('meomuneum:auth-epoch', 'browser-epoch');
     sessionStorage.setItem('access_token_epoch', 'browser-epoch');
     expect(getAccessToken()).toBe('persisted-token');
+  });
+
+  it('signed-out epoch prevents refresh until a user starts a new login', async () => {
+    window.localStorage.setItem(
+      'meomuneum:auth-epoch',
+      JSON.stringify({ id: 'signed-out-epoch', state: 'signed-out' }),
+    );
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect(getAuthRestoreState()).toBe('signed-out');
+    await expect(refreshAccessToken()).rejects.toMatchObject({ status: null });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('logout cleanup pending blocks refresh and marker storage failures fail closed', async () => {
+    beginLogoutCleanupGate();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect(getAuthRestoreState()).toBe('cleanup-pending');
+    await expect(refreshAccessToken()).rejects.toMatchObject({ status: null });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    resetAuthSessionForTests();
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('storage unavailable', 'SecurityError');
+    });
+    expect(getAuthRestoreState()).toBe('cleanup-pending');
   });
 
   it('access JWT 만료 10분 전부터 refresh가 필요하다고 판단한다', () => {

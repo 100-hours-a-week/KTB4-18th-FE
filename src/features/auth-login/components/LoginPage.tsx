@@ -10,6 +10,12 @@ import './LoginPage.css';
 
 type LoginPageProps = {
   authCapabilityMessage?: string;
+  authRestoreError?: string;
+  onRetryAuthRestore?: () => void;
+  logoutCleanupPending?: boolean;
+  logoutCleanupError?: string;
+  logoutCleanupRetrying?: boolean;
+  onRetryLogoutCleanup?: () => void;
   skipInitialQueueRestore?: boolean;
   onLoginSuccess?: (response: LoginSuccessResponse) => void;
   onLoginStart?: () => void;
@@ -20,6 +26,12 @@ type LoginPageProps = {
 
 export function LoginPage({
   authCapabilityMessage,
+  authRestoreError,
+  onRetryAuthRestore,
+  logoutCleanupPending = false,
+  logoutCleanupError,
+  logoutCleanupRetrying = false,
+  onRetryLogoutCleanup,
   skipInitialQueueRestore,
   onLoginSuccess,
   onLoginStart,
@@ -48,8 +60,8 @@ export function LoginPage({
     isSubmitting,
     isSubmittingRef,
     setIsLoginSuccessful,
-    authCapabilityMessage,
-    skipInitialQueueRestore,
+    authCapabilityMessage: authRestoreError ?? authCapabilityMessage,
+    skipInitialQueueRestore: skipInitialQueueRestore || logoutCleanupPending,
     onLoginSuccess,
     onLoginStart,
     onLoginFailure,
@@ -70,8 +82,6 @@ export function LoginPage({
     retryCapacityWait,
     reconcileExhaustedQueue,
     handleCancelQueue,
-    continueWithExistingSession,
-    restartAfterAmbiguousLogin,
   } = flow;
 
   return (
@@ -94,6 +104,27 @@ export function LoginPage({
               <p className="login-notice" role="alert">
                 {authCapabilityMessage}
               </p>
+            )}
+            {authRestoreError && (
+              <p className="login-notice" role="alert">
+                {authRestoreError}{' '}
+                <button type="button" onClick={onRetryAuthRestore}>
+                  다시 시도
+                </button>
+              </p>
+            )}
+            {logoutCleanupPending && (
+              <section className="login-notice" aria-label="로그아웃 정리 대기" role="alert">
+                <p>로그인 준비를 마무리하고 있어요. 완료될 때까지 다시 로그인할 수 없어요.</p>
+                {logoutCleanupError && <p>{logoutCleanupError}</p>}
+                <button
+                  type="button"
+                  onClick={onRetryLogoutCleanup}
+                  disabled={logoutCleanupRetrying}
+                >
+                  {logoutCleanupRetrying ? '로그인 준비 중…' : '로그인 준비 다시 시도'}
+                </button>
+              </section>
             )}
             {passwordChangedNotice && (
               <p role="status">
@@ -132,7 +163,12 @@ export function LoginPage({
                     spellCheck={false}
                     aria-invalid={Boolean(fieldErrors.email)}
                     aria-describedby={fieldErrors.email ? 'email-error' : undefined}
-                    disabled={isSubmitting || Boolean(capacityWait) || !isAuthSupported}
+                    disabled={
+                      isSubmitting ||
+                      Boolean(capacityWait) ||
+                      !isAuthSupported ||
+                      logoutCleanupPending
+                    }
                   />
                 </div>
                 {fieldErrors.email && (
@@ -160,14 +196,19 @@ export function LoginPage({
                     }}
                     aria-invalid={Boolean(fieldErrors.password)}
                     aria-describedby={fieldErrors.password ? 'password-error' : undefined}
-                    disabled={isSubmitting || Boolean(capacityWait) || !isAuthSupported}
+                    disabled={
+                      isSubmitting ||
+                      Boolean(capacityWait) ||
+                      !isAuthSupported ||
+                      logoutCleanupPending
+                    }
                   />
                   <button
                     className="password-toggle"
                     type="button"
                     onClick={() => setIsPasswordVisible((visible) => !visible)}
                     aria-label={isPasswordVisible ? '비밀번호 숨기기' : '비밀번호 표시'}
-                    disabled={isSubmitting || !isAuthSupported}
+                    disabled={isSubmitting || !isAuthSupported || logoutCleanupPending}
                   >
                     <img
                       src={
@@ -242,13 +283,9 @@ export function LoginPage({
                 </p>
               )}
               {ambiguousLogin && (
-                <div className="login-ambiguity" role="group" aria-label="로그인 결과 선택">
-                  <button type="button" onClick={continueWithExistingSession}>
-                    이전 로그인 상태 계속하기
-                  </button>
-                  <button type="button" onClick={restartAfterAmbiguousLogin}>
-                    새로 로그인하기
-                  </button>
+                <div className="login-ambiguity" role="status" aria-live="polite">
+                  로그인 결과를 확인하지 못했어요. 다시 로그인하려면 비밀번호를 입력하고 로그인
+                  버튼을 눌러 주세요.
                 </div>
               )}
 
@@ -261,8 +298,8 @@ export function LoginPage({
                   !isFormValid ||
                   isSubmitting ||
                   Boolean(capacityWait) ||
-                  ambiguousLogin ||
-                  !isAuthSupported
+                  !isAuthSupported ||
+                  logoutCleanupPending
                 }
                 loading={isSubmitting}
                 aria-label="로그인"
@@ -277,7 +314,7 @@ export function LoginPage({
           </div>
         </div>
       </section>
-      {isQueueOpen && queueTicket && (
+      {isQueueOpen && queueTicket && !logoutCleanupPending && (
         <LoginQueueDialog
           ticket={queueTicket}
           message={queueMessage}

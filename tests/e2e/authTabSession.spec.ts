@@ -25,6 +25,10 @@ async function signedOut(page: Page) {
   await expect(page).toHaveURL(/\/login(?:\?|$)/);
   await expect.poll(() => identity(page)).toBeNull();
   await expect(page.getByText('첫 번째 계정', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('이메일', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('비밀번호', { exact: true })).toHaveValue('');
+  await expect(page.getByRole('button', { name: '이전 로그인 상태 계속하기' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '새로 로그인하기' })).toHaveCount(0);
 }
 
 test('새 탭과 로그인 URL의 새 탭은 별도 로그인 없이 같은 sid로 복구한다', async ({
@@ -86,6 +90,61 @@ test('한 탭 로그아웃은 같은 프로필 전체에 적용하고 다른 프
   } finally {
     await remote.close();
   }
+});
+
+test('로그아웃 후 queue DELETE 실패는 로그인 요청을 막고 수동 cleanup 재시도로 해제한다', async ({
+  page,
+}) => {
+  await login(page);
+  let deleteAttempts = 0;
+  const deleteStatuses: number[] = [];
+  const blockedRequests: string[] = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (
+      path === '/api/v1/auth/login' ||
+      path === '/api/v1/auth/login/recovery' ||
+      path === '/api/v1/auth/token/refresh' ||
+      (path === '/api/v1/auth/login-queue/tickets/current' && request.method() === 'GET')
+    ) {
+      blockedRequests.push(`${request.method()} ${path}`);
+    }
+  });
+  page.on('response', (response) => {
+    const request = response.request();
+    const path = new URL(response.url()).pathname;
+    if (path === '/api/v1/auth/login-queue/tickets/current' && request.method() === 'DELETE') {
+      deleteStatuses.push(response.status());
+    }
+  });
+  await page.route('**/api/v1/auth/login-queue/tickets/current', async (route) => {
+    if (route.request().method() !== 'DELETE') return route.continue();
+    deleteAttempts += 1;
+    if (deleteAttempts === 1) return route.fulfill({ status: 500, body: 'cleanup pending' });
+    return route.continue();
+  });
+
+  await page.getByRole('button', { name: '로그아웃', exact: true }).click();
+  await expect(page.getByRole('button', { name: '로그인 준비 다시 시도' })).toBeVisible();
+  await expect(page.getByLabel('이메일', { exact: true })).toBeDisabled();
+  await expect(page.getByLabel('비밀번호', { exact: true })).toBeDisabled();
+  expect(deleteAttempts).toBe(1);
+  expect(blockedRequests).toEqual([]);
+
+  await page.getByRole('button', { name: '로그인 준비 다시 시도' }).click();
+  await expect.poll(() => deleteAttempts).toBe(2);
+  await expect.poll(() => deleteStatuses.length).toBe(2);
+  expect(deleteStatuses).toEqual([500, 204]);
+  await expect(page.getByRole('button', { name: '로그인 준비 다시 시도' })).toHaveCount(0);
+  await expect(page.getByLabel('이메일', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('비밀번호', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('이메일', { exact: true })).toBeEnabled();
+  await expect(page.getByLabel('비밀번호', { exact: true })).toBeEnabled();
+  await page.getByLabel('이메일', { exact: true }).fill('second@example.test');
+  await page.getByLabel('비밀번호', { exact: true }).fill('test-password-123!');
+  await expect(page.getByRole('button', { name: '로그인', exact: true })).toBeEnabled();
+  expect(deleteAttempts).toBe(2);
+  expect(blockedRequests).toEqual([]);
 });
 
 test('BroadcastChannel 없이도 기존 로그인 화면 탭이 로그인 성공을 복구하고 로그아웃을 공유한다', async ({
