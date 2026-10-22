@@ -1,12 +1,14 @@
 /// <reference types="node" />
 import { readFileSync } from 'node:fs';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createMusicRecord,
   getMusicRecords,
+  MusicApiError,
   searchMusic,
   updateMusicRecord,
   type Music,
@@ -62,6 +64,23 @@ function makeReplacementDraft(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function makeSongRegistrationResponse(init: RequestInit) {
+  const id = JSON.parse(String(init.body)).externalTrackId;
+  return Response.json(
+    {
+      message: 'song registered',
+      data: {
+        music: {
+          ...(searchItems.find((item) => item.external_music_id === id) ?? music),
+          music_id: 12,
+        },
+        created: true,
+      },
+    },
+    { status: 201 },
+  );
+}
+
 describe('원본 API 계약의 음악 기록 흐름', () => {
   beforeEach(() => {
     records = [];
@@ -92,6 +111,8 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       'fetch',
       vi.fn(async (input: string | URL, init?: RequestInit) => {
         const url = String(input);
+        if (url.endsWith('/api/v1/songs') && init?.method === 'POST')
+          return Promise.resolve(makeSongRegistrationResponse(init));
         if (url.endsWith('/api/v1/auth/token/csrf')) {
           return Response.json({
             message: 'csrf token issued',
@@ -205,11 +226,416 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     sessionStorage.clear();
     window.history.replaceState(null, '', '/');
     if (originalGeolocation) Object.defineProperty(navigator, 'geolocation', originalGeolocation);
     else Reflect.deleteProperty(navigator, 'geolocation');
+  });
+
+  const songPosts = () =>
+    vi
+      .mocked(fetch)
+      .mock.calls.filter(
+        ([url, init]) => String(url).endsWith('/api/v1/songs') && init?.method === 'POST',
+      );
+  const recordWrites = () =>
+    vi
+      .mocked(fetch)
+      .mock.calls.filter(
+        ([url, init]) =>
+          String(url).includes('/music-records') && ['POST', 'PATCH'].includes(init?.method ?? ''),
+      );
+  async function openCandidate(strict = false) {
+    const view = render(
+      strict ? (
+        <StrictMode>
+          <MusicRecordCreatePage />
+        </StrictMode>
+      ) : (
+        <MusicRecordCreatePage />
+      ),
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: '음악 검색' }), {
+      target: { value: '아이유' },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: '밤편지아이유' }));
+    return view;
+  }
+  function holdRegistration() {
+    let resolve!: (response: Response) => void;
+    const pending = new Promise<Response>((done) => {
+      resolve = done;
+    });
+    const originalFetch = fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+        String(input).endsWith('/api/v1/songs') ? pending : originalFetch(input, init),
+      ),
+    );
+    return (registeredMusic = { ...music, music_id: 77 }, status = 201) =>
+      resolve(
+        Response.json(
+          {
+            message: 'song registered',
+            data: { music: registeredMusic, created: status === 201 },
+          },
+          { status },
+        ),
+      );
+  }
+
+  it('명시적 확정 전에는 쓰지 않고 지연 응답 뒤 서버 메타데이터로 폼에 진입한다', async () => {
+    const finish = holdRegistration();
+    await openCandidate(true);
+    expect(songPosts()).toHaveLength(0);
+    expect(recordWrites()).toHaveLength(0);
+    const confirm = screen.getByRole('button', { name: '선택하기' });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(songPosts()).toHaveLength(1));
+    expect(JSON.parse(String(songPosts()[0][1]?.body))).toEqual({ externalTrackId: '123' });
+    expect(screen.queryByRole('region', { name: '음악 기록 입력' })).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('선택한 곡');
+    expect(screen.getByRole('button', { name: '선택 중…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '밤편지아이유' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '뒤로가기' })).toBeDisabled();
+    await act(async () => finish({ ...music, music_id: 77, title: '서버의 제목' }));
+    expect(screen.getByRole('region', { name: '음악 기록 입력' })).toHaveTextContent('서버의 제목');
+    expect(recordWrites()).toHaveLength(0);
+  });
+
+  it('DB 내부 ID 후보는 CSRF와 등록 없이 기존 전체 곡을 선택한다', async () => {
+    searchItems = [{ ...music, music_id: 11 }];
+    await openCandidate();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
+    expect(screen.getByRole('region', { name: '음악 기록 입력' })).toHaveTextContent('밤편지');
+    expect(songPosts()).toHaveLength(0);
+    expect(
+      vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith('/auth/token/csrf')),
+    ).toBe(false);
+  });
+
+  it.each([400, 401, 403, 404, 409, 429, 500, 502, 503, 504])(
+    '등록 %s 실패는 후보를 보존하고 수동 재시도만 허용한다',
+    async (status) => {
+      const originalFetch = fetch;
+      let attempts = 0;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+          if (String(input).endsWith('/api/v1/songs')) {
+            attempts += 1;
+            return Promise.resolve(
+              attempts === 1
+                ? Response.json({ data: null }, { status })
+                : Response.json({ data: { music: { ...music, music_id: 77 }, created: false } }),
+            );
+          }
+          if (String(input).endsWith('/auth/token/refresh'))
+            return Promise.resolve(Response.json({ data: null }, { status: 401 }));
+          return originalFetch(input, init);
+        }),
+      );
+      await openCandidate();
+      fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+      expect(await screen.findByRole('alert')).toBeInTheDocument();
+      expect(screen.getByRole('textbox', { name: '음악 검색' })).toHaveValue('아이유');
+      expect(screen.getByRole('button', { name: '밤편지아이유' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(recordWrites()).toHaveLength(0);
+      expect(attempts).toBe(1);
+      setAccessToken('test-access-token');
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
+      expect(screen.getByRole('region', { name: '음악 기록 입력' })).toBeInTheDocument();
+      expect(attempts).toBe(2);
+    },
+  );
+
+  it.each(['csrf', 'network', 'invalid'])(
+    '선택 %s 실패는 입력과 기존 draft를 보존한다',
+    async (kind) => {
+      const originalFetch = fetch;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (kind === 'csrf' && url.endsWith('/auth/token/csrf'))
+            return Response.json({ data: null }, { status: 503 });
+          if (url.endsWith('/songs')) {
+            if (kind === 'network') throw new TypeError('fixture offline');
+            return Response.json({ data: { music: { ...music, music_id: null }, created: true } });
+          }
+          return originalFetch(input, init);
+        }),
+      );
+      const draft = JSON.stringify(makeReplacementDraft({ place: '입력 장소', memo: '입력 메모' }));
+      sessionStorage.setItem(replacementDraftKey, draft);
+      window.history.replaceState(null, '', '/music-records/new?replaceRecordId=1');
+      await openCandidate();
+      fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' }));
+      expect(await screen.findByRole('alert')).toBeInTheDocument();
+      expect(sessionStorage.getItem(replacementDraftKey)).toBe(draft);
+      expect(screen.getByRole('textbox', { name: '음악 검색' })).toHaveValue('아이유');
+      expect(screen.getByRole('button', { name: '이 곡으로 변경' })).toBeEnabled();
+      expect(window.location.pathname).toBe('/music-records/new');
+      expect(songPosts()).toHaveLength(kind === 'csrf' ? 0 : 1);
+      expect(recordWrites()).toHaveLength(0);
+    },
+  );
+
+  it('이전 확정의 finally는 새 검색의 진행 중인 선택을 해제하지 않는다', async () => {
+    const originalFetch = fetch;
+    const completions = new Map<string, (response: Response) => void>();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith('/songs'))
+          return new Promise<Response>((resolve) =>
+            completions.set(JSON.parse(String(init?.body)).externalTrackId, resolve),
+          );
+        return originalFetch(input, init);
+      }),
+    );
+    await openCandidate();
+    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    await waitFor(() => expect(completions.has('123')).toBe(true));
+    searchItems = [{ ...music, external_music_id: '456', title: '새 곡' }];
+    fireEvent.change(screen.getByRole('textbox', { name: '음악 검색' }), {
+      target: { value: '새 검색' },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: '새 곡아이유' }));
+    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    await waitFor(() => expect(completions.has('456')).toBe(true));
+    await act(async () =>
+      completions.get('123')!(
+        Response.json({ data: { music: { ...music, music_id: 77 }, created: true } }),
+      ),
+    );
+    expect(screen.getByRole('button', { name: '선택 중…' })).toBeDisabled();
+    expect(screen.queryByRole('region', { name: '음악 기록 입력' })).not.toBeInTheDocument();
+    await act(async () =>
+      completions.get('456')!(
+        Response.json({ data: { music: { ...searchItems[0], music_id: 88 }, created: true } }),
+      ),
+    );
+    expect(screen.getByRole('region', { name: '음악 기록 입력' })).toHaveTextContent('새 곡');
+    expect(songPosts()).toHaveLength(2);
+  });
+
+  it('검색어를 바꾼 뒤 늦은 등록 완료는 새 선택을 바꾸지 않는다', async () => {
+    const finish = holdRegistration();
+    await openCandidate();
+    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    await waitFor(() => expect(songPosts()).toHaveLength(1));
+    fireEvent.change(screen.getByRole('textbox', { name: '음악 검색' }), {
+      target: { value: '새 검색' },
+    });
+    await act(async () => finish());
+    expect(screen.getByRole('textbox', { name: '음악 검색' })).toHaveValue('새 검색');
+    expect(screen.queryByRole('region', { name: '음악 기록 입력' })).not.toBeInTheDocument();
+    expect(recordWrites()).toHaveLength(0);
+  });
+
+  it.each(['unmount', 'target'])(
+    '교체 %s 뒤 늦은 등록 완료는 draft와 경로를 바꾸지 않는다',
+    async (action) => {
+      const initial = JSON.stringify(makeReplacementDraft());
+      sessionStorage.setItem(replacementDraftKey, initial);
+      window.history.replaceState(null, '', '/music-records/new?replaceRecordId=1');
+      const finish = holdRegistration();
+      const view = await openCandidate();
+      fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' }));
+      await waitFor(() => expect(songPosts()).toHaveLength(1));
+      if (action === 'unmount') view.unmount();
+      else {
+        window.history.replaceState(null, '', '/music-records/new?replaceRecordId=2');
+        view.rerender(<MusicRecordCreatePage />);
+      }
+      await act(async () => finish());
+      expect(sessionStorage.getItem(replacementDraftKey)).toBe(initial);
+      expect(window.location.pathname).toBe('/music-records/new');
+      expect(recordWrites()).toHaveLength(0);
+    },
+  );
+
+  it.each(['query', 'unmount', 'target'])(
+    '%s 전환 뒤 늦은 등록 실패는 현재 화면·입력·최신 draft·경로를 바꾸지 않는다',
+    async (transition) => {
+      let rejectRegistration!: (error: Error) => void;
+      let registrationSignal: AbortSignal | null | undefined;
+      const pending = new Promise<Response>((_, reject) => {
+        rejectRegistration = reject;
+      });
+      const originalFetch = fetch;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+          if (String(input).endsWith('/api/v1/songs') && init?.method === 'POST') {
+            registrationSignal = init.signal;
+            return pending;
+          }
+          return originalFetch(input, init);
+        }),
+      );
+      sessionStorage.setItem(replacementDraftKey, JSON.stringify(makeReplacementDraft()));
+      window.history.replaceState(null, '', '/music-records/new?replaceRecordId=1');
+      const view = await openCandidate();
+      fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' }));
+      await waitFor(() => expect(songPosts()).toHaveLength(1));
+      expect(registrationSignal?.aborted).toBe(false);
+      expect(screen.getByRole('button', { name: '음악 변경 중…' })).toBeDisabled();
+      const latestDraft = JSON.stringify(
+        makeReplacementDraft({ place: '등록 이후 최신 장소', memo: '등록 이후 최신 메모' }),
+      );
+      sessionStorage.setItem(replacementDraftKey, latestDraft);
+      const nextDraftKey = 'music-record-replacement-draft:2';
+      const nextDraft = JSON.stringify(
+        makeReplacementDraft({ recordId: 2, place: '새 대상의 장소', memo: '새 대상의 메모' }),
+      );
+      sessionStorage.setItem(nextDraftKey, nextDraft);
+
+      if (transition === 'query') {
+        searchItems = [{ ...music, external_music_id: '456', title: '현재 곡' }];
+        fireEvent.change(screen.getByRole('textbox', { name: '음악 검색' }), {
+          target: { value: '새 검색' },
+        });
+        fireEvent.click(await screen.findByRole('button', { name: '현재 곡아이유' }));
+      } else if (transition === 'unmount') {
+        view.unmount();
+        render(
+          <main aria-label="다음 화면">
+            <label>
+              새 화면 입력
+              <input defaultValue="이후에 입력한 내용" />
+            </label>
+          </main>,
+        );
+      } else {
+        window.history.replaceState(null, '', '/music-records/new?replaceRecordId=2');
+        view.rerender(<MusicRecordCreatePage />);
+        await waitFor(() =>
+          expect(screen.getByRole('button', { name: '이 곡으로 변경' })).toBeEnabled(),
+        );
+      }
+      expect(registrationSignal?.aborted).toBe(true);
+      const currentScreen = document.body.innerHTML;
+      const currentPath = window.location.pathname + window.location.search;
+      await act(async () =>
+        rejectRegistration(new MusicApiError(500, '이전 등록 요청의 늦은 실패', true)),
+      );
+
+      expect(document.body.innerHTML).toBe(currentScreen);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.queryByRole('region', { name: '음악 기록 입력' })).not.toBeInTheDocument();
+      expect(window.location.pathname + window.location.search).toBe(currentPath);
+      expect(sessionStorage.getItem(replacementDraftKey)).toBe(latestDraft);
+      expect(sessionStorage.getItem(nextDraftKey)).toBe(nextDraft);
+      expect(songPosts()).toHaveLength(1);
+      expect(recordWrites()).toHaveLength(0);
+      if (transition === 'unmount') {
+        expect(screen.getByRole('textbox', { name: '새 화면 입력' })).toHaveValue(
+          '이후에 입력한 내용',
+        );
+      } else {
+        expect(screen.getByRole('textbox', { name: '음악 검색' })).toHaveValue(
+          transition === 'query' ? '새 검색' : '아이유',
+        );
+        expect(screen.getByRole('button', { name: '이 곡으로 변경' })).toBeEnabled();
+        if (transition === 'query')
+          expect(screen.getByRole('button', { name: '현재 곡아이유' })).toHaveAttribute(
+            'aria-pressed',
+            'true',
+          );
+      }
+    },
+  );
+
+  it('등록 중 변경한 최신 메모/장소를 보존하며 같은 내부 ID 재선택은 dirty가 아니다', async () => {
+    sessionStorage.setItem(replacementDraftKey, JSON.stringify(makeReplacementDraft()));
+    window.history.replaceState(null, '', '/music-records/new?replaceRecordId=1');
+    const finish = holdRegistration();
+    await openCandidate();
+    fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' }));
+    await waitFor(() => expect(songPosts()).toHaveLength(1));
+    sessionStorage.setItem(
+      replacementDraftKey,
+      JSON.stringify(makeReplacementDraft({ place: '최신 장소', memo: '최신 메모' })),
+    );
+    await act(async () => finish({ ...music, music_id: 11 }, 200));
+    const draft = JSON.parse(sessionStorage.getItem(replacementDraftKey)!);
+    expect(draft).toMatchObject({ place: '최신 장소', memo: '최신 메모', music: { music_id: 11 } });
+    expect(recordWrites()).toHaveLength(0);
+    sessionStorage.setItem(
+      replacementDraftKey,
+      JSON.stringify({ ...draft, place: detail.custom_place_name, memo: detail.emotion_memo }),
+    );
+    cleanup();
+    render(<MusicRecordDetailPage recordId={1} />);
+    expect(await screen.findByRole('button', { name: '저장' })).toBeDisabled();
+  });
+
+  it('등록 중 baseline이 바뀌면 최신 draft를 덮어쓰지 않는다', async () => {
+    sessionStorage.setItem(replacementDraftKey, JSON.stringify(makeReplacementDraft()));
+    window.history.replaceState(null, '', '/music-records/new?replaceRecordId=1');
+    const finish = holdRegistration();
+    await openCandidate();
+    fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' }));
+    await waitFor(() => expect(songPosts()).toHaveLength(1));
+    const latest = JSON.stringify(makeReplacementDraft({ baselineMusicId: 99 }));
+    sessionStorage.setItem(replacementDraftKey, latest);
+    await act(async () => finish());
+    expect(screen.getByRole('alert')).toHaveTextContent('변경되었습니다');
+    expect(sessionStorage.getItem(replacementDraftKey)).toBe(latest);
+    expect(window.location.pathname).toBe('/music-records/new');
+  });
+
+  it('pending draft가 없으면 곡 등록을 시작하지 않는다', async () => {
+    window.history.replaceState(null, '', '/music-records/new?replaceRecordId=1');
+    await openCandidate();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' })));
+    expect(screen.getByRole('alert')).toHaveTextContent('임시 입력');
+    expect(songPosts()).toHaveLength(0);
+  });
+
+  it('등록 성공 후 draft 쓰기 실패 재시도는 받은 내부 ID로 등록을 생략한다', async () => {
+    sessionStorage.setItem(replacementDraftKey, JSON.stringify(makeReplacementDraft()));
+    window.history.replaceState(null, '', '/music-records/new?replaceRecordId=1');
+    await openCandidate();
+    const originalSet = Storage.prototype.setItem;
+    const store = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      key,
+      value,
+    ) {
+      if (key === replacementDraftKey) throw new DOMException('fixture storage blocked');
+      originalSet.call(this, key, value);
+    });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' })));
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(songPosts()).toHaveLength(1);
+    store.mockRestore();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' })));
+    expect(songPosts()).toHaveLength(1);
+    expect(JSON.parse(sessionStorage.getItem(replacementDraftKey)!).music.music_id).toBe(12);
+    expect(window.location.pathname).toBe('/music-records/1');
+  });
+
+  it('응답이 취소를 무시해도 10초 뒤 복구하고 늦은 결과는 폼을 열지 않는다', async () => {
+    const finish = holdRegistration();
+    await openCandidate();
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    await act(async () => vi.advanceTimersByTimeAsync(10_000));
+    expect(screen.getByRole('alert')).toHaveTextContent('시간이 초과');
+    expect(screen.getByRole('button', { name: '선택하기' })).toBeEnabled();
+    await act(async () => finish());
+    expect(screen.queryByRole('region', { name: '음악 기록 입력' })).not.toBeInTheDocument();
+    vi.useRealTimers();
   });
 
   it('생성 요청은 음악 식별자와 위치 토큰만 전송하고 목록을 별도로 조회한다', async () => {
@@ -363,7 +789,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     fireEvent.click(result);
     expect(next).toBeEnabled();
     expect(screen.queryByRole('region', { name: '음악 기록 입력' })).not.toBeInTheDocument();
-    fireEvent.click(next);
+    await act(async () => fireEvent.click(next));
     expect(screen.getByRole('region', { name: '음악 기록 입력' })).toBeInTheDocument();
   });
 
@@ -419,18 +845,22 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
         throw new Error(`Unexpected request: ${url}`);
       }),
     );
+    const uninitializedObserver = onIntersect;
     render(<MusicRecordCreatePage />);
     fireEvent.change(screen.getByRole('textbox', { name: '음악 검색' }), {
       target: { value: '곡 제목' },
     });
     await screen.findByRole('button', { name: /^곡 20아이유$/ });
+    await waitFor(() => expect(onIntersect).not.toBe(uninitializedObserver));
     const firstSentinel = screen.getByTestId('music-page-sentinel');
     expect(firstSentinel.parentElement).toContainElement(
       screen.getByRole('button', { name: /^곡 10아이유$/ }),
     );
-    onIntersect(
-      [{ isIntersecting: true } as IntersectionObserverEntry],
-      {} as IntersectionObserver,
+    await act(async () =>
+      onIntersect(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      ),
     );
     await screen.findByRole('button', { name: /^곡 40아이유$/ });
     expect(screen.getByTestId('music-page-sentinel').parentElement).toContainElement(
@@ -439,21 +869,27 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     expect(
       vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/music/search')),
     ).toHaveLength(2);
-    onIntersect(
-      [{ isIntersecting: true } as IntersectionObserverEntry],
-      {} as IntersectionObserver,
+    await act(async () =>
+      onIntersect(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      ),
     );
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(
       vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/music/search')),
     ).toHaveLength(2);
-    onIntersect(
-      [{ isIntersecting: false } as IntersectionObserverEntry],
-      {} as IntersectionObserver,
+    await act(async () =>
+      onIntersect(
+        [{ isIntersecting: false } as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      ),
     );
-    onIntersect(
-      [{ isIntersecting: true } as IntersectionObserverEntry],
-      {} as IntersectionObserver,
+    await act(async () =>
+      onIntersect(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      ),
     );
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(
@@ -467,7 +903,84 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     ).toHaveLength(3);
   });
 
-  it('커서 400 후 첫 페이지를 한 번만 재조회하고 새 커서로 다음 페이지를 읽는다', async () => {
+  it.each([400, 410])(
+    '커서 %s 후 첫 페이지를 한 번만 재조회하고 새 커서로 다음 페이지를 읽는다',
+    async (status) => {
+      let onIntersect: IntersectionObserverCallback = () => undefined;
+      vi.stubGlobal(
+        'IntersectionObserver',
+        class {
+          constructor(callback: IntersectionObserverCallback) {
+            onIntersect = callback;
+          }
+          observe() {}
+          disconnect() {}
+        },
+      );
+      let firstPageCount = 0;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((input: string | URL) => {
+          const cursor = new URL(String(input), 'http://localhost').searchParams.get('cursor');
+          if (cursor === 'broken')
+            return Promise.resolve(
+              Response.json({ message: 'search query required', data: null }, { status }),
+            );
+          if (cursor === 'fresh')
+            return Promise.resolve(
+              Response.json({
+                data: {
+                  items: [{ ...music, external_music_id: 'new', title: '다음 곡' }],
+                  next_cursor: null,
+                  has_next: false,
+                },
+              }),
+            );
+          firstPageCount += 1;
+          return Promise.resolve(
+            Response.json({
+              data: {
+                items: Array.from({ length: 20 }, (_, index) => ({
+                  ...music,
+                  external_music_id: String(index),
+                  title: `곡 ${index}`,
+                })),
+                next_cursor: firstPageCount === 1 ? 'broken' : 'fresh',
+                has_next: true,
+              },
+            }),
+          );
+        }),
+      );
+      const uninitializedObserver = onIntersect;
+      render(<MusicRecordCreatePage />);
+      fireEvent.change(screen.getByRole('textbox', { name: '음악 검색' }), {
+        target: { value: '음악' },
+      });
+      await screen.findByRole('button', { name: /^곡 19아이유$/ });
+      await waitFor(() => expect(onIntersect).not.toBe(uninitializedObserver));
+      const initialObserver = onIntersect;
+      await act(async () =>
+        onIntersect(
+          [{ isIntersecting: true } as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        ),
+      );
+      await waitFor(() => expect(firstPageCount).toBe(2));
+      await waitFor(() => expect(onIntersect).not.toBe(initialObserver));
+      vi.stubGlobal('scrollY', 100);
+      await act(async () =>
+        onIntersect(
+          [{ isIntersecting: true } as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        ),
+      );
+      expect(await screen.findByRole('button', { name: /^다음 곡아이유$/ })).toBeInTheDocument();
+      expect(firstPageCount).toBe(2);
+    },
+  );
+
+  it.each([400, 410])('같은 검색의 cursor %s가 반복되면 한 번 복구 뒤 중단한다', async (status) => {
     let onIntersect: IntersectionObserverCallback = () => undefined;
     vi.stubGlobal(
       'IntersectionObserver',
@@ -479,60 +992,107 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
         disconnect() {}
       },
     );
-    let firstPageCount = 0;
+    let starts = 0;
     vi.stubGlobal(
       'fetch',
-      vi.fn((input: string | URL) => {
-        const cursor = new URL(String(input), 'http://localhost').searchParams.get('cursor');
-        if (cursor === 'broken')
-          return Promise.resolve(
-            Response.json({ message: 'search query required', data: null }, { status: 400 }),
-          );
-        if (cursor === 'fresh')
-          return Promise.resolve(
-            Response.json({
-              data: {
-                items: [{ ...music, external_music_id: 'new', title: '다음 곡' }],
-                next_cursor: null,
-                has_next: false,
-              },
-            }),
-          );
-        firstPageCount += 1;
-        return Promise.resolve(
-          Response.json({
-            data: {
-              items: Array.from({ length: 20 }, (_, index) => ({
-                ...music,
-                external_music_id: String(index),
-                title: `곡 ${index}`,
-              })),
-              next_cursor: firstPageCount === 1 ? 'broken' : 'fresh',
-              has_next: true,
-            },
-          }),
-        );
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = new URL(String(input), 'http://localhost');
+        if (url.searchParams.has('cursor')) return Response.json({ data: null }, { status });
+        starts += 1;
+        return Response.json({
+          data: {
+            source: 'ITUNES',
+            items: [music],
+            next_cursor: `expired-${starts}`,
+            has_next: true,
+          },
+        });
       }),
     );
+    const uninitializedObserver = onIntersect;
     render(<MusicRecordCreatePage />);
     fireEvent.change(screen.getByRole('textbox', { name: '음악 검색' }), {
-      target: { value: '음악' },
+      target: { value: '아이유' },
     });
-    await screen.findByRole('button', { name: /^곡 19아이유$/ });
-    const initialObserver = onIntersect;
-    onIntersect(
-      [{ isIntersecting: true } as IntersectionObserverEntry],
-      {} as IntersectionObserver,
+    await screen.findByRole('button', { name: '밤편지아이유' });
+    await waitFor(() => expect(onIntersect).not.toBe(uninitializedObserver));
+    await act(async () =>
+      onIntersect(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      ),
     );
-    await waitFor(() => expect(firstPageCount).toBe(2));
-    await waitFor(() => expect(onIntersect).not.toBe(initialObserver));
+    expect(starts).toBe(2);
     vi.stubGlobal('scrollY', 100);
-    onIntersect(
-      [{ isIntersecting: true } as IntersectionObserverEntry],
-      {} as IntersectionObserver,
+    await act(async () =>
+      onIntersect(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      ),
     );
-    expect(await screen.findByRole('button', { name: /^다음 곡아이유$/ })).toBeInTheDocument();
-    expect(firstPageCount).toBe(2);
+    expect(screen.getByRole('alert')).toHaveTextContent('검색어를 다시 입력');
+    expect(starts).toBe(2);
+    expect(screen.queryByTestId('music-page-sentinel')).not.toBeInTheDocument();
+    expect(songPosts()).toHaveLength(0);
+    expect(recordWrites()).toHaveLength(0);
+  });
+
+  it('외부 snapshot 200곡의 모든 페이지를 서버 순서대로 표시하고 등록하지 않는다', async () => {
+    let onIntersect: IntersectionObserverCallback = () => undefined;
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          onIntersect = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = new URL(String(input), 'http://localhost');
+        const offset = Number(url.searchParams.get('cursor') ?? '0');
+        expect(url.pathname).toBe('/api/v1/music/search');
+        expect(url.searchParams.get('size')).toBe('20');
+        return Response.json({
+          data: {
+            source: 'ITUNES',
+            items: Array.from({ length: 20 }, (_, index) => ({
+              ...music,
+              external_music_id: String(offset + index + 1),
+              title: `외부곡 ${offset + index + 1}`,
+            })),
+            next_cursor: offset < 180 ? String(offset + 20) : null,
+            has_next: offset < 180,
+          },
+        });
+      }),
+    );
+    const uninitializedObserver = onIntersect;
+    render(<MusicRecordCreatePage />);
+    fireEvent.change(screen.getByRole('textbox', { name: '음악 검색' }), {
+      target: { value: '아이유' },
+    });
+    await screen.findByRole('button', { name: '외부곡 20아이유' });
+    await waitFor(() => expect(onIntersect).not.toBe(uninitializedObserver));
+    for (let page = 1; page < 10; page += 1) {
+      vi.stubGlobal('scrollY', page * 100);
+      await act(async () =>
+        onIntersect(
+          [{ isIntersecting: true } as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        ),
+      );
+      expect(
+        screen.getByRole('button', { name: `외부곡 ${(page + 1) * 20}아이유` }),
+      ).toBeInTheDocument();
+    }
+    expect(screen.getByText('검색 결과 200곡')).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(10);
+    expect(songPosts()).toHaveLength(0);
+    expect(recordWrites()).toHaveLength(0);
   });
 
   it('검색 중 입력을 한 글자로 줄이면 로딩 표시를 지우고 늦은 결과를 버린다', async () => {
@@ -562,7 +1122,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
     const memo = await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' });
     fireEvent.change(memo, { target: { value: '퇴근길 산책' } });
     expect((screen.getByLabelText('저장 날짜') as HTMLInputElement).value).toMatch(
@@ -600,7 +1160,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     const query = screen.getByRole('textbox', { name: '음악 검색' });
     fireEvent.change(query, { target: { value: '밤편지' } });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
 
     const place = await screen.findByRole('textbox', { name: '장소 이름' });
     const memo = screen.getByRole('textbox', { name: '지금 느끼는 것 기록' });
@@ -610,14 +1170,18 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
 
     expect(screen.getByRole('textbox', { name: '음악 검색' })).toHaveValue('밤편지');
     fireEvent.click(screen.getByRole('button', { name: /^다른 노래아이유$/ }));
-    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
     expect(screen.getByText('다른 노래')).toBeInTheDocument();
     expect(await screen.findByRole('textbox', { name: '장소 이름' })).toHaveValue('홍대');
     expect(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' })).toHaveValue('퇴근길 산책');
     expect(
       vi
         .mocked(fetch)
-        .mock.calls.some(([, init]) => ['POST', 'PATCH'].includes(init?.method ?? '')),
+        .mock.calls.some(
+          ([url, init]) =>
+            String(url).includes('/music-records') &&
+            ['POST', 'PATCH'].includes(init?.method ?? ''),
+        ),
     ).toBe(false);
   });
 
@@ -627,7 +1191,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
     const createMemo = await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' });
     for (const length of [499, 500, 501]) {
       fireEvent.change(createMemo, { target: { value: '가'.repeat(length) } });
@@ -675,7 +1239,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
     const place = await screen.findByRole('textbox', { name: '장소 이름' });
     fireEvent.change(place, { target: { value: '홍대' } });
     fireEvent.click(screen.getByRole('button', { name: '저장' }));
@@ -714,8 +1278,10 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     });
     vi.stubGlobal(
       'fetch',
-      vi.fn((input: string | URL) => {
+      vi.fn((input: string | URL, init?: RequestInit) => {
         const url = String(input);
+        if (url.endsWith('/api/v1/songs') && init?.method === 'POST')
+          return Promise.resolve(makeSongRegistrationResponse(init));
         if (url.endsWith('/api/v1/auth/token/csrf'))
           return Promise.resolve(Response.json({ data: { csrf_token: 'test-csrf-token' } }));
         if (url.includes('/api/v1/music/search'))
@@ -732,7 +1298,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
     const place = await screen.findByRole('textbox', { name: '장소 이름' });
     fireEvent.change(place, { target: { value: '홍대' } });
     fireEvent.click(screen.getByRole('button', { name: '저장' }));
@@ -772,8 +1338,10 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     });
     vi.stubGlobal(
       'fetch',
-      vi.fn((input: string | URL) => {
+      vi.fn((input: string | URL, init?: RequestInit) => {
         const url = String(input);
+        if (url.endsWith('/api/v1/songs') && init?.method === 'POST')
+          return Promise.resolve(makeSongRegistrationResponse(init));
         if (url.endsWith('/api/v1/auth/token/csrf'))
           return Promise.resolve(Response.json({ data: { csrf_token: 'test-csrf-token' } }));
         if (url.includes('/api/v1/music/search'))
@@ -803,7 +1371,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
     fireEvent.change(await screen.findByRole('textbox', { name: '장소 이름' }), {
       target: { value: '홍대' },
     });
@@ -848,6 +1416,8 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       'fetch',
       vi.fn((input: string | URL, init?: RequestInit) => {
         const url = String(input);
+        if (url.endsWith('/api/v1/songs') && init?.method === 'POST')
+          return Promise.resolve(makeSongRegistrationResponse(init));
         if (url.endsWith('/api/v1/auth/token/csrf'))
           return Promise.resolve(Response.json({ data: { csrf_token: 'test-csrf-token' } }));
         if (url.includes('/api/v1/music/search'))
@@ -875,7 +1445,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
     const place = await screen.findByRole('textbox', { name: '장소 이름' });
     fireEvent.change(place, { target: { value: '홍대' } });
     fireEvent.click(screen.getByRole('button', { name: '저장' }));
@@ -913,6 +1483,8 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     });
     const fetchMock = vi.fn((input: string | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith('/api/v1/songs') && init?.method === 'POST')
+        return Promise.resolve(makeSongRegistrationResponse(init));
       if (url.endsWith('/api/v1/auth/token/csrf'))
         return Promise.resolve(Response.json({ data: { csrf_token: 'test-csrf-token' } }));
       if (url.endsWith('/api/v1/auth/token/refresh') && init?.method === 'POST')
@@ -940,7 +1512,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
     await screen.findByRole('button', { name: '현재 위치 확인' });
     fireEvent.click(screen.getByRole('button', { name: '현재 위치 확인' }));
     await screen.findByDisplayValue('서울특별시 마포구');
@@ -982,6 +1554,8 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       'fetch',
       vi.fn((input: string | URL, init?: RequestInit) => {
         const url = String(input);
+        if (url.endsWith('/api/v1/songs') && init?.method === 'POST')
+          return Promise.resolve(makeSongRegistrationResponse(init));
         if (url.endsWith('/api/v1/auth/token/csrf'))
           return Promise.resolve(Response.json({ data: { csrf_token: 'test-csrf-token' } }));
         if (url.includes('/api/v1/music/search'))
@@ -1012,7 +1586,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
     fireEvent.click(await screen.findByRole('button', { name: '현재 위치 확인' }));
     await screen.findByDisplayValue('서울특별시 마포구');
     fireEvent.click(screen.getByRole('button', { name: '저장' }));
@@ -1202,7 +1776,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '다른 노래' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^다른 노래아이유$/ }));
-    fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' })));
     await waitFor(() => expect(window.location.pathname).toBe('/music-records/1'));
 
     expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(false);
@@ -1252,7 +1826,11 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     expect(
       vi
         .mocked(fetch)
-        .mock.calls.some(([, init]) => ['POST', 'PATCH'].includes(init?.method ?? '')),
+        .mock.calls.some(
+          ([url, init]) =>
+            String(url).includes('/music-records') &&
+            ['POST', 'PATCH'].includes(init?.method ?? ''),
+        ),
     ).toBe(false);
   });
 
@@ -1361,7 +1939,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new DOMException('storage blocked', 'SecurityError');
     });
-    fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' })));
 
     setItem.mockRestore();
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -1531,7 +2109,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '다른 노래' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^다른 노래아이유$/ }));
-    fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' })));
     await waitFor(() => expect(window.location.pathname).toBe('/music-records/1'));
     expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(false);
 
@@ -1557,7 +2135,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' })));
     await waitFor(() => expect(window.location.pathname).toBe('/music-records/1'));
     cleanup();
 
@@ -1577,7 +2155,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '다른 노래' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^다른 노래아이유$/ }));
-    fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' })));
     await waitFor(() => expect(window.location.pathname).toBe('/music-records/1'));
     cleanup();
 
@@ -1593,7 +2171,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' })));
     await waitFor(() => expect(window.location.pathname).toBe('/music-records/1'));
     cleanup();
 
@@ -1613,7 +2191,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: 'ID 없는 곡' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^ID 없는 곡아이유$/ }));
-    fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 곡으로 변경' })));
     await waitFor(() => expect(window.location.pathname).toBe('/music-records/1'));
 
     cleanup();
@@ -1768,12 +2346,14 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
   it('상세 조회가 실패하면 오류를 알리고 편집 폼을 표시하지 않는다', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn((input: string | URL) => {
+      vi.fn((input: string | URL, init?: RequestInit) => {
         const url = String(input);
         if (url.endsWith('/api/v1/music-records/1'))
           return Promise.resolve(
             Response.json({ message: 'record unavailable', data: null }, { status: 500 }),
           );
+        if (url.endsWith('/api/v1/songs') && init?.method === 'POST')
+          return Promise.resolve(makeSongRegistrationResponse(init));
         if (url.endsWith('/api/v1/auth/token/csrf'))
           return Promise.resolve(Response.json({ data: { csrf_token: 'test-csrf-token' } }));
         return Promise.resolve(Response.json({ data: null }, { status: 404 }));
@@ -1790,10 +2370,12 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     const detailWithoutDate = { ...detail, created_at: undefined as unknown as string };
     vi.stubGlobal(
       'fetch',
-      vi.fn((input: string | URL) => {
+      vi.fn((input: string | URL, init?: RequestInit) => {
         const url = String(input);
         if (url.endsWith('/api/v1/music-records/1'))
           return Promise.resolve(Response.json({ data: detailWithoutDate }));
+        if (url.endsWith('/api/v1/songs') && init?.method === 'POST')
+          return Promise.resolve(makeSongRegistrationResponse(init));
         if (url.endsWith('/api/v1/auth/token/csrf'))
           return Promise.resolve(Response.json({ data: { csrf_token: 'test-csrf-token' } }));
         return Promise.resolve(Response.json({ data: null }, { status: 404 }));
@@ -1815,6 +2397,8 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
           );
         if (url.endsWith('/api/v1/music-records/1'))
           return Promise.resolve(Response.json({ message: 'record retrieved', data: detail }));
+        if (url.endsWith('/api/v1/songs') && init?.method === 'POST')
+          return Promise.resolve(makeSongRegistrationResponse(init));
         if (url.endsWith('/api/v1/auth/token/csrf'))
           return Promise.resolve(Response.json({ data: { csrf_token: 'test-csrf-token' } }));
         return Promise.resolve(Response.json({ data: null }, { status: 404 }));

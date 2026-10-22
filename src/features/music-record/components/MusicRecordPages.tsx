@@ -8,6 +8,7 @@ import {
   getMusicRecords,
   MusicApiError,
   searchMusic,
+  registerSelectedMusic,
   type Music,
   type MusicRecord,
 } from '../api/musicRecordsApi';
@@ -377,14 +378,18 @@ export function MusicRecordCreatePage() {
   const [saveResultUnclear, setSaveResultUnclear] = useState(false);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [isReplacing, setIsReplacing] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasNext, setHasNext] = useState(false);
   const [lastPageSize, setLastPageSize] = useState(0);
   const [hasSearched, setHasSearched] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const searchRequestId = useRef(0);
-  const replacementPending = useRef(false);
+  const confirmationPending = useRef(false);
+  const confirmationGeneration = useRef(0);
+  const confirmationController = useRef<AbortController | null>(null);
+  const confirmationTimer = useRef<number | null>(null);
+  const confirmationActive = useRef(false);
   const isLoadingPage = useRef(false);
   const usedCursors = useRef(new Set<string>());
   const hasRecoveredCursor = useRef(false);
@@ -397,6 +402,28 @@ export function MusicRecordCreatePage() {
   const placeInput = useRef<HTMLInputElement>(null);
   const backButton = useRef<HTMLButtonElement>(null);
   const location = useLocation();
+
+  const cancelConfirmation = useCallback(() => {
+    confirmationGeneration.current += 1;
+    confirmationController.current?.abort();
+    confirmationController.current = null;
+    if (confirmationTimer.current !== null) window.clearTimeout(confirmationTimer.current);
+    confirmationTimer.current = null;
+    confirmationPending.current = false;
+  }, []);
+
+  useEffect(() => {
+    confirmationActive.current = true;
+    const generation = confirmationGeneration.current;
+    queueMicrotask(() => {
+      if (confirmationActive.current && generation === confirmationGeneration.current)
+        setIsConfirming(false);
+    });
+    return () => {
+      confirmationActive.current = false;
+      cancelConfirmation();
+    };
+  }, [replacementRecordId, hasInvalidReplacementParam, cancelConfirmation]);
 
   useEffect(() => {
     const normalized = query.trim();
@@ -432,6 +459,8 @@ export function MusicRecordCreatePage() {
   }, [query, hasInvalidReplacementParam]);
 
   const handleQueryChange = (value: string) => {
+    cancelConfirmation();
+    setIsConfirming(false);
     stopPreview();
     searchRequestId.current += 1;
     usedCursors.current.clear();
@@ -476,7 +505,7 @@ export function MusicRecordCreatePage() {
       setLastPageSize(page.items.length);
     } catch (caught) {
       if (requestId !== searchRequestId.current) return;
-      if (caught instanceof MusicApiError && caught.status === 400) {
+      if (caught instanceof MusicApiError && (caught.status === 400 || caught.status === 410)) {
         if (hasRecoveredCursor.current) {
           setHasNext(false);
           setError('검색을 계속할 수 없습니다. 검색어를 다시 입력해 주세요.');
@@ -593,45 +622,128 @@ export function MusicRecordCreatePage() {
     }
   };
 
-  const replaceSelectedMusic = () => {
-    if (!selected || replacementRecordId === null || replacementPending.current) return;
-    replacementPending.current = true;
-    setIsReplacing(true);
+  const readReplacementDraft = (recordId: number) => {
+    const serialized = window.sessionStorage.getItem(replacementDraftKey(recordId));
+    const draft: unknown = serialized === null ? null : JSON.parse(serialized);
+    if (
+      !draft ||
+      typeof draft !== 'object' ||
+      !('recordId' in draft) ||
+      draft.recordId !== recordId ||
+      !('status' in draft) ||
+      draft.status !== 'pending' ||
+      !('place' in draft) ||
+      typeof draft.place !== 'string' ||
+      !('memo' in draft) ||
+      typeof draft.memo !== 'string' ||
+      !('baselineUpdatedAt' in draft) ||
+      (typeof draft.baselineUpdatedAt !== 'string' && draft.baselineUpdatedAt !== null) ||
+      !('baselineMusicId' in draft) ||
+      (typeof draft.baselineMusicId !== 'number' && draft.baselineMusicId !== null)
+    ) {
+      throw new Error(
+        '임시 입력 내용을 확인할 수 없습니다. 상세 화면으로 돌아가 다시 시도해 주세요.',
+      );
+    }
+    return draft;
+  };
+
+  const confirmSelectedMusic = async () => {
+    if (!selected || hasInvalidReplacementParam || confirmationPending.current) return;
+    confirmationPending.current = true;
+    const generation = ++confirmationGeneration.current;
+    const searchAtStart = window.location.search;
+    const controller = new AbortController();
+    confirmationController.current = controller;
+    const isCurrent = () =>
+      confirmationActive.current &&
+      generation === confirmationGeneration.current &&
+      window.location.search === searchAtStart;
+    const timer = window.setTimeout(
+      () => controller.abort(new DOMException('Selection timed out', 'TimeoutError')),
+      10_000,
+    );
+    confirmationTimer.current = timer;
+    setIsConfirming(true);
     setError('');
     stopPreview();
+    let removeAbortListener = () => {};
     try {
-      const key = replacementDraftKey(replacementRecordId);
-      const serializedDraft = window.sessionStorage.getItem(key);
-      const draft: unknown = serializedDraft === null ? null : JSON.parse(serializedDraft);
-      if (
-        !draft ||
-        typeof draft !== 'object' ||
-        !('recordId' in draft) ||
-        draft.recordId !== replacementRecordId ||
-        !('status' in draft) ||
-        draft.status !== 'pending' ||
-        !('place' in draft) ||
-        typeof draft.place !== 'string' ||
-        !('memo' in draft) ||
-        typeof draft.memo !== 'string' ||
-        !('baselineUpdatedAt' in draft) ||
-        (typeof draft.baselineUpdatedAt !== 'string' && draft.baselineUpdatedAt !== null) ||
-        !('baselineMusicId' in draft) ||
-        (typeof draft.baselineMusicId !== 'number' && draft.baselineMusicId !== null)
-      ) {
-        throw new Error(
-          '임시 입력 내용을 확인할 수 없습니다. 상세 화면으로 돌아가 다시 시도해 주세요.',
-        );
-      }
-      window.sessionStorage.setItem(
-        key,
-        JSON.stringify({ ...draft, music: selected, status: 'pending' }),
+      const initialDraft =
+        replacementRecordId === null ? null : readReplacementDraft(replacementRecordId);
+      const confirmedMusic =
+        selected.music_id !== null &&
+        Number.isSafeInteger(selected.music_id) &&
+        selected.music_id > 0
+          ? selected
+          : await Promise.race([
+              registerSelectedMusic(selected.external_music_id, controller.signal),
+              new Promise<never>((_, reject) => {
+                const onAbort = () => reject(controller.signal.reason);
+                controller.signal.addEventListener('abort', onAbort, { once: true });
+                removeAbortListener = () => controller.signal.removeEventListener('abort', onAbort);
+              }),
+            ]);
+      if (!isCurrent() || controller.signal.aborted) return;
+      setSelected(confirmedMusic);
+      setItems((current) =>
+        current.map((item) =>
+          item.external_music_id === confirmedMusic.external_music_id ? confirmedMusic : item,
+        ),
       );
-      navigate(musicRecordFilterPath(`/music-records/${replacementRecordId}`, selectedSidoCode));
+      if (replacementRecordId !== null && initialDraft) {
+        const latestDraft = readReplacementDraft(replacementRecordId);
+        if (
+          latestDraft.baselineUpdatedAt !== initialDraft.baselineUpdatedAt ||
+          latestDraft.baselineMusicId !== initialDraft.baselineMusicId
+        ) {
+          throw new Error(
+            '임시 입력 내용이 변경되었습니다. 상세 화면으로 돌아가 다시 시도해 주세요.',
+          );
+        }
+        try {
+          window.sessionStorage.setItem(
+            replacementDraftKey(replacementRecordId),
+            JSON.stringify({ ...latestDraft, music: confirmedMusic, status: 'pending' }),
+          );
+        } catch {
+          throw new Error('선택한 곡을 임시 저장하지 못했습니다. 다시 시도해 주세요.');
+        }
+        navigate(musicRecordFilterPath(`/music-records/${replacementRecordId}`, selectedSidoCode));
+      } else {
+        setFormEnteredAt(new Date());
+        setStep('form');
+      }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '선택한 곡을 임시 저장하지 못했습니다.');
-      replacementPending.current = false;
-      setIsReplacing(false);
+      if (!isCurrent()) return;
+      setError(
+        controller.signal.aborted && controller.signal.reason?.name === 'TimeoutError'
+          ? '곡 선택 시간이 초과됐어요. 다시 시도해 주세요.'
+          : caught instanceof MusicApiError
+            ? caught.status === 401
+              ? '로그인한 뒤 다시 시도해 주세요.'
+              : caught.status === 403
+                ? '요청을 확인하지 못했어요. 다시 시도해 주세요.'
+                : caught.status === 400
+                  ? '곡을 다시 선택해 주세요.'
+                  : caught.status === 404 || caught.status === 409
+                    ? '이 곡을 선택할 수 없어요. 다른 곡을 선택해 주세요.'
+                    : caught.status === 429
+                      ? '잠시 후 다시 시도해 주세요.'
+                      : '곡을 선택하지 못했어요. 다시 시도해 주세요.'
+            : caught instanceof Error
+              ? caught.message
+              : '선택한 곡을 임시 저장하지 못했습니다.',
+      );
+    } finally {
+      window.clearTimeout(timer);
+      removeAbortListener();
+      if (isCurrent()) {
+        confirmationController.current = null;
+        confirmationTimer.current = null;
+        confirmationPending.current = false;
+        setIsConfirming(false);
+      }
     }
   };
 
@@ -652,7 +764,7 @@ export function MusicRecordCreatePage() {
                 ? '음악 기록 상세로 돌아가기'
                 : '뒤로가기'
           }
-          disabled={isSaving || isReplacing}
+          disabled={isSaving || isConfirming}
           onClick={() => {
             if (replacementRecordId !== null) {
               stopPreview();
@@ -730,8 +842,9 @@ export function MusicRecordCreatePage() {
                       type="button"
                       aria-pressed={selected?.external_music_id === music.external_music_id}
                       className="music-result-select"
-                      disabled={isReplacing}
+                      disabled={isConfirming}
                       onClick={() => {
+                        if (confirmationPending.current) return;
                         setSelected(music);
                         setError('');
                       }}
@@ -752,7 +865,7 @@ export function MusicRecordCreatePage() {
                     <button
                       type="button"
                       className="music-preview-button"
-                      disabled={!music.preview_url}
+                      disabled={isConfirming || !music.preview_url}
                       aria-label={`${music.title} ${music.artist_name} ${
                         !music.preview_url
                           ? '미리 듣기 불가'
@@ -807,23 +920,18 @@ export function MusicRecordCreatePage() {
               검색 중…
             </p>
           )}
+          {isConfirming && <p role="status">선택한 곡을 확인하는 중…</p>}
           <div className="music-search-footer">
             <button
               type="button"
               className="music-primary-button"
-              disabled={!selected || isReplacing}
-              onClick={() => {
-                stopPreview();
-                if (replacementRecordId !== null) {
-                  void replaceSelectedMusic();
-                  return;
-                }
-                setFormEnteredAt(new Date());
-                setStep('form');
-              }}
+              disabled={!selected || isConfirming}
+              onClick={() => void confirmSelectedMusic()}
             >
-              {isReplacing
-                ? '음악 변경 중…'
+              {isConfirming
+                ? replacementRecordId !== null
+                  ? '음악 변경 중…'
+                  : '선택 중…'
                 : replacementRecordId !== null
                   ? '이 곡으로 변경'
                   : '선택하기'}
