@@ -1347,7 +1347,9 @@ describe('login operation markers', () => {
     await submitQueuedLogin({ email: 'user@example.com', password: 'secret' }, generation);
 
     expect(markerBeforeLock).toEqual([null, expect.any(String)]);
-    expect(operationIds[0]).toBeTruthy();
+    expect(operationIds[0]).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
     expect(operationIds[1]).toBe(operationIds[0]);
   });
 

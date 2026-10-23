@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { QueueRequestError, type LoginQueueTicket } from '../api/loginQueueApi';
-import type { LoginSuccessResponse } from '../api/loginApi';
+import type { LoginSuccessResponse } from '../api/loginTypes';
 import { LoginPage } from './LoginPage';
 
 const queueSignals = vi.hoisted(() => ({

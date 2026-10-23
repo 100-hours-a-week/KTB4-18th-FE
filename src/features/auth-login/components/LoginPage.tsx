@@ -1,7 +1,7 @@
 import { ActionButton } from '@seed-design/react';
 import { useCallback, useRef, useState } from 'react';
 
-import type { LoginSuccessResponse } from '../api/loginApi';
+import type { LoginSuccessResponse } from '../api/loginTypes';
 import { LoginQueueDialog } from './LoginQueueDialog';
 import { useLoginQueueFlow } from '../hooks/useLoginQueueFlow';
 import { validate } from '../hooks/loginQueueFlowUtils';

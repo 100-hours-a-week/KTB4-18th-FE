@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { login } from './loginApi';
 import { logout } from './logoutApi';
 import {
   ACCESS_TOKEN_CHANGED_EVENT,
@@ -127,27 +126,14 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     window.removeEventListener(ACCESS_TOKEN_CHANGED_EVENT, tokenChanged);
   });
 
-  it('로그인은 CSRF 세션 없이 Origin 정책과 access token 응답을 사용한다', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      Response.json({
-        message: 'login success',
-        data: { access_token: 'login-access-token', expires_in: 3600 },
-      }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
-
-    await login({ email: 'test@example.com', password: 'password' });
-
-    expect(fetchMock).toHaveBeenCalledOnce();
-    const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(new Headers(options.headers).has('X-CSRF-TOKEN')).toBe(false);
-    expect(getAccessToken()).toBe('login-access-token');
-  });
-
   it('로그인 시작 뒤 도착한 이전 refresh 응답은 폐기하고 새 계정 쿠키를 보존한다', async () => {
     let completeRefresh!: (response: Response) => void;
     const refreshResponse = new Promise<Response>((resolve) => {
       completeRefresh = resolve;
+    });
+    let completeLogin!: () => void;
+    const loginResponse = new Promise<void>((resolve) => {
+      completeLogin = resolve;
     });
     const order: string[] = [];
     vi.stubGlobal(
@@ -160,29 +146,24 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
           order.push('refresh');
           return refreshResponse;
         }
-        if (url.endsWith('/auth/login')) {
-          order.push('login');
-          return Promise.resolve(
-            Response.json({
-              message: 'login success',
-              data: {
-                access_token: 'new-user-token',
-                expires_in: 3600,
-              },
-            }),
-          );
-        }
         throw new Error(`Unexpected request: ${url}`);
       }),
     );
     const pending = refreshAccessToken();
     await vi.waitFor(() => expect(order).toEqual(['refresh']));
-    const signingIn = login({ email: 'test@example.com', password: 'password' });
+    const signingIn = runAuthTransition(async () => {
+      order.push('login');
+      await loginResponse;
+      setAccessToken('new-user-token');
+      return 'new-user-token';
+    });
     expect(order).toEqual(['refresh']);
     completeRefresh(Response.json({ data: { access_token: 'old-user-token' } }));
     await expect(pending).rejects.toMatchObject({ status: null });
+    await vi.waitFor(() => expect(order).toEqual(['refresh', 'login']));
+    completeLogin();
     const result = await signingIn;
-    expect(result.data.access_token).toBe('new-user-token');
+    expect(result).toBe('new-user-token');
     expect(getAccessToken()).toBe('new-user-token');
     expect(order).toEqual(['refresh', 'login']);
   });

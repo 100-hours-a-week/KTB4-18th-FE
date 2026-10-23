@@ -20,7 +20,7 @@ import {
   subscribeQueueSignals,
   type LoginQueueTicket,
 } from '../api/loginQueueApi';
-import type { LoginSuccessResponse } from '../api/loginApi';
+import type { LoginSuccessResponse } from '../api/loginTypes';
 import { checkUserAvailability } from '../../user-signup/api/userAvailabilityApi';
 import type { FieldErrors, CapacityWait } from './loginQueueFlowUtils';
 import {

@@ -3,11 +3,11 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { recommend, streamRecommendation } from './api/recommendations';
-import { login } from './features/auth-login/api/loginApi';
 import {
   cancelLoginQueue,
   getLoginQueueStatus,
   resetLoginQueueAfterLogout,
+  submitQueuedLogin,
 } from './features/auth-login/api/loginQueueApi';
 import { logout, LogoutRequestError } from './features/auth-login/api/logoutApi';
 import { getMyProfile, getMySettings, withdrawMyAccount } from './features/mypage/api/mypageApi';
@@ -58,10 +58,6 @@ vi.mock('./hooks/useVoiceInput', () => ({
     transcriptHandler = onTranscript;
     return { ...voiceState, ...voiceActions };
   },
-}));
-vi.mock('./features/auth-login/api/loginApi', () => ({
-  login: vi.fn(),
-  LoginRequestError: class LoginRequestError extends Error {},
 }));
 vi.mock('./features/auth-login/api/loginQueueApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./features/auth-login/api/loginQueueApi')>()),
@@ -212,7 +208,7 @@ describe('탭 간 인증 세션 복구', () => {
     expect(await screen.findByRole('button', { name: '로그아웃' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/my');
     expect(getAccessToken()).toBe(restored);
-    expect(login).not.toHaveBeenCalled();
+    expect(submitQueuedLogin).not.toHaveBeenCalled();
   });
 
   it('새 탭의 초기 복구 중 다른 탭에서 로그아웃하면 늦은 성공 응답을 무시한다', async () => {
@@ -636,7 +632,7 @@ describe('음성 transcript 공통 추천 흐름', () => {
       ],
       completed_at: '2026-09-21T12:00:00Z',
     });
-    vi.mocked(login).mockImplementation(async () => {
+    vi.mocked(submitQueuedLogin).mockImplementation(async () => {
       setAccessToken('test-access-token');
       return {
         message: 'login success',
@@ -872,7 +868,7 @@ describe('로그인과 회원가입 화면 연결', () => {
         effective_at: '2026-09-25T10:00:00Z',
       })),
     );
-    vi.mocked(login).mockImplementation(async () => {
+    vi.mocked(submitQueuedLogin).mockImplementation(async () => {
       setAccessToken('test-access-token');
       return {
         message: 'login success',
