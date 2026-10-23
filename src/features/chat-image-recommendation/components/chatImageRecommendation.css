@@ -83,7 +83,7 @@
 }
 .chat-image-placeholder {
   display: grid;
-  width: 100%;
+  width: min(360px, 100%);
   aspect-ratio: 1;
   margin-bottom: 24px;
   place-items: center;
@@ -114,7 +114,8 @@
 }
 .chat-image-review {
   display: block;
-  width: 100%;
+  align-self: center;
+  width: min(360px, 100%);
   flex: 0 0 auto;
   aspect-ratio: 1;
   border-radius: 8px;
@@ -261,5 +262,11 @@
   }
   .chat-image-page-actions {
     padding-bottom: 32px;
+  }
+}
+@media (max-width: 600px) {
+  .chat-image-placeholder,
+  .chat-image-review {
+    width: min(300px, 100%);
   }
 }
