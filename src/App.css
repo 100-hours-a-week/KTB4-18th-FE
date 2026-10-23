@@ -3379,3 +3379,36 @@ button {
 #root:has(.map-bottom-navigation) .music-record-toast {
   bottom: calc(max(1.5rem, env(safe-area-inset-bottom)) + 11rem);
 }
+
+.route-load-feedback {
+  box-sizing: border-box;
+  display: flex;
+  min-height: 100svh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 1.5rem;
+  color: var(--color-text-primary);
+  text-align: center;
+}
+
+.route-load-feedback p {
+  margin: 0;
+}
+
+.route-load-feedback button {
+  min-height: 2.75rem;
+  border: 0;
+  border-radius: 0.75rem;
+  padding: 0.625rem 1rem;
+  background: var(--color-bg-interactive-primary);
+  color: var(--color-text-interactive-inverse);
+  font: inherit;
+}
+
+.route-load-feedback button:focus-visible {
+  outline: 3px solid var(--color-border-interactive-primary);
+  outline-offset: 3px;
+}
