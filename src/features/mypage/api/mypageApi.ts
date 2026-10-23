@@ -45,6 +45,8 @@ export type RecommendationHistoryItem = {
   music_id: number;
   title: string;
   artist_name: string;
+  album_cover_url?: string | null;
+  preview_url?: string | null;
 };
 
 export type RecommendationHistory = {

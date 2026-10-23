@@ -25,7 +25,9 @@ import {
   type UserProfile,
   type UserSettings,
 } from '../api/mypageApi';
+import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
 import { getAllMusicRecords } from '../../music-record/api/musicRecordsApi';
+import { useMusicPreview } from '../../music-record/hooks/useMusicPreview';
 import { ProfileImage } from './ProfileImage';
 import { validateProfileFields } from '../model/profileValidation';
 
@@ -991,6 +993,7 @@ function RecommendationPage({ back }: { back: () => void }) {
   const [lastPage, setLastPage] = useState({ start: 0, length: 0 });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const preview = useMusicPreview();
   const sentinelRef = useRef<HTMLDivElement>(null);
   const isLoadingRef = useRef(false);
   const loadedSongCountRef = useRef(0);
@@ -1042,22 +1045,63 @@ function RecommendationPage({ back }: { back: () => void }) {
       >
         <h2 id="recommendations-title">챗봇 추천</h2>
         <p className="mypage-recommendations-caption">추천 받은 곡 {songs.length}곡</p>
-        {songs.map((song, index) => (
-          <article
-            className="mypage-recommendation-item"
-            key={`${song.music_id}-${song.date}-${index}`}
-          >
-            <img className="mypage-recommendation-cover" src="/album-placeholder.svg" alt="" />
-            <div>
-              <strong>{song.title}</strong>
-              <span>{song.artist_name}</span>
-            </div>
-            <span className="mypage-recommendation-play" aria-hidden="true">
-              <img src="/icons/mypage/play.svg" alt="" />
-            </span>
-            {index === preloadIndex && hasNext && <div ref={sentinelRef} aria-hidden="true" />}
-          </article>
-        ))}
+        {songs.map((song, index) => {
+          const trackKey = [song.music_id, song.date, index].join('-');
+          const isCurrentPreview = preview.activeTrack === trackKey;
+          const isPreviewActive = isCurrentPreview && (preview.isPlaying || preview.isLoading);
+          return (
+            <article className="mypage-recommendation-item" key={trackKey}>
+              <img
+                className="mypage-recommendation-cover"
+                src={
+                  getHighResolutionArtworkUrl(song.album_cover_url ?? null) ??
+                  '/album-placeholder.svg'
+                }
+                alt=""
+              />
+              <div>
+                <strong>{song.title}</strong>
+                <span>{song.artist_name}</span>
+              </div>
+              <button
+                className="mypage-recommendation-play"
+                type="button"
+                disabled={!song.preview_url}
+                aria-label={
+                  song.title +
+                  ' ' +
+                  (isPreviewActive
+                    ? '미리 듣기 중지'
+                    : song.preview_url
+                      ? '30초 미리 듣기'
+                      : '미리 듣기 불가')
+                }
+                aria-pressed={isPreviewActive}
+                onClick={() => {
+                  if (song.preview_url) void preview.toggle(trackKey, song.preview_url);
+                }}
+              >
+                <img
+                  src={
+                    isPreviewActive
+                      ? '/icons/chatbot/Play-stop.svg'
+                      : '/icons/chatbot/Playbutton.svg'
+                  }
+                  alt=""
+                  aria-hidden="true"
+                  width="16"
+                  height="16"
+                />
+              </button>
+              {index === preloadIndex && hasNext && <div ref={sentinelRef} aria-hidden="true" />}
+            </article>
+          );
+        })}
+        {preview.error && (
+          <p className="mypage-notice" role="alert">
+            {preview.error}
+          </p>
+        )}
         {error && (
           <p className="mypage-notice" role="alert">
             {error}{' '}
