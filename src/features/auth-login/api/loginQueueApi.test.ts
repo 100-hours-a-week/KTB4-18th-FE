@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getCsrfToken, runAuthTransition } from './authSession';
+import { getCsrfToken, runAuthTransition, setAccessToken } from './authSession';
 import { isLogoutCleanupPending, resetLogoutCleanupGateForTests } from './logoutCleanupGate';
 
 vi.mock('./authSession', () => ({
@@ -17,8 +17,10 @@ import {
   submitQueuedLogin,
   cancelLoginQueue,
   reconcileLoginQueueStatus,
+  retireAmbiguousLoginOperation,
   startOrResumeLoginQueue,
   parseQueueRetryAfter,
+  recoverQueuedLogin,
   calculateQueueCreateRetryDelayMs,
   calculateQueueStatusRetryDelayMs,
   getLoginQueueStatus,
@@ -37,11 +39,54 @@ function ticket(status: 'READY' | 'CONSUMED') {
   };
 }
 
+function installSerializedQueueLockManager() {
+  type PendingRequest = {
+    callback: (lock: object | null) => unknown;
+    resolve: (value: unknown) => void;
+    reject: (reason: unknown) => void;
+  };
+  let lockHeld = false;
+  const pending: PendingRequest[] = [];
+  const runNext = () => {
+    if (lockHeld) return;
+    const request = pending.shift();
+    if (!request) return;
+    lockHeld = true;
+    Promise.resolve()
+      .then(() => request.callback({}))
+      .then(request.resolve, request.reject)
+      .finally(() => {
+        lockHeld = false;
+        runNext();
+      });
+  };
+  const request = (_name: string, options: unknown, callback: (lock: object | null) => unknown) =>
+    new Promise((resolve, reject) => {
+      if ((options as { ifAvailable?: boolean }).ifAvailable && lockHeld) {
+        Promise.resolve()
+          .then(() => callback(null))
+          .then(resolve, reject);
+        return;
+      }
+      pending.push({ callback, resolve, reject });
+      runNext();
+    });
+
+  vi.stubGlobal(
+    'navigator',
+    Object.assign(Object.create(Object.getPrototypeOf(navigator)), navigator, {
+      locks: { request },
+    }),
+  );
+  return { isLockHeld: () => lockHeld };
+}
+
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   resetLogoutCleanupGateForTests();
   vi.clearAllMocks();
+  vi.mocked(setAccessToken).mockReset();
   vi.useRealTimers();
 });
 
@@ -227,7 +272,7 @@ describe('login queue response contract', () => {
 
     const pending = startOrResumeLoginQueue();
     await vi.runAllTimersAsync();
-    await expect(pending).resolves.toMatchObject({ status: 'WAITING' });
+    await expect(pending).resolves.toMatchObject({ ticket: { status: 'WAITING' } });
 
     expect(statusRequests).toBe(3);
     expect(requests.at(-1)).toMatch(/^POST .*\/tickets$/);
@@ -364,7 +409,9 @@ describe('login queue response contract', () => {
     expect(
       JSON.parse(localStorage.getItem('meomuneum:queue-create-idempotency') ?? '{}'),
     ).toMatchObject({ cancelTarget: 'CURRENT_TICKET' });
-    await expect(startOrResumeLoginQueue()).resolves.toMatchObject({ status: 'WAITING' });
+    await expect(startOrResumeLoginQueue()).resolves.toMatchObject({
+      ticket: { status: 'WAITING' },
+    });
 
     expect(requests.map((request) => request.split(' ')[0])).toEqual([
       'GET',
@@ -575,7 +622,9 @@ describe('login queue response contract', () => {
         }),
       );
 
-      await expect(startOrResumeLoginQueue()).resolves.toMatchObject({ status: 'WAITING' });
+      await expect(startOrResumeLoginQueue()).resolves.toMatchObject({
+        ticket: { status: 'WAITING' },
+      });
       expect(requests).toEqual([
         expect.objectContaining({ url: expect.stringMatching(/\/current$/) }),
         expect.objectContaining({ url: expect.stringMatching(/\/tickets$/), method: 'POST' }),
@@ -619,7 +668,9 @@ describe('login queue response contract', () => {
       }),
     );
 
-    await expect(startOrResumeLoginQueue()).resolves.toMatchObject({ status: 'WAITING' });
+    await expect(startOrResumeLoginQueue()).resolves.toMatchObject({
+      ticket: { status: 'WAITING' },
+    });
     expect(createKey).toBeTruthy();
     expect(createKey).not.toBe('expired-create-key');
   });
@@ -854,9 +905,12 @@ describe('login operation markers', () => {
       }),
     );
 
+    const generationBeforeRecovery = getLoginQueueGeneration();
     const result = await startOrResumeLoginQueue();
 
-    expect(result.status).toBe('READY');
+    expect(result.ticket.status).toBe('READY');
+    expect(result.queueGeneration).toBe(getLoginQueueGeneration());
+    expect(result.queueGeneration).not.toBe(generationBeforeRecovery);
     expect(createKeys).toHaveLength(1);
   });
 
@@ -964,10 +1018,13 @@ describe('login operation markers', () => {
       }),
     );
 
+    const generationBeforeCreate = getLoginQueueGeneration();
     const pending = startOrResumeLoginQueue();
     await vi.runAllTimersAsync();
     const created = await pending;
-    expect(created.status).toBe('READY');
+    expect(created.ticket.status).toBe('READY');
+    expect(created.queueGeneration).toBe(getLoginQueueGeneration());
+    expect(created.queueGeneration).not.toBe(generationBeforeCreate);
 
     expect(createCount).toBe(5);
     expect(new Set(createKeys).size).toBe(1);
@@ -1119,11 +1176,73 @@ describe('login operation markers', () => {
       }),
     );
 
-    await expect(reconcileLoginQueueStatus()).resolves.toMatchObject({ status: 'READY' });
+    const result = await reconcileLoginQueueStatus();
+    expect(result).toMatchObject({ ticket: { status: 'READY' } });
+    expect(result.queueGeneration).toBe(getLoginQueueGeneration());
 
     expect(requests).toHaveLength(1);
     expect(requests[0][1]?.method).toBeUndefined();
     expect(localStorage.getItem('meomuneum:queue-create-idempotency')).toBeNull();
+  });
+
+  it('returns the new generation when reconciliation retires a create marker', async () => {
+    const generation = getLoginQueueGeneration();
+    localStorage.setItem(
+      'meomuneum:queue-create-idempotency',
+      JSON.stringify({
+        id: 'reconcile-marker',
+        createdAt: Date.now(),
+        generation,
+        status: 'ACTIVE',
+        retryCount: 1,
+      }),
+    );
+    vi.stubGlobal(
+      'navigator',
+      Object.assign(Object.create(Object.getPrototypeOf(navigator)), navigator, {
+        locks: {
+          request: async (_name: string, _options: unknown, callback: (lock: object) => unknown) =>
+            callback({}),
+        },
+      }),
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json(ticket('READY'))),
+    );
+
+    const result = await reconcileLoginQueueStatus();
+
+    expect(result.ticket.status).toBe('READY');
+    expect(result.queueGeneration).toBe(getLoginQueueGeneration());
+    expect(result.queueGeneration).not.toBe(generation);
+    expect(localStorage.getItem('meomuneum:queue-create-idempotency')).toBeNull();
+  });
+
+  it('rejects a reconciliation ticket when its generation changes during the status request', async () => {
+    vi.mocked(runAuthTransition).mockImplementation(async (action) => action());
+    const lock = installSerializedQueueLockManager();
+    let resolveResponse!: (response: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveResponse = resolve;
+          }),
+      ),
+    );
+
+    const reconciliation = reconcileLoginQueueStatus();
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    expect(lock.isLockHeld()).toBe(true);
+    localStorage.setItem('meomuneum:queue-generation', 'successor-generation');
+    resolveResponse(Response.json(ticket('READY')));
+
+    await expect(reconciliation).rejects.toMatchObject({
+      status: 409,
+      code: 'QUEUE_TICKET_REPLACED',
+    });
   });
 
   it('retires an unresolved create marker when the locked current-ticket check finds its ticket', async () => {
@@ -1152,9 +1271,38 @@ describe('login operation markers', () => {
       vi.fn(async () => Response.json(ticket('READY'))),
     );
 
-    await expect(startOrResumeLoginQueue()).resolves.toMatchObject({ status: 'READY' });
+    const result = await startOrResumeLoginQueue();
 
+    expect(result.ticket.status).toBe('READY');
+    expect(result.queueGeneration).toBe(getLoginQueueGeneration());
+    expect(result.queueGeneration).not.toBe(generation);
     expect(localStorage.getItem('meomuneum:queue-create-idempotency')).toBeNull();
+  });
+
+  it('returns the validated generation when it reuses a current ticket without changing it', async () => {
+    const generation = getLoginQueueGeneration();
+    vi.stubGlobal(
+      'navigator',
+      Object.assign(Object.create(Object.getPrototypeOf(navigator)), navigator, {
+        locks: {
+          request: async (_name: string, _options: unknown, callback: (lock: object) => unknown) =>
+            callback({}),
+        },
+      }),
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json(ticket('READY'))),
+    );
+
+    const result = await startOrResumeLoginQueue();
+
+    expect(result).toEqual({
+      ticket: expect.objectContaining({ status: 'READY' }),
+      queueGeneration: generation,
+    });
+    expect(getLoginQueueGeneration()).toBe(generation);
+    expect(fetch).toHaveBeenCalledOnce();
   });
 
   it('creates and reuses a login operation ID only after acquiring the shared queue lock', async () => {
@@ -1199,8 +1347,114 @@ describe('login operation markers', () => {
     await submitQueuedLogin({ email: 'user@example.com', password: 'secret' }, generation);
 
     expect(markerBeforeLock).toEqual([null, expect.any(String)]);
-    expect(operationIds[0]).toBeTruthy();
+    expect(operationIds[0]).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
     expect(operationIds[1]).toBe(operationIds[0]);
+  });
+
+  it('does not store a successful login token after another tab replaces its queue generation', async () => {
+    vi.mocked(runAuthTransition).mockImplementation(async (action) => action());
+    const generation = getLoginQueueGeneration();
+    let resolveLoginResponse!: (response: Response) => void;
+    vi.stubGlobal(
+      'navigator',
+      Object.assign(Object.create(Object.getPrototypeOf(navigator)), navigator, {
+        locks: {
+          request: async (_name: string, _options: unknown, callback: (lock: object) => unknown) =>
+            callback({}),
+        },
+      }),
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveLoginResponse = resolve;
+          }),
+      ),
+    );
+
+    const submission = submitQueuedLogin(
+      { email: 'user@example.com', password: 'secret' },
+      generation,
+    );
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    localStorage.setItem('meomuneum:queue-generation', 'successor-generation');
+    resolveLoginResponse(
+      Response.json({
+        message: 'login success',
+        data: { access_token: 'stale-token', expires_in: 60 },
+      }),
+    );
+
+    await expect(submission).rejects.toMatchObject({
+      status: 409,
+      code: 'QUEUE_TICKET_REPLACED',
+    });
+    expect(setAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('stores a successful token under the queue lock before a waiting retirement rotates generation', async () => {
+    vi.mocked(runAuthTransition).mockImplementation(async (action) => action());
+    const lock = installSerializedQueueLockManager();
+    const generation = getLoginQueueGeneration();
+    let resolveLoginResponse!: (response: Response) => void;
+    let retirementCompleted = false;
+    vi.mocked(setAccessToken).mockImplementation(() => {
+      expect(lock.isLockHeld()).toBe(true);
+      expect(retirementCompleted).toBe(false);
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveLoginResponse = resolve;
+          }),
+      ),
+    );
+
+    const submission = submitQueuedLogin(
+      { email: 'user@example.com', password: 'secret' },
+      generation,
+    );
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    const retirement = retireAmbiguousLoginOperation().then(() => {
+      retirementCompleted = true;
+    });
+
+    expect(getLoginQueueGeneration()).toBe(generation);
+    resolveLoginResponse(
+      Response.json({
+        message: 'login success',
+        data: { access_token: 'fresh-token', expires_in: 60 },
+      }),
+    );
+    await expect(submission).resolves.toMatchObject({ message: 'login success' });
+    await retirement;
+
+    expect(retirementCompleted).toBe(true);
+    expect(getLoginQueueGeneration()).not.toBe(generation);
+    expect(setAccessToken).toHaveBeenCalledOnce();
+    expect(setAccessToken).toHaveBeenCalledWith('fresh-token');
+  });
+
+  it('rejects a login without storing its token when retirement rotates generation first', async () => {
+    vi.mocked(runAuthTransition).mockImplementation(async (action) => action());
+    installSerializedQueueLockManager();
+    const generation = getLoginQueueGeneration();
+    vi.stubGlobal('fetch', vi.fn());
+
+    await retireAmbiguousLoginOperation();
+
+    expect(getLoginQueueGeneration()).not.toBe(generation);
+    await expect(
+      submitQueuedLogin({ email: 'user@example.com', password: 'secret' }, generation),
+    ).rejects.toMatchObject({ status: 409, code: 'QUEUE_TICKET_REPLACED' });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(setAccessToken).not.toHaveBeenCalled();
   });
 
   it('keeps a valid diagnostic correlation ID from queue status and sends it on login only', async () => {
@@ -1269,9 +1523,125 @@ describe('login operation markers', () => {
 
     await expect(
       submitQueuedLogin({ email: 'user@example.com', password: 'wrong' }, generation),
-    ).rejects.toMatchObject({ status: 401 });
+    ).rejects.toMatchObject({ status: 401, queueGeneration: expect.any(String) });
 
     expect(getLoginQueueGeneration()).not.toBe(generation);
+  });
+
+  it('does not start recovery after the generation changes while acquiring CSRF', async () => {
+    let resolveCsrf!: (csrf: string) => void;
+    vi.mocked(getCsrfToken).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveCsrf = resolve;
+      }),
+    );
+    const generation = getLoginQueueGeneration();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const recovery = recoverQueuedLogin(undefined, generation);
+    localStorage.setItem('meomuneum:queue-generation', 'successor-generation');
+    resolveCsrf('csrf-token');
+
+    await expect(recovery).rejects.toMatchObject({
+      status: 409,
+      code: 'QUEUE_TICKET_REPLACED',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(setAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('stores a successful recovery token while holding the queue flow lock', async () => {
+    vi.mocked(runAuthTransition).mockImplementation(async (action) => action());
+    vi.mocked(getCsrfToken).mockResolvedValue('csrf-token');
+    const lock = installSerializedQueueLockManager();
+    const generation = getLoginQueueGeneration();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          message: 'login recovered',
+          data: { access_token: 'recovered-token', expires_in: 60 },
+        }),
+      ),
+    );
+    vi.mocked(setAccessToken).mockImplementation(() => {
+      expect(lock.isLockHeld()).toBe(true);
+    });
+
+    await expect(recoverQueuedLogin(undefined, generation)).resolves.toMatchObject({
+      message: 'login recovered',
+    });
+
+    expect(setAccessToken).toHaveBeenCalledExactlyOnceWith('recovered-token');
+  });
+
+  it('does not persist a recovery token when the generation changes during the response', async () => {
+    vi.mocked(runAuthTransition).mockImplementation(async (action) => action());
+    vi.mocked(getCsrfToken).mockResolvedValue('csrf-token');
+    const lock = installSerializedQueueLockManager();
+    const generation = getLoginQueueGeneration();
+    let resolveResponse!: (response: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveResponse = resolve;
+          }),
+      ),
+    );
+
+    const recovery = recoverQueuedLogin(undefined, generation);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    expect(lock.isLockHeld()).toBe(true);
+    localStorage.setItem('meomuneum:queue-generation', 'successor-generation');
+    resolveResponse(
+      Response.json({
+        message: 'login recovered',
+        data: { access_token: 'stale-recovery-token', expires_in: 60 },
+      }),
+    );
+
+    await expect(recovery).rejects.toMatchObject({
+      status: 409,
+      code: 'QUEUE_TICKET_REPLACED',
+    });
+    expect(setAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('does not persist a recovery token after its owning login intent becomes stale', async () => {
+    vi.mocked(runAuthTransition).mockImplementation(async (action) => action());
+    vi.mocked(getCsrfToken).mockResolvedValue('csrf-token');
+    installSerializedQueueLockManager();
+    const generation = getLoginQueueGeneration();
+    let resolveResponse!: (response: Response) => void;
+    let isCurrent = true;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveResponse = resolve;
+          }),
+      ),
+    );
+
+    const recovery = recoverQueuedLogin(undefined, generation, () => isCurrent);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    isCurrent = false;
+    resolveResponse(
+      Response.json({
+        message: 'login recovered',
+        data: { access_token: 'stale-recovery-token', expires_in: 60 },
+      }),
+    );
+
+    await expect(recovery).rejects.toMatchObject({
+      status: 409,
+      code: 'QUEUE_TICKET_REPLACED',
+    });
+    expect(setAccessToken).not.toHaveBeenCalled();
   });
 
   it('does not call an unavailable by-key cancellation route for an ambiguous create', async () => {
@@ -1404,6 +1774,7 @@ describe('login operation markers', () => {
 
   it('confirms the backend bodyless HTTP 204 cancellation response', async () => {
     const generation = getLoginQueueGeneration();
+    let generationWhenLockReleased = generation;
     localStorage.setItem(
       'meomuneum:queue-create-idempotency',
       JSON.stringify({ id: 'cancel-key', createdAt: Date.now(), generation, status: 'ACTIVE' }),
@@ -1413,8 +1784,15 @@ describe('login operation markers', () => {
       'navigator',
       Object.assign(Object.create(Object.getPrototypeOf(navigator)), navigator, {
         locks: {
-          request: async (_name: string, _options: unknown, callback: (lock: object) => unknown) =>
-            callback({}),
+          request: async (
+            _name: string,
+            _options: unknown,
+            callback: (lock: object) => unknown,
+          ) => {
+            const result = await callback({});
+            generationWhenLockReleased = getLoginQueueGeneration();
+            return result;
+          },
         },
       }),
     );
@@ -1430,6 +1808,7 @@ describe('login operation markers', () => {
 
     await expect(cancelLoginQueue()).resolves.toBeUndefined();
     expect(localStorage.getItem('meomuneum:queue-create-idempotency')).toBeNull();
+    expect(generationWhenLockReleased).not.toBe(generation);
   });
 
   it('keeps the login operation ID through the 15-minute ticket recovery window', () => {
