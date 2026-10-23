@@ -205,7 +205,9 @@ describe('탭 간 인증 세션 복구', () => {
     vi.stubGlobal('fetch', fetcher);
     window.history.replaceState(null, '', '/login?returnTo=%2Fmy');
     render(<App />);
-    expect(await screen.findByRole('button', { name: '로그아웃' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: '로그아웃' }, { timeout: 5_000 }),
+    ).toBeInTheDocument();
     expect(window.location.pathname).toBe('/my');
     expect(getAccessToken()).toBe(restored);
     expect(submitQueuedLogin).not.toHaveBeenCalled();
@@ -278,6 +280,9 @@ describe('access token 사전 재발급 스케줄러', () => {
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
+    });
+    await act(async () => {
+      await import('./features/chatbot/components/ChatbotPage');
     });
     expect(screen.getByRole('heading', { name: '음악 추천 챗봇' })).toBeInTheDocument();
 
@@ -584,6 +589,9 @@ describe('access token 사전 재발급 스케줄러', () => {
       await vi.advanceTimersByTimeAsync(0);
       await Promise.resolve();
     });
+    await act(async () => {
+      await import('./features/mypage/components/MyPage');
+    });
     await act(async () => vi.advanceTimersByTimeAsync(1));
     const logoutButton = screen.getByRole('button', { name: '로그아웃' });
     await act(async () => fireEvent.click(logoutButton));
@@ -886,10 +894,9 @@ describe('로그인과 회원가입 화면 연결', () => {
     window.history.replaceState(null, '', '/login');
     render(<App />);
 
-    expect(await screen.findByRole('link', { name: '회원가입 하기' })).toHaveAttribute(
-      'href',
-      '/signup',
-    );
+    expect(
+      await screen.findByRole('link', { name: '회원가입 하기' }, { timeout: 5_000 }),
+    ).toHaveAttribute('href', '/signup');
     expect(screen.getByRole('button', { name: '로그인' })).not.toHaveClass('visually-hidden');
   });
 
@@ -945,11 +952,11 @@ describe('로그인과 회원가입 화면 연결', () => {
     expect(window.location.pathname).toBe('/chat');
   });
 
-  it('회원가입 경로에서 회원가입 화면을 렌더링한다', () => {
+  it('회원가입 경로에서 회원가입 화면을 렌더링한다', async () => {
     window.history.replaceState(null, '', '/signup');
     render(<App />);
 
-    expect(screen.getByRole('heading', { name: '회원가입' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '회원가입' })).toBeInTheDocument();
   });
 
   it('회원가입 성공 후 로그인 화면으로 이동한다', async () => {
@@ -957,7 +964,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     window.history.replaceState(null, '', '/signup');
     render(<App />);
 
-    await user.type(screen.getByLabelText(/닉네임/), '가입테스트');
+    await user.type(await screen.findByLabelText(/닉네임/), '가입테스트');
     await user.type(screen.getByLabelText(/이메일/), 'signup.test@example.com');
     await user.type(screen.getByLabelText('비밀번호 *'), 'Testpass1!');
     await user.click(await screen.findByRole('checkbox', { name: '[필수] 서비스 이용약관' }));

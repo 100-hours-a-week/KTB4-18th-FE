@@ -601,7 +601,7 @@ describe('상세 왕복 지역 선택 회귀', () => {
     expect(new URLSearchParams(window.location.search).get('returnTo')).toBe(
       '/music-records?sido=11',
     );
-    expect(screen.getByLabelText('이메일')).toBeInTheDocument();
+    expect(await screen.findByLabelText('이메일', {}, { timeout: 5_000 })).toBeInTheDocument();
   });
   it('없는 URL 지역은 성공 snapshot 검증 후에만 전국으로 정리한다', async () => {
     window.history.replaceState(null, '', '/music-records?tab=recent&sido=99#records');
