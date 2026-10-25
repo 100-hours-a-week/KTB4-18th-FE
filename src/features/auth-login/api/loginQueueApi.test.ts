@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCsrfToken, runAuthTransition, setAccessToken } from './authSession';
+import { reconcileAuthFlow } from './authFlow';
 import { isLogoutCleanupPending, resetLogoutCleanupGateForTests } from './logoutCleanupGate';
 
 vi.mock('./authSession', () => ({
@@ -9,6 +10,33 @@ vi.mock('./authSession', () => ({
   setAccessToken: vi.fn(),
 }));
 vi.mock('./authCapabilities', () => ({ probeAuthCapabilities: () => ({ supported: true }) }));
+vi.mock('./authFlow', () => ({
+  AuthFlowError: class AuthFlowError extends Error {
+    status: number | null;
+    code: string | null;
+    constructor(status: number | null, code: string | null = null) {
+      super('Authentication flow state is unavailable');
+      this.status = status;
+      this.code = code;
+    }
+  },
+  assertFlowResponseCurrent: vi.fn(async () => ({})),
+  authFlowHeaders: vi.fn(
+    async () =>
+      new Headers({
+        'X-Auth-Flow-Id': '123e4567-e89b-42d3-a456-426614174000',
+        'X-Auth-Flow-Epoch': '1',
+      }),
+  ),
+  reconcileAuthFlow: vi.fn(async () => ({
+    flowId: '123e4567-e89b-42d3-a456-426614174000',
+    flowEpoch: 2,
+    revision: 2,
+    lifecycle: 'AUTHENTICATED',
+    authenticated: true,
+  })),
+  updateAuthFlowFromResponse: vi.fn(),
+}));
 
 import {
   getLoginOperationId,
@@ -209,8 +237,7 @@ describe('queue create retry policy', () => {
       'fetch',
       vi.fn(async (input: string | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith('/login-queue/tickets/current'))
-          return new Response(null, { status: 404 });
+        if (url.endsWith('/login-queue/current')) return new Response(null, { status: 404 });
         if (url.endsWith('/login-queue/tickets') && init?.method === 'POST') {
           createKeys.push(new Headers(init.headers).get('Idempotency-Key') ?? '');
           return Response.json({ code: 'SERVICE_UNAVAILABLE' }, { status: 503 });
@@ -303,7 +330,7 @@ describe('login queue response contract', () => {
       code: 'QUEUE_STATUS_RETRY_PAUSED',
     });
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(requestedUrls[0]).toContain('/tickets/current');
+    expect(requestedUrls[0]).toContain('/login-queue/current');
   });
 
   it('reuses an ambiguous create key when no current ticket exists', async () => {
@@ -394,7 +421,9 @@ describe('login queue response contract', () => {
           }
           currentReads += 1;
           return currentReads === 1
-            ? Response.json(ticket('READY'))
+            ? Response.json(ticket('READY'), {
+                headers: { ETag: '"123e4567-e89b-42d3-a456-426614174000:1"' },
+              })
             : new Response(null, { status: 404 });
         }
         replacementKey = new Headers(init?.headers).get('Idempotency-Key');
@@ -450,22 +479,13 @@ describe('login queue response contract', () => {
         lastFailureKind: 'TRANSIENT',
       }),
     );
-    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
-      void input;
-      void init;
-      return new Response(null, { status: 204 });
-    });
+    const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
     await resetLoginQueueAfterLogout();
 
     const reset = JSON.parse(localStorage.getItem('meomuneum:queue-logout-reset') ?? '{}');
-    expect(fetchMock).toHaveBeenCalledOnce();
-    expect(fetchMock.mock.calls[0][1]).toMatchObject({
-      method: 'DELETE',
-      credentials: 'include',
-      headers: { 'X-CSRF-TOKEN': 'csrf-token' },
-    });
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(localStorage.getItem('meomuneum:queue-create-idempotency')).toBeNull();
     expect(reset.generation).toBe(getLoginQueueGeneration());
     expect(reset.eventId).toBeTruthy();
@@ -484,18 +504,12 @@ describe('login queue response contract', () => {
       }),
     );
     vi.mocked(getCsrfToken).mockResolvedValue('csrf-token');
-    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
-      void input;
-      void init;
-      return new Response(null, { status: 204 });
-    });
+    const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
     await resetLoginQueueAfterLogout();
 
-    expect(fetchMock).toHaveBeenCalledOnce();
-    expect(fetchMock.mock.calls[0][0]).toContain('/api/v1/auth/login-queue/tickets/current');
-    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'DELETE', credentials: 'include' });
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(localStorage.getItem('meomuneum:queue-create-idempotency')).toBeNull();
     expect(localStorage.getItem('meomuneum:queue-login-operation')).toBeNull();
   });
@@ -731,6 +745,7 @@ describe('login queue response contract', () => {
     );
 
     const statusRequest = getLoginQueueStatus();
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     localStorage.setItem(
       'meomuneum:queue-create-idempotency',
       JSON.stringify({ id: 'new-key', createdAt: Date.now(), generation, status: 'ACTIVE' }),
@@ -810,7 +825,7 @@ describe('login operation markers', () => {
       'fetch',
       vi.fn(async (input: string | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith('/login-queue/tickets/current')) {
+        if (url.endsWith('/login-queue/current')) {
           return Response.json(ticket(status));
         }
         if (url.endsWith('/login-queue/tickets') && init?.method === 'POST') {
@@ -846,8 +861,7 @@ describe('login operation markers', () => {
       'fetch',
       vi.fn(async (input: string | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith('/login-queue/tickets/current'))
-          return new Response(null, { status: 404 });
+        if (url.endsWith('/login-queue/current')) return new Response(null, { status: 404 });
         if (url.endsWith('/login-queue/tickets') && init?.method === 'POST') {
           keys.push(new Headers(init.headers).get('Idempotency-Key') ?? '');
           return Response.json(
@@ -888,7 +902,7 @@ describe('login operation markers', () => {
       'fetch',
       vi.fn(async (input: string | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith('/login-queue/tickets/current')) {
+        if (url.endsWith('/login-queue/current')) {
           currentChecks += 1;
           return currentChecks === 1
             ? new Response(null, { status: 404 })
@@ -930,8 +944,7 @@ describe('login operation markers', () => {
       'fetch',
       vi.fn(async (input: string | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith('/login-queue/tickets/current'))
-          return new Response(null, { status: 404 });
+        if (url.endsWith('/login-queue/current')) return new Response(null, { status: 404 });
         if (url.endsWith('/login-queue/tickets') && init?.method === 'POST') {
           createCount += 1;
           return Response.json({ code: 'IDEMPOTENCY_KEY_CONFLICT' }, { status: 409 });
@@ -963,8 +976,7 @@ describe('login operation markers', () => {
       'fetch',
       vi.fn(async (input: string | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith('/login-queue/tickets/current'))
-          return new Response(null, { status: 404 });
+        if (url.endsWith('/login-queue/current')) return new Response(null, { status: 404 });
         if (url.endsWith('/login-queue/tickets') && init?.method === 'POST') {
           createKeys.push(new Headers(init.headers).get('Idempotency-Key') ?? '');
           return Response.json({ code: 'SERVICE_UNAVAILABLE' }, { status: 503 });
@@ -1002,8 +1014,7 @@ describe('login operation markers', () => {
       'fetch',
       vi.fn(async (input: string | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith('/login-queue/tickets/current'))
-          return new Response(null, { status: 404 });
+        if (url.endsWith('/login-queue/current')) return new Response(null, { status: 404 });
         if (url.endsWith('/login-queue/tickets') && init?.method === 'POST') {
           createKeys.push(new Headers(init.headers).get('Idempotency-Key') ?? '');
           const marker = JSON.parse(
@@ -1059,8 +1070,7 @@ describe('login operation markers', () => {
       'fetch',
       vi.fn(async (input: string | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith('/login-queue/tickets/current'))
-          return new Response(null, { status: 404 });
+        if (url.endsWith('/login-queue/current')) return new Response(null, { status: 404 });
         if (url.endsWith('/login-queue/tickets') && init?.method === 'POST') {
           window.setTimeout(() => {
             lockWasAvailableDuringWait = !held;
@@ -1096,8 +1106,7 @@ describe('login operation markers', () => {
       'fetch',
       vi.fn(async (input: string | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith('/login-queue/tickets/current'))
-          return new Response(null, { status: 404 });
+        if (url.endsWith('/login-queue/current')) return new Response(null, { status: 404 });
         if (url.endsWith('/login-queue/tickets') && init?.method === 'POST') {
           keys.push(new Headers(init.headers).get('Idempotency-Key') ?? '');
           return Response.json({
@@ -1554,6 +1563,13 @@ describe('login operation markers', () => {
   it('stores a successful recovery token while holding the queue flow lock', async () => {
     vi.mocked(runAuthTransition).mockImplementation(async (action) => action());
     vi.mocked(getCsrfToken).mockResolvedValue('csrf-token');
+    vi.mocked(reconcileAuthFlow).mockResolvedValue({
+      flowId: '123e4567-e89b-42d3-a456-426614174000',
+      flowEpoch: 1,
+      revision: 1,
+      lifecycle: 'AUTHENTICATED',
+      authenticated: true,
+    });
     const lock = installSerializedQueueLockManager();
     const generation = getLoginQueueGeneration();
     vi.stubGlobal(
@@ -1682,8 +1698,7 @@ describe('login operation markers', () => {
       vi.fn(async (input: string | URL, init?: RequestInit) => {
         const url = String(input);
         requests.push(`${init?.method ?? 'GET'} ${url}`);
-        if (url.endsWith('/login-queue/tickets/current'))
-          return new Response(null, { status: 404 });
+        if (url.endsWith('/login-queue/current')) return new Response(null, { status: 404 });
         throw new Error(`Unexpected request: ${url}`);
       }),
     );
@@ -1733,8 +1748,10 @@ describe('login operation markers', () => {
       vi.stubGlobal(
         'fetch',
         vi.fn(async (input: string | URL, init?: RequestInit) =>
-          String(input).endsWith('/tickets/current') && init?.method !== 'DELETE'
-            ? Response.json(ticket('READY'))
+          String(input).endsWith('/login-queue/current') && init?.method !== 'DELETE'
+            ? Response.json(ticket('READY'), {
+                headers: { ETag: '"123e4567-e89b-42d3-a456-426614174000:1"' },
+              })
             : Response.json({ data: { status: 'CANCELLED' } }, { status }),
         ),
       );
@@ -1760,7 +1777,10 @@ describe('login operation markers', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (_input: string | URL, init?: RequestInit) => {
-        if (init?.method !== 'DELETE') return Response.json(ticket('READY'));
+        if (init?.method !== 'DELETE')
+          return Response.json(ticket('READY'), {
+            headers: { ETag: '"123e4567-e89b-42d3-a456-426614174000:1"' },
+          });
         const marker = JSON.parse(
           localStorage.getItem('meomuneum:queue-create-idempotency') ?? '{}',
         );
@@ -1799,8 +1819,10 @@ describe('login operation markers', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: string | URL, init?: RequestInit) => {
-        if (String(input).endsWith('/tickets/current') && init?.method !== 'DELETE')
-          return Response.json(ticket('READY'));
+        if (String(input).endsWith('/login-queue/current') && init?.method !== 'DELETE')
+          return Response.json(ticket('READY'), {
+            headers: { ETag: '"123e4567-e89b-42d3-a456-426614174000:1"' },
+          });
         if (init?.method === 'DELETE') return new Response(null, { status: 204 });
         throw new Error(`Unexpected request: ${String(input)}`);
       }),
@@ -1809,6 +1831,103 @@ describe('login operation markers', () => {
     await expect(cancelLoginQueue()).resolves.toBeUndefined();
     expect(localStorage.getItem('meomuneum:queue-create-idempotency')).toBeNull();
     expect(generationWhenLockReleased).not.toBe(generation);
+  });
+
+  it('recovers queue cancellation from its flow receipt after HTTP 503', async () => {
+    const generation = getLoginQueueGeneration();
+    const operationId = '123e4567-e89b-42d3-a456-426614174055';
+    localStorage.setItem(
+      'meomuneum:queue-create-idempotency',
+      JSON.stringify({ id: operationId, createdAt: Date.now(), generation, status: 'ACTIVE' }),
+    );
+    vi.mocked(getCsrfToken).mockResolvedValue('csrf-token');
+    vi.mocked(reconcileAuthFlow).mockResolvedValue({
+      flowId: '123e4567-e89b-42d3-a456-426614174000',
+      flowEpoch: 1,
+      revision: 3,
+      lifecycle: 'ANONYMOUS',
+      authenticated: false,
+      lastQueueCancelReceipt: { operationId, committed: true, flowEpoch: 1, revision: 3 },
+    });
+    vi.stubGlobal(
+      'navigator',
+      Object.assign(Object.create(Object.getPrototypeOf(navigator)), navigator, {
+        locks: {
+          request: async (
+            _name: string,
+            _options: unknown,
+            callback: (lock: object) => unknown,
+          ) => callback({}),
+        },
+      }),
+    );
+    const requests: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        requests.push(`${init?.method ?? 'GET'} ${url}`);
+        if (url.endsWith('/login-queue/current') && init?.method !== 'DELETE')
+          return Response.json(ticket('READY'), {
+            headers: { ETag: '"123e4567-e89b-42d3-a456-426614174000:2"' },
+          });
+        if (init?.method === 'DELETE') return new Response(null, { status: 503 });
+        throw new Error(`Unexpected request: ${url}`);
+      }),
+    );
+
+    await expect(cancelLoginQueue()).resolves.toBeUndefined();
+
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toMatch(/^DELETE .*\/current$/);
+    expect(reconcileAuthFlow).toHaveBeenCalledOnce();
+    expect(localStorage.getItem('meomuneum:queue-create-idempotency')).toBeNull();
+  });
+
+  it('recovers a committed cancellation receipt after reload when current ticket is already absent', async () => {
+    const generation = getLoginQueueGeneration();
+    const operationId = '123e4567-e89b-42d3-a456-426614174056';
+    localStorage.setItem(
+      'meomuneum:queue-create-idempotency',
+      JSON.stringify({
+        id: operationId,
+        createdAt: Date.now(),
+        generation,
+        status: 'CANCEL_REQUESTED',
+        cancelTarget: 'CURRENT_TICKET',
+      }),
+    );
+    vi.mocked(reconcileAuthFlow).mockResolvedValue({
+      flowId: '123e4567-e89b-42d3-a456-426614174000',
+      flowEpoch: 1,
+      revision: 3,
+      lifecycle: 'ANONYMOUS',
+      authenticated: false,
+      lastQueueCancelReceipt: { operationId, committed: true, flowEpoch: 1, revision: 3 },
+    });
+    vi.stubGlobal(
+      'navigator',
+      Object.assign(Object.create(Object.getPrototypeOf(navigator)), navigator, {
+        locks: {
+          request: async (
+            _name: string,
+            _options: unknown,
+            callback: (lock: object) => unknown,
+          ) => callback({}),
+        },
+      }),
+    );
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      if (String(input).endsWith('/login-queue/current')) return new Response(null, { status: 404 });
+      throw new Error(`Unexpected request: ${String(input)}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(cancelLoginQueue()).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(reconcileAuthFlow).toHaveBeenCalledOnce();
+    expect(localStorage.getItem('meomuneum:queue-create-idempotency')).toBeNull();
   });
 
   it('keeps the login operation ID through the 15-minute ticket recovery window', () => {
@@ -1851,8 +1970,7 @@ describe('login operation markers', () => {
       'fetch',
       vi.fn(async (input: string | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith('/login-queue/tickets/current'))
-          return new Response(null, { status: 404 });
+        if (url.endsWith('/login-queue/current')) return new Response(null, { status: 404 });
         if (url.endsWith('/login-queue/tickets') && init?.method === 'POST') {
           keys.push(new Headers(init.headers).get('Idempotency-Key') ?? '');
           return Response.json(ticket('READY'));

@@ -7,6 +7,13 @@ import {
 import { probeAuthCapabilities } from './authCapabilities';
 import { QueueRequestError } from './loginQueueErrors';
 import {
+  assertFlowResponseCurrent,
+  AuthFlowError,
+  authFlowHeaders,
+  reconcileAuthFlow,
+  updateAuthFlowFromResponse,
+} from './authFlow';
+import {
   beginLogoutCleanupGate,
   completeLogoutCleanupGate,
   isLogoutCleanupPending,
@@ -78,6 +85,27 @@ const CANCEL_TIMEOUT_MS = 45_000;
 const MAX_STATUS_RECONCILIATION_ATTEMPTS = 3;
 const STATUS_RECONCILIATION_WINDOW_MS = 60_000;
 const LOGIN_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+let currentQueueEtag: string | null = null;
+let pendingCancelOperationId: string | null = null;
+
+async function flowHeaders(): Promise<Headers> {
+  try {
+    return await authFlowHeaders();
+  } catch {
+    throw new QueueRequestError(503, 'AUTH_STATE_UNAVAILABLE', 1);
+  }
+}
+
+async function assertResponseFlowCurrent(headers: Headers, response: Response): Promise<void> {
+  try {
+    await assertFlowResponseCurrent(headers, response);
+  } catch (error) {
+    if (error instanceof AuthFlowError) {
+      throw new QueueRequestError(error.status, error.code ?? 'AUTH_FLOW_EPOCH_STALE', 1);
+    }
+    throw new QueueRequestError(503, 'AUTH_STATE_UNAVAILABLE', 1);
+  }
+}
 
 function assertLogoutCleanupComplete(): void {
   if (isLogoutCleanupPending()) throw new QueueRequestError(409, 'LOGOUT_CLEANUP_PENDING');
@@ -96,16 +124,21 @@ type LoginSuccessEnvelope = {
 
 async function requestTicketStatus(signal?: AbortSignal): Promise<LoginQueueTicket> {
   assertLogoutCleanupComplete();
+  const headers = await flowHeaders();
   let response: Response;
   try {
-    response = await fetchWithTimeout(requestUrl('login-queue/tickets/current'), {
+    response = await fetchWithTimeout(requestUrl('login-queue/current'), {
       credentials: 'include',
       cache: 'no-store',
+      headers,
       signal,
     });
   } catch {
     throw new QueueRequestError(null);
   }
+  updateAuthFlowFromResponse(response);
+  await assertResponseFlowCurrent(headers, response);
+  currentQueueEtag = response.headers.get('ETag');
   assertLogoutCleanupComplete();
   if (response.status === 404 || response.status === 410) {
     throw new QueueRequestError(
@@ -128,6 +161,8 @@ async function createTicketWithKey(
   expectedGeneration: string,
 ): Promise<LoginQueueStartResult> {
   assertLogoutCleanupComplete();
+  const headers = await flowHeaders();
+  headers.set('Idempotency-Key', idempotencyKey);
   let response: Response;
   const controller = new AbortController();
   registerActiveCreateController(controller);
@@ -135,7 +170,7 @@ async function createTicketWithKey(
     response = await fetchWithTimeout(requestUrl('login-queue/tickets'), {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Idempotency-Key': idempotencyKey },
+      headers,
       signal: controller.signal,
     });
   } catch {
@@ -143,11 +178,21 @@ async function createTicketWithKey(
   } finally {
     clearActiveCreateController(controller);
   }
+  updateAuthFlowFromResponse(response);
+  await assertResponseFlowCurrent(headers, response);
   assertLogoutCleanupComplete();
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as
       (ApiEnvelope<null> & { code?: string }) | null;
-    throw new QueueRequestError(response.status, errorCode(body), retryAfter(response));
+    const code = errorCode(body);
+    if (response.status === 202 || code === 'AUTH_QUEUE_CREATE_IN_PROGRESS') {
+      throw new QueueRequestError(
+        response.status,
+        'AUTH_QUEUE_CREATE_IN_PROGRESS',
+        retryAfter(response),
+      );
+    }
+    throw new QueueRequestError(response.status, code, retryAfter(response));
   }
   const ticket = await readTicket(response);
   assertLogoutCleanupComplete();
@@ -211,11 +256,18 @@ async function currentTicketBeforeCreate(
 
 async function cancelKnownCurrentTicket(): Promise<void> {
   const csrf = await getCsrfToken();
-  const response = await fetchWithTimeout(requestUrl('login-queue/tickets/current'), {
+  const headers = await flowHeaders();
+  headers.set('X-CSRF-TOKEN', csrf);
+  if (!currentQueueEtag) throw new QueueRequestError(428, 'AUTH_FLOW_REVISION_REQUIRED');
+  headers.set('If-Match', currentQueueEtag);
+  headers.set('X-Queue-Cancel-Operation-Id', pendingCancelOperationId ?? crypto.randomUUID());
+  const response = await fetchWithTimeout(requestUrl('login-queue/current'), {
     method: 'DELETE',
     credentials: 'include',
-    headers: { 'X-CSRF-TOKEN': csrf },
+    headers,
   });
+  updateAuthFlowFromResponse(response);
+  await assertResponseFlowCurrent(headers, response);
   if (response.status === 204) return;
   const body = (await response.json().catch(() => null)) as
     (ApiEnvelope<{ status?: string }> & { code?: string }) | null;
@@ -232,6 +284,8 @@ function confirmQueueCancellation(generation: string) {
     storage().removeItem(CREATE_KEY_STORAGE);
     publishQueueSignal({ type: 'queue-create-cancelled', queueGeneration: generation });
     beginQueueGeneration();
+    pendingCancelOperationId = null;
+    currentQueueEtag = null;
     return { kind: 'confirmed' as const };
   } catch {
     throw new QueueRequestError(null, 'QUEUE_CANCEL_UNCONFIRMED');
@@ -262,6 +316,7 @@ async function createUnderLock(expectedGeneration: string): Promise<LoginQueueSt
             cancelTarget: 'CURRENT_TICKET',
           };
           writeMarker(CREATE_KEY_STORAGE, marker);
+          pendingCancelOperationId ??= marker.id;
           await cancelKnownCurrentTicket();
           if (queueGeneration() !== expectedGeneration)
             throw new QueueRequestError(409, 'QUEUE_OPERATION_REPLACED');
@@ -404,9 +459,12 @@ async function createUnderLock(expectedGeneration: string): Promise<LoginQueueSt
           }
           if (Date.now() >= (marker.deadlineAt ?? marker.createdAt + QUEUE_CREATE_DEADLINE_MS))
             throw new QueueRequestError(error.status, 'CREATE_DEADLINE_EXCEEDED');
-          const isKnownTransient = ['QUEUE_FULL', 'RATE_LIMITED', 'OPERATION_IN_PROGRESS'].includes(
-            error.code ?? '',
-          );
+          const isKnownTransient = [
+            'QUEUE_FULL',
+            'RATE_LIMITED',
+            'OPERATION_IN_PROGRESS',
+            'AUTH_QUEUE_CREATE_IN_PROGRESS',
+          ].includes(error.code ?? '');
           const isTransient =
             isKnownTransient ||
             isAmbiguous ||
@@ -617,6 +675,7 @@ export async function cancelLoginQueue(): Promise<void> {
             };
             writeMarker(CREATE_KEY_STORAGE, marker);
           }
+          if (marker) pendingCancelOperationId = marker.id;
           if (marker) {
             marker = {
               ...marker,
@@ -626,6 +685,10 @@ export async function cancelLoginQueue(): Promise<void> {
             writeMarker(CREATE_KEY_STORAGE, marker);
           }
           if (!current) {
+            const cancelOperationId = pendingCancelOperationId ?? marker?.id;
+            if (cancelOperationId && (await queueCancellationCommitted(cancelOperationId))) {
+              return confirmQueueCancellation(generation);
+            }
             throw new QueueRequestError(null, 'QUEUE_CANCEL_UNCONFIRMED');
           }
           const csrf = await promiseWithTimeout(
@@ -636,18 +699,40 @@ export async function cancelLoginQueue(): Promise<void> {
           assertLogoutCleanupComplete();
           if (flowController.signal.aborted)
             throw new QueueRequestError(null, 'QUEUE_CANCEL_UNCONFIRMED');
-          const response = await fetchWithTimeout(requestUrl('login-queue/tickets/current'), {
-            method: 'DELETE',
-            credentials: 'include',
-            headers: { 'X-CSRF-TOKEN': csrf },
-            signal: flowController.signal,
-          });
+          const headers = await flowHeaders();
+          headers.set('X-CSRF-TOKEN', csrf);
+          if (!currentQueueEtag) throw new QueueRequestError(428, 'AUTH_FLOW_REVISION_REQUIRED');
+          headers.set('If-Match', currentQueueEtag);
+          pendingCancelOperationId ??= marker?.id ?? crypto.randomUUID();
+          headers.set('X-Queue-Cancel-Operation-Id', pendingCancelOperationId);
+          const cancelOperationId = pendingCancelOperationId;
+          let response: Response;
+          try {
+            response = await fetchWithTimeout(requestUrl('login-queue/current'), {
+              method: 'DELETE',
+              credentials: 'include',
+              headers,
+              signal: flowController.signal,
+            });
+          } catch (error) {
+            if (
+              cancelOperationId &&
+              (await queueCancellationCommitted(cancelOperationId, headers))
+            ) {
+              return confirmQueueCancellation(generation);
+            }
+            throw error;
+          }
+          updateAuthFlowFromResponse(response);
           assertLogoutCleanupComplete();
           if (response.status === 204) return confirmQueueCancellation(generation);
           const body = (await response.json().catch(() => null)) as
             (ApiEnvelope<{ status?: string }> & { code?: string }) | null;
           if (response.status === 403) return { kind: 'csrf' as const };
-          if (response.status === 409 || response.status === 503) {
+          if ([409, 412].includes(response.status) || response.status >= 500) {
+            if (await queueCancellationCommitted(cancelOperationId, headers)) {
+              return confirmQueueCancellation(generation);
+            }
             return { kind: 'retry' as const, delay: retryAfter(response) ?? 1 };
           }
           if (response.status !== 200 || body?.data?.status !== 'CANCELLED') {
@@ -686,30 +771,36 @@ export async function cancelLoginQueue(): Promise<void> {
   }
 }
 
+async function queueCancellationCommitted(
+  operationId: string,
+  requestHeaders?: Headers,
+): Promise<boolean> {
+  try {
+    const flow = await reconcileAuthFlow(undefined, true);
+    const requestFlowId = requestHeaders?.get('X-Auth-Flow-Id');
+    const requestEpoch = Number(requestHeaders?.get('X-Auth-Flow-Epoch'));
+    const receipt = flow.lastQueueCancelReceipt;
+    return (
+      (!requestFlowId || flow.flowId === requestFlowId) &&
+      (!Number.isSafeInteger(requestEpoch) || flow.flowEpoch === requestEpoch) &&
+      flow.lifecycle !== 'QUEUED' &&
+      receipt?.committed === true &&
+      receipt.operationId === operationId &&
+      receipt.flowEpoch === flow.flowEpoch &&
+      receipt.revision <= flow.revision
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function resetLoginQueueAfterLogout(): Promise<void> {
   beginLogoutCleanupGate();
   abortActiveCreate();
   const lockManager = navigator.locks;
   if (!lockManager?.request) throw new QueueRequestError(null, 'AUTH_CAPABILITY_UNAVAILABLE');
-  let timedOut = false;
-  const resetOperation = lockManager.request(QUEUE_FLOW_LOCK, { mode: 'exclusive' }, async () => {
-    const ensureActive = () => {
-      if (timedOut) throw new QueueRequestError(null, 'QUEUE_RESET_TIMEOUT');
-    };
-    ensureActive();
-    const csrf = await getCsrfToken();
-    ensureActive();
-    const response = await fetchWithTimeout(requestUrl('login-queue/tickets/current'), {
-      method: 'DELETE',
-      credentials: 'include',
-      headers: { 'X-CSRF-TOKEN': csrf },
-    });
-    ensureActive();
-    if (response.status !== 204) {
-      throw new QueueRequestError(response.status, 'QUEUE_LOGOUT_CLEANUP_UNCONFIRMED');
-    }
+  await lockManager.request(QUEUE_FLOW_LOCK, { mode: 'exclusive' }, async () => {
     const marker = readMarker(CREATE_KEY_STORAGE);
-    ensureActive();
     try {
       storage().removeItem(CREATE_KEY_STORAGE);
       storage().removeItem(LOGIN_OPERATION_STORAGE);
@@ -726,15 +817,10 @@ export async function resetLoginQueueAfterLogout(): Promise<void> {
       queueGeneration: generation,
       resetEventId: reset.eventId,
     });
-    ensureActive();
     completeLogoutCleanupGate();
   });
-  try {
-    await promiseWithTimeout(resetOperation, 2_000, 'QUEUE_RESET_TIMEOUT');
-  } catch (error) {
-    timedOut = true;
-    throw error;
-  }
+  pendingCancelOperationId = null;
+  currentQueueEtag = null;
 }
 
 export async function resumeQueueAfterPageRestore(): Promise<LoginQueueTicket | null> {
@@ -808,25 +894,29 @@ export async function submitQueuedLogin(
         if (!lock) return { kind: 'peer-owned' as const };
         if (queueGeneration() !== expectedGeneration) return { kind: 'ticket-replaced' as const };
         const operationId = getLoginOperationId();
+        const headers = await flowHeaders();
+        if (queueGeneration() !== expectedGeneration) return { kind: 'ticket-replaced' as const };
+        const requestFlowId = headers.get('X-Auth-Flow-Id');
+        const requestFlowEpoch = Number(headers.get('X-Auth-Flow-Epoch'));
+        headers.set('Content-Type', 'application/json');
+        headers.set('X-Login-Operation-Id', operationId);
+        if (diagnosticCorrelationId)
+          headers.set('X-Auth-Queue-Correlation', diagnosticCorrelationId);
         assertLogoutCleanupComplete();
+        if (queueGeneration() !== expectedGeneration) return { kind: 'ticket-replaced' as const };
         let response: Response;
         try {
           response = await fetchWithTimeout(requestUrl('login'), {
             method: 'POST',
             credentials: 'include',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Login-Operation-Id': operationId,
-              ...(diagnosticCorrelationId
-                ? { 'X-Auth-Queue-Correlation': diagnosticCorrelationId }
-                : {}),
-            },
+            headers,
             body: JSON.stringify(request),
           });
         } catch {
           if (queueGeneration() !== expectedGeneration) return { kind: 'ticket-replaced' as const };
           return { kind: 'ambiguous' as const, status: null, retryAfter: null };
         }
+        updateAuthFlowFromResponse(response);
         assertLogoutCleanupComplete();
         if (queueGeneration() !== expectedGeneration) return { kind: 'ticket-replaced' as const };
         const body = (await response.json().catch(() => null)) as ApiEnvelope<{
@@ -842,6 +932,19 @@ export async function submitQueuedLogin(
         ) {
           assertLogoutCleanupComplete();
           if (queueGeneration() !== expectedGeneration) return { kind: 'ticket-replaced' as const };
+          const reconciledFlow = await reconcileAuthFlow(undefined, true);
+          if (
+            reconciledFlow.flowId !== requestFlowId ||
+            reconciledFlow.flowEpoch !== requestFlowEpoch + 1 ||
+            !reconciledFlow.authenticated
+          ) {
+            return {
+              kind: 'ambiguous' as const,
+              code: 'AUTH_FLOW_EPOCH_STALE',
+              status: 409,
+              retryAfter: null,
+            };
+          }
           setAccessToken(body.data.access_token);
           return {
             kind: 'success' as const,
@@ -899,6 +1002,8 @@ export async function recoverQueuedLogin(
   if (!isCurrent()) throw new QueueRequestError(409, 'QUEUE_TICKET_REPLACED');
   assertLogoutCleanupComplete();
   const csrf = await getCsrfToken();
+  const flowHeadersForRecovery = await flowHeaders();
+  flowHeadersForRecovery.set('X-CSRF-TOKEN', csrf);
   assertLogoutCleanupComplete();
   if (!isCurrent() || queueGeneration() !== expectedGeneration)
     throw new QueueRequestError(409, 'QUEUE_TICKET_REPLACED');
@@ -917,16 +1022,22 @@ export async function recoverQueuedLogin(
         if (!isCurrent() || queueGeneration() !== expectedGeneration)
           throw new QueueRequestError(409, 'QUEUE_TICKET_REPLACED');
         const stableOperationId = operationId ?? getLoginOperationId();
+        const requestFlowId = flowHeadersForRecovery.get('X-Auth-Flow-Id');
+        const requestFlowEpoch = Number(flowHeadersForRecovery.get('X-Auth-Flow-Epoch'));
         let response: Response;
         try {
           response = await fetchWithTimeout(requestUrl('login/recovery'), {
             method: 'POST',
             credentials: 'include',
-            headers: { 'X-CSRF-TOKEN': csrf, 'X-Login-Operation-Id': stableOperationId },
+            headers: new Headers({
+              ...Object.fromEntries(flowHeadersForRecovery.entries()),
+              'X-Login-Operation-Id': stableOperationId,
+            }),
           });
         } catch {
           throw new QueueRequestError(null, 'AUTH_STATE_UNAVAILABLE');
         }
+        updateAuthFlowFromResponse(response);
         assertLogoutCleanupComplete();
         if (!isCurrent() || queueGeneration() !== expectedGeneration)
           throw new QueueRequestError(409, 'QUEUE_TICKET_REPLACED');
@@ -943,6 +1054,14 @@ export async function recoverQueuedLogin(
           assertLogoutCleanupComplete();
           if (!isCurrent() || queueGeneration() !== expectedGeneration)
             throw new QueueRequestError(409, 'QUEUE_TICKET_REPLACED');
+          const reconciledFlow = await reconcileAuthFlow(undefined, true);
+          if (
+            reconciledFlow.flowId !== requestFlowId ||
+            reconciledFlow.flowEpoch !== requestFlowEpoch ||
+            !reconciledFlow.authenticated
+          ) {
+            throw new QueueRequestError(409, 'AUTH_FLOW_EPOCH_STALE');
+          }
           setAccessToken(body.data.access_token);
           return body as LoginSuccessEnvelope;
         }

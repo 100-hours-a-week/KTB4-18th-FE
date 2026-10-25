@@ -5,6 +5,7 @@ import {
 } from '../../chat-entry/services/chatConversationCache';
 import { probeAuthCapabilities } from './authCapabilities';
 import { isLogoutCleanupPending, resetLogoutCleanupGateForTests } from './logoutCleanupGate';
+import { authFlowHeaders, getAuthFlow, primeAuthFlowForTests, reconcileAuthFlow, updateAuthFlowFromResponse } from './authFlow';
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 const ACCESS_TOKEN_KEY = 'access_token';
@@ -453,32 +454,97 @@ export async function getCsrfToken(signal?: AbortSignal): Promise<string> {
   return body.data.csrf_token;
 }
 
-async function refreshOnce(retryCsrf: boolean, requestEpoch: string): Promise<string> {
+async function refreshOnce(
+  retryCsrf: boolean,
+  requestEpoch: string,
+  retryRotation = true,
+): Promise<string> {
   assertLogoutCleanupComplete();
   const refreshOperation = readRefreshOperation();
   const csrf = await getCsrfToken();
+  const flowBefore = await getAuthFlow();
+  const flowHeaders = await authFlowHeaders();
   assertLogoutCleanupComplete();
   if (epochState(sharedAuthEpoch()) === 'signed-out') throw new AuthRequestError(null);
   if (Date.now() >= refreshOperation.retryCutoffAt) throw new AuthRequestError(null, true);
   if (sharedAuthEpoch() !== requestEpoch) {
     throw new AuthRequestError(null);
   }
-  const response = await fetchAuthLifecycle(`${baseUrl}/api/v1/auth/token/refresh`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'X-CSRF-TOKEN': csrf, 'X-Refresh-Operation-Id': refreshOperation.id },
-  });
+
+  let response: Response;
+  try {
+    response = await fetchAuthLifecycle(`${baseUrl}/api/v1/auth/token/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: new Headers({
+        ...Object.fromEntries(flowHeaders.entries()),
+        'X-CSRF-TOKEN': csrf,
+        'X-Refresh-Operation-Id': refreshOperation.id,
+      }),
+    });
+  } catch (error) {
+    if (
+      retryRotation &&
+      error instanceof AuthRequestError &&
+      error.requestWasSent &&
+      (await recoverCommittedRefresh(refreshOperation.id, flowBefore))
+    ) {
+      clearRefreshOperation();
+      return refreshOnce(false, requestEpoch, false);
+    }
+    throw error;
+  }
+  updateAuthFlowFromResponse(response);
   if (sharedAuthEpoch() !== requestEpoch) throw new AuthRequestError(null);
-  if (response.status === 403 && retryCsrf) return refreshOnce(false, requestEpoch);
+  if (response.status === 403 && retryCsrf) return refreshOnce(false, requestEpoch, retryRotation);
   if (response.status === 403) clearRefreshOperation();
-  const body = await response.json().catch(() => null);
+  const body = (await response.json().catch(() => null)) as {
+    data?: { access_token?: unknown };
+    code?: string;
+    message?: string;
+  } | null;
   if (sharedAuthEpoch() !== requestEpoch) throw new AuthRequestError(null);
+  if (
+    retryRotation &&
+    response.status === 409 &&
+    (body?.code === 'AUTH_REFRESH_STALE' || body?.message === 'AUTH_REFRESH_STALE') &&
+    (await recoverCommittedRefresh(refreshOperation.id, flowBefore))
+  ) {
+    clearRefreshOperation();
+    return refreshOnce(false, requestEpoch, false);
+  }
   if (!response.ok || typeof body?.data?.access_token !== 'string') {
     if (response.status === 401) clearRefreshOperation();
     throw new AuthRequestError(response.status);
   }
   clearRefreshOperation();
   return body.data.access_token;
+}
+
+async function recoverCommittedRefresh(
+  operationId: string,
+  before: Awaited<ReturnType<typeof getAuthFlow>>,
+): Promise<boolean> {
+  try {
+    const current = await reconcileAuthFlow(undefined, true);
+    const beforeGeneration = before.refreshGeneration ?? 0;
+    const currentGeneration = current.refreshGeneration ?? 0;
+    const receipt = current.lastRefreshReceipt;
+    const receiptIsOwnOperation = receipt?.operationId === operationId;
+    const receiptIsConcurrentWinner =
+      receipt?.operationId !== operationId && (receipt?.resultGeneration ?? 0) > beforeGeneration;
+    return (
+      current.flowId === before.flowId &&
+      current.flowEpoch === before.flowEpoch &&
+      current.authenticated &&
+      currentGeneration > beforeGeneration &&
+      receipt?.committed === true &&
+      receipt.resultGeneration === currentGeneration &&
+      (receiptIsOwnOperation || receiptIsConcurrentWinner)
+    );
+  } catch {
+    return false;
+  }
 }
 
 function readRefreshOperation(): { id: string; createdAt: number; retryCutoffAt: number } {
@@ -901,4 +967,11 @@ export function resetAuthSessionForTests(): void {
   } catch {
     // A test reset must not mask a storage failure under test.
   }
+  primeAuthFlowForTests({
+    flowId: '123e4567-e89b-42d3-a456-426614174000',
+    flowEpoch: 1,
+    revision: 1,
+    lifecycle: 'AUTHENTICATED',
+    authenticated: true,
+  });
 }

@@ -69,6 +69,10 @@ test('한 탭 로그아웃은 같은 프로필 전체에 적용하고 다른 프
   const second = await context.newPage();
   await second.goto('/my');
   await account(second);
+  let peerRefreshRequests = 0;
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/v1/auth/token/refresh') peerRefreshRequests++;
+  });
   const remote = await browser.newContext({ baseURL, viewport, isMobile, hasTouch });
   try {
     const remotePage = await remote.newPage();
@@ -78,6 +82,7 @@ test('한 탭 로그아웃은 같은 프로필 전체에 적용하고 다른 프
     await second.getByRole('button', { name: '로그아웃', exact: true }).click();
     await signedOut(page);
     await signedOut(second);
+    expect(peerRefreshRequests).toBe(0);
     await account(remotePage);
     expect(await identity(remotePage)).toEqual(independent);
     await remotePage.reload();
@@ -92,59 +97,38 @@ test('한 탭 로그아웃은 같은 프로필 전체에 적용하고 다른 프
   }
 });
 
-test('로그아웃 후 queue DELETE 실패는 로그인 요청을 막고 수동 cleanup 재시도로 해제한다', async ({
+test('로그아웃 커밋이 대기열을 함께 폐기하고 별도 queue DELETE 없이 새 로그인을 연다', async ({
   page,
 }) => {
   await login(page);
   let deleteAttempts = 0;
-  const deleteStatuses: number[] = [];
-  const blockedRequests: string[] = [];
+  let logoutStatus: number | null = null;
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname;
-    if (
-      path === '/api/v1/auth/login' ||
-      path === '/api/v1/auth/login/recovery' ||
-      path === '/api/v1/auth/token/refresh' ||
-      (path === '/api/v1/auth/login-queue/tickets/current' && request.method() === 'GET')
-    ) {
-      blockedRequests.push(`${request.method()} ${path}`);
-    }
+    if (path === '/api/v1/auth/login-queue/current' && request.method() === 'DELETE')
+      deleteAttempts++;
   });
   page.on('response', (response) => {
     const request = response.request();
     const path = new URL(response.url()).pathname;
-    if (path === '/api/v1/auth/login-queue/tickets/current' && request.method() === 'DELETE') {
-      deleteStatuses.push(response.status());
-    }
-  });
-  await page.route('**/api/v1/auth/login-queue/tickets/current', async (route) => {
-    if (route.request().method() !== 'DELETE') return route.continue();
-    deleteAttempts += 1;
-    if (deleteAttempts === 1) return route.fulfill({ status: 500, body: 'cleanup pending' });
-    return route.continue();
+    if (path === '/api/v1/auth/logout' && request.method() === 'POST')
+      logoutStatus = response.status();
   });
 
   await page.getByRole('button', { name: '로그아웃', exact: true }).click();
-  await expect(page.getByRole('button', { name: '로그인 준비 다시 시도' })).toBeVisible();
-  await expect(page.getByLabel('이메일', { exact: true })).toBeDisabled();
-  await expect(page.getByLabel('비밀번호', { exact: true })).toBeDisabled();
-  expect(deleteAttempts).toBe(1);
-  expect(blockedRequests).toEqual([]);
-
-  await page.getByRole('button', { name: '로그인 준비 다시 시도' }).click();
-  await expect.poll(() => deleteAttempts).toBe(2);
-  await expect.poll(() => deleteStatuses.length).toBe(2);
-  expect(deleteStatuses).toEqual([500, 204]);
-  await expect(page.getByRole('button', { name: '로그인 준비 다시 시도' })).toHaveCount(0);
+  await signedOut(page);
+  await expect.poll(() => logoutStatus).toBe(200);
+  expect(deleteAttempts).toBe(0);
+  await page.goto('/login?returnTo=%2Fmy');
   await expect(page.getByLabel('이메일', { exact: true })).toHaveValue('');
   await expect(page.getByLabel('비밀번호', { exact: true })).toHaveValue('');
   await expect(page.getByLabel('이메일', { exact: true })).toBeEnabled();
   await expect(page.getByLabel('비밀번호', { exact: true })).toBeEnabled();
   await page.getByLabel('이메일', { exact: true }).fill('second@example.test');
   await page.getByLabel('비밀번호', { exact: true }).fill('test-password-123!');
-  await expect(page.getByRole('button', { name: '로그인', exact: true })).toBeEnabled();
-  expect(deleteAttempts).toBe(2);
-  expect(blockedRequests).toEqual([]);
+  await page.getByRole('button', { name: '로그인', exact: true }).click();
+  await account(page, '두 번째 계정');
+  expect(deleteAttempts).toBe(0);
 });
 
 test('BroadcastChannel 없이도 기존 로그인 화면 탭이 로그인 성공을 복구하고 로그아웃을 공유한다', async ({
@@ -203,8 +187,8 @@ test('같은 프로필의 계정 전환은 다른 탭의 기존 화면과 인증
   await account(second);
   await page.evaluate(async (path) => {
     const api = await import(path);
-    await api.login({ email: 'second@example.test', password: 'test-password-123!' });
-  }, '/src/features/auth-login/api/loginApi.ts');
+    await api.submitQueuedLogin({ email: 'second@example.test', password: 'test-password-123!' });
+  }, '/src/features/auth-login/api/loginQueueApi.ts');
   await account(second, '두 번째 계정');
   expect(await identity(second)).toEqual(await identity(page));
   expect((await identity(second))?.sub).not.toBe(previous?.sub);
