@@ -1904,11 +1904,14 @@ describe('LoginPage email input', () => {
     await user.type(emailInput, 'abc@Example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'password');
     await user.click(screen.getByRole('button', { name: '로그인' }));
-    expect(screen.getByRole('button', { name: '로그인' })).toBeDisabled();
+    const pendingButton = screen.getByRole('button', { name: '로그인 진행 중' });
+    expect(pendingButton).toBeDisabled();
+    expect(pendingButton).toHaveAttribute('aria-busy', 'true');
+    expect(pendingButton.querySelector('.login-submit-spinner')).toBeInTheDocument();
     fireEvent.submit(emailInput.closest('form')!);
     expect(submitQueuedLogin).toHaveBeenCalledTimes(1);
     await act(async () => finishLogin(successResponse));
-    expect(screen.getByRole('button', { name: '로그인' })).toBeDisabled();
+    expect(await screen.findByRole('status')).toHaveTextContent('로그인에 성공했어요.');
   });
 
   it('ignores an old login rejection after logout reset and keeps the newer submit pending', async () => {

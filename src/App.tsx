@@ -524,7 +524,7 @@ function App() {
 
   if (pathname === LOGIN_PATH) {
     return (
-      <RouteLoadBoundary key={pathname}>
+      <RouteLoadBoundary key={pathname} variant="login">
         <LoginPage
           key={loginFormVersion}
           skipInitialQueueRestore={skipQueueRestoreAfterLogout || logoutCleanupPending}
@@ -553,7 +553,7 @@ function App() {
 
   if (pathname === SIGNUP_PATH) {
     return (
-      <RouteLoadBoundary key={pathname}>
+      <RouteLoadBoundary key={pathname} variant="signup">
         <SignupPage onSignupSuccess={() => navigate(LOGIN_PATH)} />
       </RouteLoadBoundary>
     );
@@ -608,21 +608,21 @@ function App() {
 
   if (pathname === CHATBOT_PATH) {
     return (
-      <RouteLoadBoundary key={pathname}>
+      <RouteLoadBoundary key={pathname} variant="chatbot">
         <ChatbotPage />
       </RouteLoadBoundary>
     );
   }
   if (pathname === MUSIC_RECORD_CREATE_PATH) {
     return (
-      <RouteLoadBoundary key={pathname}>
+      <RouteLoadBoundary key={pathname} variant="music-create">
         <MusicRecordCreatePage />
       </RouteLoadBoundary>
     );
   }
   if (pathname === MUSIC_RECORDS_PATH) {
     return (
-      <RouteLoadBoundary key={pathname}>
+      <RouteLoadBoundary key={pathname} variant="music-list">
         <MusicRecordListPage />
       </RouteLoadBoundary>
     );
@@ -630,21 +630,21 @@ function App() {
   const detailMatch = /^\/music-records\/([1-9]\d*)$/.exec(pathname);
   if (detailMatch) {
     return (
-      <RouteLoadBoundary key={pathname}>
+      <RouteLoadBoundary key={pathname} variant="music-detail">
         <MusicRecordDetailPage recordId={Number(detailMatch[1])} />
       </RouteLoadBoundary>
     );
   }
   if (pathname === CHAT_PATH) {
     return (
-      <RouteLoadBoundary key={pathname}>
+      <RouteLoadBoundary key={pathname} variant="chat-entry">
         <ChatEntryPage />
       </RouteLoadBoundary>
     );
   }
   if (pathname === MY_PATH) {
     return (
-      <RouteLoadBoundary key={pathname}>
+      <RouteLoadBoundary key={pathname} variant="my-page">
         <MyPage
           onLogin={() => navigate(LOGIN_PATH)}
           onBack={() => navigate('/')}

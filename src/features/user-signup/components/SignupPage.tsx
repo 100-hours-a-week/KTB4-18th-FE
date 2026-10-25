@@ -1,6 +1,7 @@
 import { ActionButton, BottomSheet } from '@seed-design/react';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import { SignupTermsSkeleton } from '../../../components/RouteLoadSkeleton';
 import { convertHangulToKeyboardInput } from '../../../shared/convertHangulToKeyboardInput';
 import { signup } from '../api/signupApi';
 import { checkUserAvailability } from '../api/userAvailabilityApi';
@@ -716,11 +717,7 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
                 <span>전체선택</span>
               </label>
               <div className="signup-check-list">
-                {isTermsLoading && (
-                  <p className="signup-terms-status" role="status">
-                    약관을 불러오는 중이에요.
-                  </p>
-                )}
+                {isTermsLoading && <SignupTermsSkeleton />}
                 {!isTermsLoading &&
                   !termsError &&
                   currentTerms.map((term) => {

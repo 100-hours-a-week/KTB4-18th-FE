@@ -30,6 +30,12 @@ import { getAllMusicRecords } from '../../music-record/api/musicRecordsApi';
 import { useMusicPreview } from '../../music-record/hooks/useMusicPreview';
 import { ProfileImage } from './ProfileImage';
 import { validateProfileFields } from '../model/profileValidation';
+import {
+  MyPageDeviceSessionsSkeleton,
+  MyPageOverviewSkeleton,
+  MyPageRecommendationsSkeleton,
+  MyPageTermsListSkeleton,
+} from '../../../components/RouteLoadSkeleton';
 
 type MyPageProps = {
   onLogin: () => void;
@@ -606,7 +612,7 @@ function DeviceSessionsPage({ back }: { back: () => void }) {
         {error ? (
           <p role="alert">{error}</p>
         ) : sessions === null ? (
-          <p role="status">기기 목록을 불러오고 있어요.</p>
+          <MyPageDeviceSessionsSkeleton />
         ) : sessions.length === 0 ? (
           <p>활성화된 기기 세션이 없어요.</p>
         ) : (
@@ -883,13 +889,17 @@ function TermsPage({ back }: { back: () => void }) {
     'title' | 'version' | 'content'
   > | null>(null);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
   const load = useCallback(async () => {
     setError('');
+    setIsLoading(true);
     try {
       setTerms(await getCurrentTerms());
     } catch {
       setTerms([]);
       setError('약관 및 정책을 불러오지 못했어요.');
+    } finally {
+      setIsLoading(false);
     }
   }, []);
   useEffect(() => {
@@ -917,38 +927,44 @@ function TermsPage({ back }: { back: () => void }) {
           </p>
         )}
         <div className="mypage-terms-list">
-          {terms.map((term) => (
-            <button
-              className="mypage-navigation-row"
-              type="button"
-              key={term.terms_id}
-              onClick={() => void open(term)}
-            >
-              <span>{term.title}</span>
-              <img src="/icons/mypage/arrow-right.svg" alt="" />
-            </button>
-          ))}
-          <button
-            className="mypage-navigation-row"
-            type="button"
-            onClick={() =>
-              setSelected({
-                title: '오픈소스 라이선스',
-                version: '',
-                content: [
-                  '| 오픈소스 | 라이선스 |',
-                  '| --- | --- |',
-                  '| React | MIT |',
-                  '| React DOM | MIT |',
-                  '| @seed-design/react | Apache-2.0 |',
-                  '| @karrotmarket/react-monochrome-icon | Apache-2.0 |',
-                ].join('\n'),
-              })
-            }
-          >
-            <span>오픈소스 라이선스</span>
-            <img src="/icons/mypage/arrow-right.svg" alt="" />
-          </button>
+          {isLoading && !terms.length ? (
+            <MyPageTermsListSkeleton />
+          ) : (
+            <>
+              {terms.map((term) => (
+                <button
+                  className="mypage-navigation-row"
+                  type="button"
+                  key={term.terms_id}
+                  onClick={() => void open(term)}
+                >
+                  <span>{term.title}</span>
+                  <img src="/icons/mypage/arrow-right.svg" alt="" />
+                </button>
+              ))}
+              <button
+                className="mypage-navigation-row"
+                type="button"
+                onClick={() =>
+                  setSelected({
+                    title: '오픈소스 라이선스',
+                    version: '',
+                    content: [
+                      '| 오픈소스 | 라이선스 |',
+                      '| --- | --- |',
+                      '| React | MIT |',
+                      '| React DOM | MIT |',
+                      '| @seed-design/react | Apache-2.0 |',
+                      '| @karrotmarket/react-monochrome-icon | Apache-2.0 |',
+                    ].join('\n'),
+                  })
+                }
+              >
+                <span>오픈소스 라이선스</span>
+                <img src="/icons/mypage/arrow-right.svg" alt="" />
+              </button>
+            </>
+          )}
         </div>
         <p className="mypage-app-version">앱 버전 1.0.0 (Build 24)</p>
       </section>
@@ -992,7 +1008,7 @@ function RecommendationPage({ back }: { back: () => void }) {
   const [hasNext, setHasNext] = useState(false);
   const [lastPage, setLastPage] = useState({ start: 0, length: 0 });
   const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const preview = useMusicPreview();
   const sentinelRef = useRef<HTMLDivElement>(null);
   const isLoadingRef = useRef(false);
@@ -1114,11 +1130,7 @@ function RecommendationPage({ back }: { back: () => void }) {
             </button>
           </p>
         )}
-        {isLoading && (
-          <p className="mypage-loading" role="status">
-            추천 곡을 불러오고 있어요.
-          </p>
-        )}
+        {isLoading && <MyPageRecommendationsSkeleton count={songs.length ? 2 : 3} />}
         {!songs.length && !isLoading && !error && (
           <p className="mypage-loading">아직 챗봇으로 추천 받은 곡이 없어요.</p>
         )}
@@ -1434,9 +1446,7 @@ export function MyPage({
           </p>
         )}
         {!profile ? (
-          <p className="mypage-loading" role="status">
-            마이페이지를 불러오고 있어요.
-          </p>
+          !error && <MyPageOverviewSkeleton />
         ) : (
           <>
             <section className="mypage-summary">

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { MusicRecordListSkeleton } from '../../../components/RouteLoadSkeleton';
 import { navigate } from '../../../shared/navigation';
 import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
 import {
@@ -28,7 +29,7 @@ export function MusicRecordListPage() {
   const [items, setItems] = useState<MusicRecord[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasNext, setHasNext] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -241,84 +242,91 @@ export function MusicRecordListPage() {
         {!isSelecting && !isLoading && visibleItems.length > 0 && (
           <div className="record-list-count">검색 결과 {visibleItems.length}곡</div>
         )}
-        {isLoading && !items.length && <p role="status">기록을 불러오는 중…</p>}
         <section
           className={`record-list${isSelecting ? ' selecting' : ''}`}
           aria-label="음악 기록 목록"
+          aria-busy={isLoading}
         >
-          {visibleItems.map((record) => {
-            const selected = selectedIds.includes(record.record_id);
-            const placeName =
-              record.custom_place_name?.trim() ||
-              `${record.region.sido.name} ${record.region.sigungu.name}`;
-            const content = (
-              <>
-                {record.music.album_cover_url ? (
-                  <img
-                    className="record-cover"
-                    src={getHighResolutionArtworkUrl(record.music.album_cover_url) ?? ''}
-                    alt=""
-                  />
-                ) : (
-                  <span className="record-cover-placeholder" aria-hidden="true" />
-                )}
-                <div className="record-card-copy">
-                  <h2>{record.music.title}</h2>
-                  <p className="record-artist">{record.music.artist_name}</p>
-                  <p className="record-location">{placeName}</p>
-                  <div className="record-card-meta-row">
-                    <time dateTime={record.created_at}>
-                      {formatMusicRecordTime(record.created_at)}
-                    </time>
-                    {isSelecting && <span className="record-select-indicator" aria-hidden="true" />}
+          {isLoading && !items.length ? (
+            <MusicRecordListSkeleton />
+          ) : (
+            visibleItems.map((record) => {
+              const selected = selectedIds.includes(record.record_id);
+              const placeName =
+                record.custom_place_name?.trim() ||
+                `${record.region.sido.name} ${record.region.sigungu.name}`;
+              const content = (
+                <>
+                  {record.music.album_cover_url ? (
+                    <img
+                      className="record-cover"
+                      src={getHighResolutionArtworkUrl(record.music.album_cover_url) ?? ''}
+                      alt=""
+                    />
+                  ) : (
+                    <span className="record-cover-placeholder" aria-hidden="true" />
+                  )}
+                  <div className="record-card-copy">
+                    <h2>{record.music.title}</h2>
+                    <p className="record-artist">{record.music.artist_name}</p>
+                    <p className="record-location">{placeName}</p>
+                    <div className="record-card-meta-row">
+                      <time dateTime={record.created_at}>
+                        {formatMusicRecordTime(record.created_at)}
+                      </time>
+                      {isSelecting && (
+                        <span className="record-select-indicator" aria-hidden="true" />
+                      )}
+                    </div>
                   </div>
-                </div>
-              </>
-            );
-            if (isSelecting) {
+                </>
+              );
+              if (isSelecting) {
+                return (
+                  <button
+                    type="button"
+                    key={record.record_id}
+                    className={`record-card${selected ? ' selected' : ''}`}
+                    aria-pressed={selected}
+                    aria-label={`${record.music.title} 기록 선택`}
+                    disabled={isDeleting || (!selected && selectedIds.length >= 100)}
+                    onClick={() =>
+                      setSelectedIds((ids) =>
+                        ids.includes(record.record_id)
+                          ? ids.filter((id) => id !== record.record_id)
+                          : [...ids, record.record_id],
+                      )
+                    }
+                  >
+                    {content}
+                  </button>
+                );
+              }
               return (
-                <button
-                  type="button"
+                <a
+                  className="record-card"
                   key={record.record_id}
-                  className={`record-card${selected ? ' selected' : ''}`}
-                  aria-pressed={selected}
-                  aria-label={`${record.music.title} 기록 선택`}
-                  disabled={isDeleting || (!selected && selectedIds.length >= 100)}
-                  onClick={() =>
-                    setSelectedIds((ids) =>
-                      ids.includes(record.record_id)
-                        ? ids.filter((id) => id !== record.record_id)
-                        : [...ids, record.record_id],
-                    )
-                  }
+                  href={musicRecordFilterPath(
+                    `/music-records/${record.record_id}`,
+                    regionFilter.selectedSidoCode,
+                  )}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    navigate(
+                      musicRecordFilterPath(
+                        `/music-records/${record.record_id}`,
+                        regionFilter.selectedSidoCode,
+                      ),
+                    );
+                  }}
+                  aria-label={`${record.music.title} 기록 상세 보기`}
                 >
                   {content}
-                </button>
+                </a>
               );
-            }
-            return (
-              <a
-                className="record-card"
-                key={record.record_id}
-                href={musicRecordFilterPath(
-                  `/music-records/${record.record_id}`,
-                  regionFilter.selectedSidoCode,
-                )}
-                onClick={(event) => {
-                  event.preventDefault();
-                  navigate(
-                    musicRecordFilterPath(
-                      `/music-records/${record.record_id}`,
-                      regionFilter.selectedSidoCode,
-                    ),
-                  );
-                }}
-                aria-label={`${record.music.title} 기록 상세 보기`}
-              >
-                {content}
-              </a>
-            );
-          })}
+            })
+          )}
+          {isLoading && items.length > 0 && <MusicRecordListSkeleton count={2} />}
         </section>
         {isDeleteOpen && (
           <MusicRecordDeleteDialog

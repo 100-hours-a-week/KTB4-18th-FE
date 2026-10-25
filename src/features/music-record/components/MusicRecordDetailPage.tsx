@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
+import { MusicRecordDetailSkeleton } from '../../../components/RouteLoadSkeleton';
 import { navigate } from '../../../shared/navigation';
 import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
 import {
@@ -364,11 +365,7 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
         </p>
       )}
       {!record ? (
-        !error && (
-          <p role="status" className="music-empty">
-            기록을 불러오는 중…
-          </p>
-        )
+        !error && <MusicRecordDetailSkeleton />
       ) : (
         <section className="music-form" aria-label="음악 기록 상세 및 수정">
           <article className="music-selected-content">

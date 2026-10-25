@@ -1,9 +1,13 @@
 import { Component, Suspense } from 'react';
 import type { ReactNode } from 'react';
 
+import { RouteLoadSkeleton } from './RouteLoadSkeleton';
+import type { RouteSkeletonVariant } from './RouteLoadSkeleton';
+
 type RouteLoadBoundaryProps = {
   children: ReactNode;
   onReload?: () => void;
+  variant: RouteSkeletonVariant;
 };
 
 type RouteLoadBoundaryState = {
@@ -30,13 +34,7 @@ export class RouteLoadBoundary extends Component<RouteLoadBoundaryProps, RouteLo
     }
 
     return (
-      <Suspense
-        fallback={
-          <div className="route-load-feedback" role="status" aria-live="polite">
-            화면을 불러오고 있어요.
-          </div>
-        }
-      >
+      <Suspense fallback={<RouteLoadSkeleton variant={this.props.variant} />}>
         {this.props.children}
       </Suspense>
     );
