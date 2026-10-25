@@ -33,13 +33,13 @@ import {
 } from './loginQueueFlowUtils';
 
 const MAX_TIMER_DELAY_MS = 2_147_000_000;
-const MAX_USERS_AHEAD_WITHOUT_DIALOG = 150;
 const INVALID_CREDENTIALS_MESSAGE =
   '이메일 또는 비밀번호를 확인해 주세요. 비밀번호를 다시 입력해 주세요.';
 const QUEUE_GENERATION_CHANGED_MESSAGE = '로그인 대기 상태가 변경되었어요. 다시 시도해 주세요.';
 
 function shouldShowQueueDialog(ticket: LoginQueueTicket): boolean {
-  return ticket.status === 'WAITING' && (ticket.usersAhead ?? 0) > MAX_USERS_AHEAD_WITHOUT_DIALOG;
+  void ticket;
+  return false;
 }
 
 function isQueuePending(ticket: LoginQueueTicket): boolean {
