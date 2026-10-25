@@ -22,15 +22,6 @@
 .route-skeleton__bone {
   display: block;
   min-width: 0;
-  border-radius: 0.5rem;
-  background: linear-gradient(
-    100deg,
-    var(--route-skeleton-base) 25%,
-    var(--route-skeleton-highlight) 45%,
-    var(--route-skeleton-base) 65%
-  );
-  background-size: 250% 100%;
-  animation: route-skeleton-shimmer 1.35s ease-in-out infinite;
 }
 
 .route-skeleton__inline {
@@ -377,7 +368,6 @@
   width: 4rem;
   height: 4rem;
   flex: 0 0 4rem;
-  border-radius: 50%;
 }
 
 .route-skeleton__my-profile-lines,
@@ -440,6 +430,32 @@
   display: grid;
   gap: 0;
   padding-bottom: 1.5rem;
+}
+
+.route-skeleton__my-profile-inline .route-skeleton__my-summary {
+  margin: 0 auto 1.75rem;
+}
+
+.route-skeleton__my-count-inline {
+  display: grid;
+  min-width: 2rem;
+  min-height: 18px;
+  align-items: center;
+}
+
+.route-skeleton__my-count-inline .route-skeleton__bone {
+  width: 32px;
+  height: 18px;
+}
+
+.route-skeleton__my-settings-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.route-skeleton__my-settings-list .route-skeleton__bone {
+  height: 72px;
+  border: 1px solid #e5e5e5;
 }
 
 .route-skeleton__my-inline .route-skeleton__my-summary {
@@ -509,7 +525,6 @@
 .route-skeleton__my-recommendation-cover {
   width: 48px;
   height: 48px;
-  border-radius: 0.5rem;
 }
 
 .route-skeleton__my-recommendation-row > div {
@@ -596,7 +611,6 @@
   width: 3.125rem;
   height: 3.125rem;
   flex: 0 0 3.125rem;
-  border-radius: 0.25rem;
 }
 
 .route-skeleton__record-copy {
@@ -722,6 +736,58 @@
   width: 100%;
 }
 
+.route-skeleton__music-search-results {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0 1.25rem;
+}
+
+.route-skeleton__music-search-result {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 64px;
+}
+
+.route-skeleton__music-search-cover {
+  width: 48px;
+  height: 48px;
+}
+
+.route-skeleton__music-search-copy {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.route-skeleton__music-search-title {
+  width: min(72%, 240px);
+  height: 17px;
+}
+
+.route-skeleton__music-search-artist {
+  width: min(52%, 180px);
+  height: 13px;
+}
+
+.route-skeleton__music-search-action {
+  width: 32px;
+  height: 32px;
+}
+
+.route-skeleton__music-region-filter {
+  display: flex;
+  gap: 0.5rem;
+  overflow: hidden;
+}
+
+.route-skeleton__music-region-pill {
+  width: 4.5rem;
+  height: 2.5rem;
+  flex: 0 0 4.5rem;
+  border-radius: 999px;
+}
+
 .route-skeleton__music-detail-inline {
   display: grid;
   gap: 2.25rem;
@@ -834,7 +900,6 @@
   position: absolute;
   width: 18%;
   aspect-ratio: 1;
-  border-radius: 50%;
 }
 
 .route-skeleton__map-dots .route-skeleton__bone:nth-child(1) {
@@ -919,7 +984,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .route-skeleton__bone {
+  .route-skeleton__bone.route-skeleton__bone::after {
     animation: none;
+    background-image: none;
   }
 }

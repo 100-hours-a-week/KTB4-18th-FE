@@ -1116,9 +1116,9 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     render(<MusicRecordCreatePage />);
     const input = screen.getByRole('textbox', { name: '음악 검색' });
     fireEvent.change(input, { target: { value: '음악' } });
-    expect(await screen.findByRole('status')).toHaveTextContent('검색 중');
+    expect(await screen.findByRole('status')).toHaveTextContent('음악 검색 결과를 불러오는 중');
     fireEvent.change(input, { target: { value: '음' } });
-    expect(screen.queryByText('검색 중…')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     completeSearch(Response.json({ data: { items: [music], next_cursor: null, has_next: false } }));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(screen.queryByRole('button', { name: /^밤편지아이유$/ })).not.toBeInTheDocument();

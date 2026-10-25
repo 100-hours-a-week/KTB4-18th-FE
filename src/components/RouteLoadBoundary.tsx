@@ -1,6 +1,7 @@
 import { Component, Suspense } from 'react';
 import type { ReactNode } from 'react';
 
+import { useDelayedPending } from '../hooks/useDelayedPending';
 import { RouteLoadSkeleton } from './RouteLoadSkeleton';
 import type { RouteSkeletonVariant } from './RouteLoadSkeleton';
 
@@ -13,6 +14,11 @@ type RouteLoadBoundaryProps = {
 type RouteLoadBoundaryState = {
   hasError: boolean;
 };
+
+function DelayedRouteFallback({ variant }: { variant: RouteSkeletonVariant }) {
+  const shouldShowSkeleton = useDelayedPending(true, variant);
+  return shouldShowSkeleton ? <RouteLoadSkeleton variant={variant} /> : null;
+}
 
 export class RouteLoadBoundary extends Component<RouteLoadBoundaryProps, RouteLoadBoundaryState> {
   state: RouteLoadBoundaryState = { hasError: false };
@@ -34,7 +40,7 @@ export class RouteLoadBoundary extends Component<RouteLoadBoundaryProps, RouteLo
     }
 
     return (
-      <Suspense fallback={<RouteLoadSkeleton variant={this.props.variant} />}>
+      <Suspense fallback={<DelayedRouteFallback variant={this.props.variant} />}>
         {this.props.children}
       </Suspense>
     );

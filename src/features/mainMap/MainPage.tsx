@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { navigate as navigateTo } from '../../shared/navigation';
 import { MapContentSkeleton } from '../../components/RouteLoadSkeleton';
+import { useDelayedPending } from '../../hooks/useDelayedPending';
 import { MapMorphCanvas } from './MapMorphCanvas';
 import { useMapIntro } from './useMapIntro';
 import { ZoneMapCanvas } from './ZoneMapCanvas';
@@ -33,7 +34,9 @@ type MapSectionProps = {
 };
 
 function MapSection({ isIntro, isMorphReady, onMorphComplete, state }: MapSectionProps) {
-  if (state.status === 'loading' && !isIntro) {
+  const requestIdentity = state.status === 'loading' ? state.attempt : null;
+  const isSkeletonVisible = useDelayedPending(state.status === 'loading', requestIdentity);
+  if (state.status === 'loading' && !isIntro && isSkeletonVisible) {
     return (
       <section className="main-content main-content--map" aria-label="대한민국 음악 지도">
         <MapContentSkeleton />

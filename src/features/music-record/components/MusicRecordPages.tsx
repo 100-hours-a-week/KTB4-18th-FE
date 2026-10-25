@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { MusicRecordListSkeleton } from '../../../components/RouteLoadSkeleton';
+import {
+  MusicRecordListSkeleton,
+  MusicSearchResultsSkeleton,
+} from '../../../components/RouteLoadSkeleton';
+import { useDelayedPending } from '../../../hooks/useDelayedPending';
 import { navigate } from '../../../shared/navigation';
 import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
 import {
@@ -30,6 +34,7 @@ export function MusicRecordListPage() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasNext, setHasNext] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingRequestId, setLoadingRequestId] = useState(0);
   const [error, setError] = useState('');
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -42,6 +47,7 @@ export function MusicRecordListPage() {
   const isFilterDisabled = isSelecting || isDeleting || isLoading || regionFilter.isSnapshotLoading;
   const mutationPending = useRef(false);
   const requestGeneration = useRef(0);
+  const isListSkeletonVisible = useDelayedPending(isLoading, loadingRequestId);
   const active = useRef(true);
   const [completionFlags] = useState(() => ({
     updated: sessionStorage.getItem('music_record_updated') === '1',
@@ -83,6 +89,7 @@ export function MusicRecordListPage() {
   const load = useCallback(async (next?: string | null) => {
     const generation = ++requestGeneration.current;
     setIsLoading(true);
+    setLoadingRequestId(generation);
     setError('');
     try {
       const page = await getMusicRecords(next);
@@ -233,7 +240,7 @@ export function MusicRecordListPage() {
           regions={regionFilter.regions}
           selectedSidoCode={regionFilter.selectedSidoCode}
           isDisabled={isFilterDisabled}
-          isLoading={regionFilter.isSnapshotLoading}
+          isSkeletonVisible={regionFilter.isSnapshotSkeletonVisible}
           error={regionFilter.snapshotError}
           onSelect={(code) => {
             if (!isFilterDisabled) regionFilter.setSelectedSidoCode(code);
@@ -247,7 +254,7 @@ export function MusicRecordListPage() {
           aria-label="음악 기록 목록"
           aria-busy={isLoading}
         >
-          {isLoading && !items.length ? (
+          {isListSkeletonVisible && !items.length && !error ? (
             <MusicRecordListSkeleton />
           ) : (
             visibleItems.map((record) => {
@@ -326,7 +333,9 @@ export function MusicRecordListPage() {
               );
             })
           )}
-          {isLoading && items.length > 0 && <MusicRecordListSkeleton count={2} />}
+          {isListSkeletonVisible && items.length > 0 && !error && (
+            <MusicRecordListSkeleton count={2} />
+          )}
         </section>
         {isDeleteOpen && (
           <MusicRecordDeleteDialog
@@ -392,6 +401,8 @@ export function MusicRecordCreatePage() {
   const [lastPageSize, setLastPageSize] = useState(0);
   const [hasSearched, setHasSearched] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [pendingSearchId, setPendingSearchId] = useState(0);
+  const pendingSearchSequence = useRef(0);
   const searchRequestId = useRef(0);
   const confirmationPending = useRef(false);
   const confirmationGeneration = useRef(0);
@@ -410,6 +421,16 @@ export function MusicRecordCreatePage() {
   const placeInput = useRef<HTMLInputElement>(null);
   const backButton = useRef<HTMLButtonElement>(null);
   const location = useLocation();
+  const isSearchSkeletonVisible = useDelayedPending(
+    isSearching && query.trim().length >= 2 && !hasInvalidReplacementParam,
+    pendingSearchId,
+  );
+
+  const startSearchRequest = useCallback(() => {
+    const requestId = ++pendingSearchSequence.current;
+    setPendingSearchId(requestId);
+    setIsSearching(true);
+  }, []);
 
   const cancelConfirmation = useCallback(() => {
     confirmationGeneration.current += 1;
@@ -438,7 +459,7 @@ export function MusicRecordCreatePage() {
     const requestId = ++searchRequestId.current;
     if (normalized.length < 2 || hasInvalidReplacementParam) return;
     const timer = window.setTimeout(() => {
-      setIsSearching(true);
+      startSearchRequest();
       void searchMusic(normalized)
         .then((page) => {
           if (requestId !== searchRequestId.current) return;
@@ -464,7 +485,7 @@ export function MusicRecordCreatePage() {
         });
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [query, hasInvalidReplacementParam]);
+  }, [query, hasInvalidReplacementParam, startSearchRequest]);
 
   const handleQueryChange = (value: string) => {
     cancelConfirmation();
@@ -503,7 +524,7 @@ export function MusicRecordCreatePage() {
     hasSentinelLeft.current = false;
     hasScrolledSinceLoad.current = false;
     const requestId = searchRequestId.current;
-    setIsSearching(true);
+    startSearchRequest();
     try {
       const page = await searchMusic(query.trim(), cursor);
       if (requestId !== searchRequestId.current) return;
@@ -527,6 +548,7 @@ export function MusicRecordCreatePage() {
         setHasNext(false);
         setLastPageSize(0);
         try {
+          startSearchRequest();
           const page = await searchMusic(query.trim());
           if (requestId !== searchRequestId.current) return;
           setItems(page.items);
@@ -544,7 +566,7 @@ export function MusicRecordCreatePage() {
         setIsSearching(false);
       }
     }
-  }, [cursor, hasNext, query, stopPreview]);
+  }, [cursor, hasNext, query, startSearchRequest, stopPreview]);
 
   useEffect(() => {
     if (
@@ -837,7 +859,7 @@ export function MusicRecordCreatePage() {
               {error}
             </p>
           )}
-          <section className="search-results" aria-label="음악 검색 결과">
+          <section className="search-results" aria-label="음악 검색 결과" aria-busy={isSearching}>
             {items.map((music, index) => (
               <div key={`${music.provider}-${music.external_music_id}`}>
                 <div className="music-result-row">
@@ -916,6 +938,7 @@ export function MusicRecordCreatePage() {
                 )}
               </div>
             ))}
+            {isSearchSkeletonVisible && <MusicSearchResultsSkeleton count={items.length ? 2 : 3} />}
           </section>
           {preview.error && (
             <p role="alert" className="music-error">
@@ -923,11 +946,6 @@ export function MusicRecordCreatePage() {
             </p>
           )}
           {preview.isLoading && <p role="status">미리 듣기 음원을 불러오는 중…</p>}
-          {isSearching && (
-            <p role="status" className="music-search-count">
-              검색 중…
-            </p>
-          )}
           {isConfirming && <p role="status">선택한 곡을 확인하는 중…</p>}
           <div className="music-search-footer">
             <button

@@ -1,3 +1,4 @@
+import { Skeleton } from '@seed-design/react';
 import type { ReactNode } from 'react';
 
 import './RouteLoadSkeleton.css';
@@ -18,15 +19,24 @@ type SkeletonStatusProps = {
   message: string;
 };
 
-export function SkeletonBone({ className = '' }: { className?: string }) {
-  return <span className={`route-skeleton__bone ${className}`} />;
+type SkeletonBoneProps = {
+  className?: string;
+  radius?: '0' | '8' | '16' | 'full';
+};
+
+export function SkeletonBone({ className = '', radius = '8' }: SkeletonBoneProps) {
+  return (
+    <Skeleton className={`route-skeleton__bone ${className}`} radius={radius} tone="neutral" />
+  );
 }
 
 function SkeletonStatus({ children, className = '', message }: SkeletonStatusProps) {
   return (
     <div className={`route-skeleton__inline ${className}`} role="status" aria-busy="true">
       <span className="route-skeleton__sr-only">{message}</span>
-      <div aria-hidden="true">{children}</div>
+      <div className="route-skeleton__bones" aria-hidden="true">
+        {children}
+      </div>
     </div>
   );
 }
@@ -35,7 +45,7 @@ function AuthLayout() {
   return (
     <div className="route-skeleton__auth-layout">
       <div className="route-skeleton__auth-brand">
-        <SkeletonBone className="route-skeleton__auth-mark" />
+        <SkeletonBone className="route-skeleton__auth-mark" radius="16" />
         <SkeletonBone className="route-skeleton__auth-wordmark" />
       </div>
       <div className="route-skeleton__auth-divider">
@@ -119,19 +129,25 @@ function MyPageHeaderSkeleton() {
   );
 }
 
+function MyPageProfileSummaryShape() {
+  return (
+    <div className="route-skeleton__my-summary">
+      <SkeletonBone className="route-skeleton__my-avatar" radius="full" />
+      <div className="route-skeleton__my-profile-lines">
+        <SkeletonBone className="route-skeleton__my-profile-name" />
+        <SkeletonBone className="route-skeleton__my-profile-email" />
+      </div>
+    </div>
+  );
+}
+
 function MyPageOverviewShape() {
   return (
     <>
-      <div className="route-skeleton__my-summary">
-        <SkeletonBone className="route-skeleton__my-avatar" />
-        <div className="route-skeleton__my-profile-lines">
-          <SkeletonBone className="route-skeleton__my-profile-name" />
-          <SkeletonBone className="route-skeleton__my-profile-email" />
-        </div>
-        <div className="route-skeleton__my-song-count">
-          <SkeletonBone />
-          <SkeletonBone />
-        </div>
+      <MyPageProfileSummaryShape />
+      <div className="route-skeleton__my-song-count">
+        <SkeletonBone />
+        <SkeletonBone />
       </div>
       <div className="route-skeleton__my-navigation">
         {Array.from({ length: 4 }, (_, index) => (
@@ -167,7 +183,7 @@ function MusicRecordRowsShape({ count = 4 }: { count?: number }) {
     <div className="route-skeleton__record-rows">
       {Array.from({ length: count }, (_, index) => (
         <div className="route-skeleton__record-row" key={index}>
-          <SkeletonBone className="route-skeleton__record-cover" />
+          <SkeletonBone className="route-skeleton__record-cover" radius="16" />
           <div className="route-skeleton__record-copy">
             <SkeletonBone className="route-skeleton__record-title" />
             <SkeletonBone className="route-skeleton__record-artist" />
@@ -209,7 +225,7 @@ function MusicDetailFieldsShape() {
   return (
     <>
       <div className="route-skeleton__music-selected">
-        <SkeletonBone className="route-skeleton__music-album" />
+        <SkeletonBone className="route-skeleton__music-album" radius="16" />
         <SkeletonBone className="route-skeleton__music-selected-title" />
         <SkeletonBone className="route-skeleton__music-selected-artist" />
         <SkeletonBone className="route-skeleton__music-change" />
@@ -285,7 +301,7 @@ export function RouteLoadSkeleton({ variant }: { variant: RouteSkeletonVariant }
       aria-busy="true"
     >
       <span className="route-skeleton__sr-only">페이지 내용을 준비하고 있어요.</span>
-      <div aria-hidden="true">
+      <div className="route-skeleton__bones" aria-hidden="true">
         <Layout />
       </div>
     </main>
@@ -294,8 +310,30 @@ export function RouteLoadSkeleton({ variant }: { variant: RouteSkeletonVariant }
 
 export function MyPageOverviewSkeleton() {
   return (
-    <SkeletonStatus className="route-skeleton__my-inline" message="마이페이지를 불러오는 중">
-      <MyPageOverviewShape />
+    <SkeletonStatus className="route-skeleton__my-profile-inline" message="프로필을 불러오는 중">
+      <MyPageProfileSummaryShape />
+    </SkeletonStatus>
+  );
+}
+
+export function MyPageSavedCountSkeleton() {
+  return (
+    <SkeletonStatus
+      className="route-skeleton__my-count-inline"
+      message="저장한 곡 수를 불러오는 중"
+    >
+      <SkeletonBone />
+    </SkeletonStatus>
+  );
+}
+
+export function MyPageSettingsSkeleton() {
+  return (
+    <SkeletonStatus className="route-skeleton__my-settings-inline" message="설정을 불러오는 중">
+      <div className="route-skeleton__my-settings-list">
+        <SkeletonBone />
+        <SkeletonBone />
+      </div>
     </SkeletonStatus>
   );
 }
@@ -327,7 +365,7 @@ export function MyPageRecommendationsSkeleton({ count = 3 }: { count?: number })
     >
       {Array.from({ length: count }, (_, index) => (
         <div className="route-skeleton__my-recommendation-row" key={index}>
-          <SkeletonBone className="route-skeleton__my-recommendation-cover" />
+          <SkeletonBone className="route-skeleton__my-recommendation-cover" radius="16" />
           <div>
             <SkeletonBone className="route-skeleton__my-recommendation-title" />
             <SkeletonBone className="route-skeleton__my-recommendation-artist" />
@@ -390,14 +428,49 @@ export function SignupTermsSkeleton() {
   );
 }
 
+export function MusicSearchResultsSkeleton({ count = 3 }: { count?: number }) {
+  return (
+    <SkeletonStatus
+      className="route-skeleton__music-search-results"
+      message="음악 검색 결과를 불러오는 중"
+    >
+      {Array.from({ length: count }, (_, index) => (
+        <div className="route-skeleton__music-search-result" key={index}>
+          <SkeletonBone className="route-skeleton__music-search-cover" radius="16" />
+          <div className="route-skeleton__music-search-copy">
+            <SkeletonBone className="route-skeleton__music-search-title" />
+            <SkeletonBone className="route-skeleton__music-search-artist" />
+          </div>
+          <SkeletonBone className="route-skeleton__music-search-action" radius="full" />
+        </div>
+      ))}
+    </SkeletonStatus>
+  );
+}
+
+export function MusicRegionFilterSkeleton() {
+  return (
+    <SkeletonStatus
+      className="route-skeleton__music-region-filter"
+      message="지역 필터를 불러오는 중"
+    >
+      {Array.from({ length: 4 }, (_, index) => (
+        <SkeletonBone className="route-skeleton__music-region-pill" key={index} />
+      ))}
+    </SkeletonStatus>
+  );
+}
+
 export function MapContentSkeleton() {
   return (
     <div className="route-skeleton__map-content" role="status" aria-busy="true">
       <span className="route-skeleton__sr-only">지도를 준비하고 있어요.</span>
-      <div className="route-skeleton__map-dots" aria-hidden="true">
-        {Array.from({ length: 14 }, (_, index) => (
-          <SkeletonBone key={index} />
-        ))}
+      <div className="route-skeleton__bones" aria-hidden="true">
+        <div className="route-skeleton__map-dots">
+          {Array.from({ length: 14 }, (_, index) => (
+            <SkeletonBone key={index} radius="full" />
+          ))}
+        </div>
       </div>
     </div>
   );

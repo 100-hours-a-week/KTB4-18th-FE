@@ -1,10 +1,11 @@
 import './MusicRecordRegionFilter.css';
+import { MusicRegionFilterSkeleton } from '../../../components/RouteLoadSkeleton';
 
 type MusicRecordRegionFilterProps = {
   regions: { code: string; name: string }[];
   selectedSidoCode: string | null;
   isDisabled: boolean;
-  isLoading: boolean;
+  isSkeletonVisible: boolean;
   error: string;
   onSelect: (code: string | null) => void;
 };
@@ -13,7 +14,7 @@ export function MusicRecordRegionFilter({
   regions,
   selectedSidoCode,
   isDisabled,
-  isLoading,
+  isSkeletonVisible,
   error,
   onSelect,
 }: MusicRecordRegionFilterProps) {
@@ -41,9 +42,7 @@ export function MusicRecordRegionFilter({
           ))}
         </div>
       )}
-      {regions.length > 0 && isLoading && (
-        <p className="music-record-region-filter-message">지역 필터를 불러오는 중…</p>
-      )}
+      {isSkeletonVisible && <MusicRegionFilterSkeleton />}
       {error && (
         <p role="alert" className="music-record-region-filter-message">
           {error}
