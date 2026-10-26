@@ -1,0 +1,458 @@
+:root {
+  color-scheme: light;
+  --diary-paper: #ffffff;
+  --diary-canvas: #e6ede8;
+  --diary-tint: var(--color-brand-50);
+  --diary-wash: #f5f8f6;
+  --diary-ink: #16201a;
+  --diary-line: #cbd6cf;
+  --diary-shadow: 0 3px 12px rgb(22 32 26 / 5%);
+  --font-editorial: var(--font-sans);
+  --record-black: #131a16;
+  --record-groove: #33403a;
+  --record-highlight: #98a79e;
+  --record-label: var(--color-brand-400);
+  --record-on-black: #ffffff;
+  --record-muted-on-black: #c3cec7;
+  --record-surface: #f1f5f2;
+  --record-vinyl:
+    radial-gradient(
+      circle,
+      var(--record-on-black) 0 2%,
+      var(--record-label) 2.5% 26%,
+      transparent 26.5%
+    ),
+    repeating-radial-gradient(
+      circle,
+      var(--record-black) 0 2px,
+      var(--record-groove) 2.5px 3px,
+      var(--record-black) 3.5px 5px
+    );
+  --seed-color-bg-layer-default: var(--color-bg-primary);
+  --seed-color-bg-layer-floating: var(--color-bg-secondary);
+  --seed-color-bg-layer-floating-pressed: var(--color-bg-tertiary);
+  --seed-color-bg-overlay: rgb(22 32 26 / 32%);
+  --seed-color-bg-neutral-weak: var(--color-bg-tertiary);
+  --seed-color-bg-neutral-weak-pressed: var(--color-bg-forty);
+  --seed-color-bg-neutral-weak-alpha: rgb(22 32 26 / 6%);
+  --seed-color-bg-neutral-inverted: var(--color-bg-interactive-inverse);
+  --seed-color-bg-neutral-inverted-pressed: var(--color-bg-interactive-primary-press);
+  --seed-color-bg-brand-solid: var(--color-bg-interactive-primary);
+  --seed-color-bg-brand-solid-pressed: var(--color-bg-interactive-primary-press);
+  --seed-color-bg-disabled: var(--color-bg-disabled);
+  --seed-color-bg-transparent-pressed: rgb(22 32 26 / 6%);
+  --seed-color-fg-neutral: var(--color-text-primary);
+  --seed-color-fg-neutral-muted: var(--color-text-secondary);
+  --seed-color-fg-neutral-subtle: var(--color-text-tertiary);
+  --seed-color-fg-neutral-inverted: var(--color-text-interactive-inverse);
+  --seed-color-fg-brand: var(--color-text-interactive-primary);
+  --seed-color-fg-critical: var(--color-text-error);
+  --seed-color-fg-disabled: var(--color-text-disabled);
+  --seed-color-fg-placeholder: var(--color-text-tertiary);
+  --seed-color-stroke-neutral-muted: var(--color-border-tertiary);
+  --seed-color-stroke-focus-ring: var(--color-border-interactive-primary);
+}
+
+.vinyl-disc,
+.gnb__record-disc {
+  display: block;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--record-black);
+  border-radius: 50%;
+  background: var(--record-vinyl);
+}
+
+body {
+  margin: 0;
+  background: var(--diary-canvas);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  scrollbar-color: var(--color-border-secondary) var(--color-bg-primary);
+}
+
+::selection {
+  background: var(--diary-tint);
+  color: var(--diary-ink);
+}
+
+body
+  :is(
+    .main-page,
+    .chat-app,
+    .mypage-screen,
+    .music-page,
+    .signup-shell,
+    .chat-image-page,
+    .chat-entry-shell
+  ) {
+  border-inline: 0;
+  background-color: var(--color-bg-primary);
+}
+.brand-wordmark {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--color-text-secondary);
+  letter-spacing: -0.015em;
+  word-break: keep-all;
+}
+.brand-tagline {
+  margin: 0;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--color-text-secondary);
+  letter-spacing: -0.025em;
+}
+
+.diary-eyebrow,
+.diary-section-label {
+  display: block;
+  color: var(--color-text-secondary);
+  font: 500 11px/18px var(--font-sans);
+  letter-spacing: 0.02em;
+}
+.diary-section-label {
+  margin: 0 0 10px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  letter-spacing: -0.025em;
+}
+.diary-page-intro {
+  margin-bottom: 24px;
+}
+.diary-page-intro h2 {
+  margin: 7px 0 6px;
+  color: var(--color-text-primary);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: -0.055em;
+  word-break: keep-all;
+}
+.diary-page-intro p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.8;
+  word-break: keep-all;
+}
+.diary-empty-action {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  margin-top: 16px;
+  border: 1px solid var(--color-border-primary);
+  border-radius: 8px;
+  background: var(--diary-tint);
+  color: var(--diary-ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+body .chat-app .chat-header h1,
+body .music-page .music-page-header h1,
+body .mypage-screen .mypage-header h1 {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+}
+.chat-app :is(.welcome-bubble, .assistant-text-bubble, .recommendation-bubble),
+.chat-entry-shell .region-chat-bubble {
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 5px 12px 12px;
+  background: var(--diary-paper);
+  box-shadow: 2px 2px 0 rgb(22 32 26 / 4%);
+}
+.chat-app .user-bubble,
+.chat-entry-shell .region-chat-own .region-chat-bubble {
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 12px 5px 12px 12px;
+  background: var(--diary-tint);
+  color: var(--color-text-primary);
+}
+.chat-app .music-card,
+.music-page .music-result {
+  border-color: var(--color-border-secondary);
+  border-radius: 8px;
+  background: var(--color-bg-secondary);
+  box-shadow: none;
+}
+.chat-app .input-bar textarea,
+.chat-entry-shell .region-chat-composer textarea {
+  border-color: var(--color-border-primary);
+  border-radius: 10px;
+  background: var(--color-bg-secondary);
+}
+/* Record list reads like a streaming playlist: color header, large-cover track rows. */
+/* Each record is an album card: the cover sits on a wash of its own colors, details follow below. */
+/* Scrim keeps text legible on any cover: light over the artwork, dark under the details. */
+/* Record detail opens like an album page: dark card washed with the cover's own colors. */
+
+.desktop-intro__brand {
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: -0.035em;
+}
+.desktop-intro__brand .brand-mark {
+  width: 32px;
+  height: 36px;
+}
+.desktop-intro__brand .brand-mark::before {
+  width: 27px;
+  height: 27px;
+}
+.desktop-intro__content {
+  padding-block: 24px;
+}
+.desktop-intro__eyebrow {
+  display: flex;
+  margin: 0 0 22px;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  letter-spacing: 0.035em;
+}
+.desktop-intro__eyebrow::before {
+  width: 24px;
+  height: 1px;
+  background: var(--color-text-interactive-primary);
+  content: '';
+}
+.desktop-intro__headline {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: clamp(34px, 3.2vw, 46px);
+  font-weight: 450;
+  letter-spacing: -0.055em;
+  line-height: 1.25;
+  word-break: keep-all;
+  text-wrap: balance;
+}
+.desktop-intro__headline > span:last-child {
+  font-weight: 750;
+}
+.desktop-intro__headline em {
+  color: var(--color-text-interactive-primary);
+  font-style: normal;
+}
+.desktop-intro__description {
+  margin-top: 26px;
+  font-size: 13px;
+  line-height: 1.9;
+  letter-spacing: -0.015em;
+}
+.desktop-intro__note {
+  box-sizing: border-box;
+  gap: 18px;
+  margin-top: 34px;
+  padding: 24px 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-border-secondary);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.desktop-intro__record {
+  position: relative;
+  width: 156px;
+  height: 128px;
+  flex: 0 0 156px;
+}
+.desktop-intro__disc {
+  position: absolute;
+  top: 12px;
+  left: 48px;
+  width: 104px;
+  height: 104px;
+  box-shadow: 0 8px 16px rgb(22 32 26 / 12%);
+}
+.desktop-intro__sleeve {
+  position: absolute;
+  top: 8px;
+  left: 4px;
+  display: grid;
+  width: 106px;
+  height: 106px;
+  place-items: center;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 2px;
+  background: var(--color-bg-primary);
+  box-shadow: 0 6px 12px rgb(22 32 26 / 7%);
+  transform: rotate(-6deg);
+}
+.desktop-intro__sleeve .brand-mark {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 8px;
+}
+.desktop-intro__sleeve .brand-mark::before {
+  width: 27px;
+  height: 27px;
+}
+.desktop-intro__sleeve-label {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  color: var(--color-text-secondary);
+  font: 7px/10px var(--font-sans);
+  letter-spacing: 0.08em;
+}
+.desktop-intro__sleeve::after {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 10px;
+  height: 2px;
+  background: var(--color-text-interactive-primary);
+  content: '';
+}
+.desktop-intro__note p {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.9;
+  letter-spacing: -0.015em;
+}
+.desktop-intro__note p span {
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+.desktop-intro__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 18px;
+  border-color: var(--color-border-secondary);
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0.09em;
+}
+@media (max-height: 650px) {
+  .desktop-intro__note {
+    display: none;
+  }
+}
+
+.chat-header-back img,
+.chat-entry-back img,
+.music-back img,
+.music-list-back img,
+.mypage-icon-button img,
+.mypage-navigation-row > img,
+.mypage-avatar-placeholder img,
+.mypage-password-visibility img,
+.mypage-recommendation-play img,
+.password-toggle img,
+.signup-back img,
+.signup-password-visibility img,
+.chat-image-page-header button img,
+.preview-button img,
+.music-preview-button img {
+  filter: none;
+}
+.send-button img,
+.region-chat-send img,
+.chat-image-capture img {
+  filter: none;
+}
+
+@media (hover: hover) {
+  body .chatbot-floating-button:hover {
+    background: var(--diary-tint);
+  }
+  .gnb__item:hover,
+  .mypage-navigation-row:hover {
+    background: var(--color-bg-tertiary);
+  }
+  .diary-empty-action:hover {
+    background: var(--diary-wash);
+  }
+  body .music-record-list-page .record-card:not(.selected):hover {
+    box-shadow: 0 10px 22px rgb(22 32 26 / 22%);
+    transform: translateY(-2px);
+  }
+  body .music-detail-page .music-change-button:not(:disabled):hover {
+    border-color: var(--record-on-black);
+    background: rgb(255 255 255 / 8%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  body .chatbot-floating-button,
+  body .music-record-list-page .record-card,
+  .gnb .gnb__item {
+    transition: none;
+  }
+  body .music-record-list-page .record-card:not(.selected):hover {
+    transform: none;
+  }
+}
+@media (max-width: 359px) {
+  body .main-page--map {
+    padding-inline: 16px;
+  }
+  .main-page .main-header__brand {
+    font-size: 24px;
+  }
+  .main-header__record {
+    width: 44px;
+    height: 44px;
+  }
+  .chat-app .welcome-bubble {
+    padding: 20px 18px;
+  }
+  .chat-entry-shell .region-chat-composer textarea::placeholder {
+    font-size: 13px;
+  }
+  body .music-record-list-page .record-card {
+    padding: 8px 8px 10px;
+  }
+}
+@media (max-height: 520px) {
+  body .main-header {
+    min-height: 68px;
+    flex-basis: 68px;
+    padding-block: 8px;
+  }
+  .map-caption {
+    padding-block: 8px 4px;
+  }
+  body .chatbot-floating-button {
+    width: 124px;
+    height: 48px;
+    min-width: 124px;
+    min-height: 48px;
+    padding: 8px 14px;
+    gap: 8px;
+  }
+  .desktop-intro__content {
+    padding-block: 12px;
+  }
+  .desktop-intro__eyebrow {
+    margin-bottom: 12px;
+  }
+  .desktop-intro__headline {
+    gap: 6px;
+    font-size: 32px;
+  }
+  .desktop-intro__description {
+    margin-top: 16px;
+    font-size: 12px;
+  }
+  .desktop-intro__footer {
+    display: none;
+  }
+}
