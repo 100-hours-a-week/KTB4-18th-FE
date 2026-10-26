@@ -284,7 +284,7 @@ describe('access token 사전 재발급 스케줄러', () => {
     await act(async () => {
       await import('./features/chatbot/components/ChatbotPage');
     });
-    expect(screen.getByRole('heading', { name: '음악 추천 챗봇' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '음악 찾기' })).toBeInTheDocument();
 
     await act(async () => vi.advanceTimersByTimeAsync(50 * 60 * 1000 - 1));
     expect(refreshCount).toBe(0);
@@ -658,15 +658,15 @@ describe('음성 transcript 공통 추천 흐름', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await screen.findByLabelText('추천받고 싶은 상황');
+    await screen.findByLabelText('음악을 찾고 싶은 순간');
     act(() => transcriptHandler('비 오는 날 노래'));
-    const input = screen.getByLabelText('추천받고 싶은 상황');
+    const input = screen.getByLabelText('음악을 찾고 싶은 순간');
     expect(input).toHaveValue('비 오는 날 노래');
     expect(recommend).not.toHaveBeenCalled();
 
     await user.clear(input);
     await user.type(input, '비 오는 날 드라이브 음악');
-    await user.click(screen.getByRole('button', { name: '추천 요청 보내기' }));
+    await user.click(screen.getByRole('button', { name: '음악 찾기 요청 보내기' }));
 
     expect(recommend).toHaveBeenCalledWith(
       '비 오는 날 드라이브 음악',
@@ -680,12 +680,12 @@ describe('음성 transcript 공통 추천 흐름', () => {
     '%i자 직접 입력은 글자 수를 표시하고 전체 내용을 전송한다',
     async (length) => {
       render(<App />);
-      const input = await screen.findByLabelText('추천받고 싶은 상황');
+      const input = await screen.findByLabelText('음악을 찾고 싶은 순간');
       expect(input).toHaveAttribute('maxLength', '200');
       const prompt = '가'.repeat(length);
       fireEvent.change(input, { target: { value: prompt } });
       expect(screen.getByText(`${length} / 200`)).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: '추천 요청 보내기' }));
+      fireEvent.click(screen.getByRole('button', { name: '음악 찾기 요청 보내기' }));
       await waitFor(() =>
         expect(recommend).toHaveBeenCalledWith(
           prompt,
@@ -700,28 +700,28 @@ describe('음성 transcript 공통 추천 흐름', () => {
   it('붙여넣기는 200자 한도를 지키고 공백 입력은 버튼과 Enter 전송을 차단한다', async () => {
     const user = userEvent.setup();
     render(<App />);
-    const input = await screen.findByLabelText('추천받고 싶은 상황');
+    const input = await screen.findByLabelText('음악을 찾고 싶은 순간');
     await user.click(input);
     await user.paste('가'.repeat(201));
     expect(input).toHaveValue('가'.repeat(200));
     expect(screen.getByText('200 / 200')).toBeInTheDocument();
     await user.clear(input);
-    expect(screen.getByRole('button', { name: '추천 요청 보내기' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '음악 찾기 요청 보내기' })).toBeDisabled();
     await user.type(input, '   ');
     fireEvent.keyDown(input, { key: 'Enter' });
-    expect(screen.getByRole('button', { name: '추천 요청 보내기' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '음악 찾기 요청 보내기' })).toBeDisabled();
     expect(recommend).not.toHaveBeenCalled();
   });
 
   it('초과 전사문은 원문을 유지하고 Enter와 버튼을 막으며 수정 후 VOICE 전송을 허용한다', async () => {
     render(<App />);
-    const input = await screen.findByLabelText('추천받고 싶은 상황');
+    const input = await screen.findByLabelText('음악을 찾고 싶은 순간');
     const transcript = '앞' + '가'.repeat(197) + '\n🎵';
     act(() => transcriptHandler(transcript));
     expect(input).toHaveValue(transcript);
     expect(screen.getByText('201 / 200')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('200자 이내로 수정');
-    const send = screen.getByRole('button', { name: '추천 요청 보내기' });
+    const send = screen.getByRole('button', { name: '음악 찾기 요청 보내기' });
     expect(send).toBeDisabled();
     fireEvent.click(send);
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -746,7 +746,7 @@ describe('음성 transcript 공통 추천 흐름', () => {
 
   it('한글 조합 중 Enter는 전송하지 않고 초과 입력도 절단 없이 수정을 안내한다', async () => {
     render(<App />);
-    const input = await screen.findByLabelText('추천받고 싶은 상황');
+    const input = await screen.findByLabelText('음악을 찾고 싶은 순간');
     fireEvent.compositionStart(input);
     fireEvent.change(input, { target: { value: '가'.repeat(200) } });
     fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
@@ -754,7 +754,7 @@ describe('음성 transcript 공통 추천 흐름', () => {
     fireEvent.change(input, { target: { value: '가'.repeat(201) } });
     fireEvent.compositionEnd(input);
     expect(input).toHaveValue('가'.repeat(201));
-    expect(screen.getByRole('button', { name: '추천 요청 보내기' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '음악 찾기 요청 보내기' })).toBeDisabled();
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(recommend).not.toHaveBeenCalled();
   });
@@ -764,12 +764,12 @@ describe('음성 transcript 공통 추천 흐름', () => {
       new Error('입력 내용과 요청 형식을 확인해 주세요. (최대 200자)'),
     );
     render(<App />);
-    const input = await screen.findByLabelText('추천받고 싶은 상황');
+    const input = await screen.findByLabelText('음악을 찾고 싶은 순간');
     fireEvent.change(input, { target: { value: '가'.repeat(200) } });
-    fireEvent.click(screen.getByRole('button', { name: '추천 요청 보내기' }));
+    fireEvent.click(screen.getByRole('button', { name: '음악 찾기 요청 보내기' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('최대 200자');
     expect(input).toHaveValue('가'.repeat(200));
-    expect(screen.getByRole('button', { name: '추천 요청 보내기' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '음악 찾기 요청 보내기' })).toBeEnabled();
     expect(streamRecommendation).not.toHaveBeenCalled();
   });
 
@@ -796,8 +796,8 @@ describe('음성 transcript 공통 추천 흐름', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await screen.findByRole('button', { name: '전사 다시 시도' });
-    await user.click(screen.getByRole('button', { name: '전사 다시 시도' }));
+    await screen.findByRole('button', { name: '음성 변환 다시 시도' });
+    await user.click(screen.getByRole('button', { name: '음성 변환 다시 시도' }));
     await user.click(screen.getByRole('button', { name: '다시 녹음' }));
     await user.click(screen.getByRole('button', { name: '텍스트로 입력' }));
 
@@ -826,13 +826,13 @@ describe('추천 결과 없음 안내', () => {
     const user = userEvent.setup();
 
     render(<App />);
-    await screen.findByLabelText('추천받고 싶은 상황');
-    await user.type(screen.getByLabelText('추천받고 싶은 상황'), '아무 조건');
-    await user.click(screen.getByRole('button', { name: '추천 요청 보내기' }));
+    await screen.findByLabelText('음악을 찾고 싶은 순간');
+    await user.type(screen.getByLabelText('음악을 찾고 싶은 순간'), '아무 조건');
+    await user.click(screen.getByRole('button', { name: '음악 찾기 요청 보내기' }));
 
-    expect(await screen.findByText('조건에 맞는 추천곡을 찾지 못했어요.')).toBeInTheDocument();
+    expect(await screen.findByText('어울리는 곡을 아직 찾지 못했어요.')).toBeInTheDocument();
     expect(
-      screen.getByText('다른 분위기나 상황으로 다시 요청해 주세요.'),
+      screen.getByText('장소나 기분을 조금 더 들려주시면 다시 골라볼게요.'),
     ).toBeInTheDocument();
     expect(screen.queryByText(/입력창에서 다시 전송할 수 있습니다/)).not.toBeInTheDocument();
   });
@@ -1288,7 +1288,7 @@ describe('로그인과 회원가입 화면 연결', () => {
 
     const chatbotLink = screen.getByRole('link', { name: '음악 찾기 열기' });
     await user.click(chatbotLink);
-    expect(await screen.findByRole('heading', { name: '음악 추천 챗봇' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '음악 찾기' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/chatbot');
     expect(logout).not.toHaveBeenCalled();
 
@@ -1298,7 +1298,7 @@ describe('로그인과 회원가입 화면 연결', () => {
 
     await act(async () => window.history.forward());
     await waitFor(() => expect(window.location.pathname).toBe('/chatbot'));
-    expect(screen.getByRole('heading', { name: '음악 추천 챗봇' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '음악 찾기' })).toBeInTheDocument();
     expect(logout).not.toHaveBeenCalled();
   });
 
@@ -1336,11 +1336,11 @@ describe('로그인과 회원가입 화면 연결', () => {
     render(<App />);
 
     const retry = await screen.findByRole('button', { name: '다시 시도' });
-    expect(screen.queryByRole('heading', { name: '음악 추천 챗봇' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '음악 찾기' })).not.toBeInTheDocument();
     expect(recommend).not.toHaveBeenCalled();
     await user.click(retry);
 
-    expect(await screen.findByRole('heading', { name: '음악 추천 챗봇' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '음악 찾기' })).toBeInTheDocument();
     expect(getAccessToken()).toBe('restored-token');
   });
 

@@ -456,6 +456,21 @@ body .login-layout {
 .signup-form .signup-input-wrap.signup-terms {
   background: var(--diary-paper);
 }
+
+body .chat-app {
+  background: var(--diary-paper);
+}
+body .chat-app .chat-header {
+  flex-basis: calc(64px + env(safe-area-inset-top));
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  padding-top: env(safe-area-inset-top);
+  border-bottom: 1px solid var(--color-border-secondary);
+  background: var(--diary-paper);
+}
+body .chat-header-back {
+  width: 44px;
+  height: 44px;
+}
 body .chat-app .chat-header h1,
 body .music-page .music-page-header h1,
 body .mypage-screen .mypage-header h1 {
@@ -463,12 +478,73 @@ body .mypage-screen .mypage-header h1 {
   font-weight: 650;
   letter-spacing: -0.04em;
 }
+.chat-app .chat-content {
+  padding: 20px 16px 24px;
+  background: var(--color-bg-primary);
+}
+.chat-app .date-label {
+  height: auto;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+  line-height: 18px;
+}
+.chat-app .assistant-group {
+  width: min(100%, 360px);
+}
 .chat-app :is(.welcome-bubble, .assistant-text-bubble, .recommendation-bubble),
 .chat-entry-shell .region-chat-bubble {
   border: 1px solid var(--color-border-secondary);
   border-radius: 5px 12px 12px;
   background: var(--diary-paper);
   box-shadow: 2px 2px 0 rgb(22 32 26 / 4%);
+}
+.chat-app .welcome-bubble {
+  box-sizing: border-box;
+  padding: 20px;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 12px;
+  background: var(--record-surface);
+  color: var(--color-text-primary);
+  box-shadow: none;
+}
+.chat-app .welcome-bubble > p {
+  color: var(--color-text-primary);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.8;
+  letter-spacing: -0.01em;
+  word-break: keep-all;
+}
+.chat-app .welcome-bubble .welcome-hint {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border-secondary);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.7;
+}
+.welcome-icon {
+  display: block;
+  margin-bottom: 16px;
+}
+.welcome-icon .vinyl-disc {
+  width: 32px;
+  height: 32px;
+}
+.chat-app .assistant-response-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.chat-app .assistant-response-text + .assistant-response-text {
+  margin-top: 10px;
+}
+.chat-app .recommendation-intro {
+  white-space: pre-wrap;
 }
 .chat-app .user-bubble,
 .chat-entry-shell .region-chat-own .region-chat-bubble {
@@ -484,11 +560,148 @@ body .mypage-screen .mypage-header h1 {
   background: var(--color-bg-secondary);
   box-shadow: none;
 }
+.chat-app .music-card {
+  padding: 12px 10px;
+}
+.chat-app .music-info img {
+  width: 48px;
+  height: 48px;
+  border-radius: 4px;
+}
+.chat-app .music-info h2 {
+  font-size: 14px;
+}
+.chat-app .music-copy p {
+  font-size: 12px;
+}
+.chat-app .input-area {
+  border-top: 1px solid var(--color-border-secondary);
+  background: var(--diary-paper);
+}
 .chat-app .input-bar textarea,
 .chat-entry-shell .region-chat-composer textarea {
   border-color: var(--color-border-primary);
   border-radius: 10px;
   background: var(--color-bg-secondary);
+}
+.chat-app .send-button {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+  background: var(--color-bg-interactive-primary);
+}
+.chat-app .send-button:disabled {
+  background: var(--color-bg-disabled);
+}
+.chat-app .send-button:disabled img {
+  filter: brightness(0);
+  opacity: 0.35;
+}
+body .chat-image-entry {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+  margin-right: 8px;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 10px;
+  background: var(--record-surface);
+}
+.chat-app .preview-button {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 50%;
+}
+.chat-app .image-message-group .chat-image-message {
+  border: 5px solid var(--diary-paper);
+  border-radius: 5px;
+  box-shadow: var(--diary-shadow);
+}
+
+.chat-image-page .chat-image-page-header {
+  padding-top: env(safe-area-inset-top);
+  min-height: calc(64px + env(safe-area-inset-top));
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+}
+.chat-image-page .chat-image-page-header button {
+  width: 44px;
+  height: 44px;
+}
+.chat-image-page .chat-image-placeholder {
+  position: relative;
+  height: clamp(156px, 30dvh, 240px);
+  aspect-ratio: auto;
+  margin-bottom: 16px;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  background: var(--record-surface);
+}
+.chat-image-page .chat-image-placeholder img {
+  width: 56px;
+  height: 56px;
+  opacity: 0.65;
+}
+.chat-image-page .chat-image-empty-state h3 {
+  margin: 0 0 10px;
+  font-size: 23px;
+  font-weight: 650;
+  line-height: 1.45;
+  letter-spacing: -0.025em;
+  word-break: keep-all;
+}
+.chat-image-page .chat-image-empty-state p {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.chat-image-page .chat-image-review {
+  width: min(100%, 340px);
+  max-height: 34dvh;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  object-fit: cover;
+}
+.chat-image-page .chat-image-review-title {
+  margin: 20px 0 10px;
+  font-size: 23px;
+  font-weight: 650;
+  line-height: 1.45;
+  letter-spacing: -0.025em;
+  word-break: keep-all;
+  text-wrap: balance;
+}
+.chat-image-page .chat-image-review-description {
+  font-size: 14px;
+  line-height: 1.7;
+  word-break: keep-all;
+  text-wrap: pretty;
+}
+.chat-image-page .chat-image-page-actions {
+  gap: 16px;
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
+}
+.chat-image-page :is(.chat-image-primary, .chat-image-capture, .chat-image-secondary) {
+  border-radius: 9px;
+}
+.chat-image-page .chat-image-secondary {
+  border: 1px solid var(--color-border-secondary);
+  background: var(--diary-paper);
+}
+.chat-image-page :is(.chat-image-primary, .chat-image-capture) {
+  min-height: 48px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.chat-image-page .chat-image-capture {
+  background: var(--record-black);
+  color: var(--record-on-black);
+}
+.chat-image-page .chat-image-primary:not(:disabled) {
+  background: var(--color-bg-interactive-primary);
+  color: var(--color-text-interactive-inverse);
 }
 
 body .music-list-content {
@@ -1057,6 +1270,11 @@ body .mypage-screen .mypage-navigation {
 .preview-button img,
 .music-preview-button img {
   filter: none;
+}
+.chat-app .prompt-field .voice-button img,
+.chat-image-entry img,
+.chat-image-secondary img {
+  filter: brightness(0);
 }
 .send-button img,
 .region-chat-send img,
