@@ -107,7 +107,7 @@ describe('음악 기록 삭제', () => {
     expect(options?.body).toBeUndefined();
     view.unmount();
     render(<MusicRecordListPage />);
-    expect(await screen.findByText('아직 기록한 음악이 없어요.')).toBeInTheDocument();
+    expect(await screen.findByText('아직 비어 있는 음악 기록이에요.')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('기록이 삭제되었어요');
     await fetchMapDots(signal);
     const calls = vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith('/map-dots'));
@@ -160,7 +160,7 @@ describe('음악 기록 삭제', () => {
     await waitFor(() => expect(window.location.pathname).toBe('/music-records'));
     view.unmount();
     render(<MusicRecordListPage />);
-    expect(await screen.findByText('아직 기록한 음악이 없어요.')).toBeInTheDocument();
+    expect(await screen.findByText('아직 비어 있는 음악 기록이에요.')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('이미 삭제되었거나 없는 기록');
   });
 

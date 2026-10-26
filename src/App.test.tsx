@@ -1614,15 +1614,15 @@ describe('음악 기록 생성·상세 경로 연결', () => {
     render(<App />);
     await user.type(await screen.findByRole('textbox', { name: '음악 검색' }), '밤편지');
     await user.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    await user.click(screen.getByRole('button', { name: '선택하기' }));
-    await user.type(await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' }), '작성 중');
+    await user.click(screen.getByRole('button', { name: '이 곡으로 기록하기' }));
+    await user.type(await screen.findByRole('textbox', { name: '오늘의 기분과 한 줄' }), '작성 중');
     await user.click(await screen.findByRole('button', { name: '뒤로가기' }));
     await user.click(await screen.findByRole('button', { name: '확인' }));
     expect(await screen.findByRole('heading', { name: '음악 지도' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/');
 
     act(() => navigate('/music-records/1'));
-    const memo = await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' });
+    const memo = await screen.findByRole('textbox', { name: '오늘의 기분과 한 줄' });
     await user.clear(memo);
     await user.type(memo, '수정한 기록');
     await user.click(screen.getByRole('button', { name: '음악 기록 목록으로 돌아가기' }));

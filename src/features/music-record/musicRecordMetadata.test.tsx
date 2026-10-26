@@ -109,13 +109,13 @@ describe('긴 아티스트명의 저장 및 오류 복구', () => {
       target: { value: 'Les Nations' },
     });
     fireEvent.click(await screen.findByRole('button', { name: title + artist }));
-    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' }));
     await screen.findByRole('region', { name: '음악 기록 입력' });
     expect(screen.getByText(artist)).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: '장소 이름' }), {
       target: { value: '산책길' },
     });
-    fireEvent.change(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: '오늘의 기분과 한 줄' }), {
       target: { value: '평온한 오후' },
     });
   }
@@ -138,7 +138,7 @@ describe('긴 아티스트명의 저장 및 오류 복구', () => {
     expect(save).toBeEnabled();
     expect(screen.getByText(artist)).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: '장소 이름' })).toHaveValue('산책길');
-    expect(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' })).toHaveValue('평온한 오후');
+    expect(screen.getByRole('textbox', { name: '오늘의 기분과 한 줄' })).toHaveValue('평온한 오후');
 
     saveResponse = async () => Response.json({ data: { record_id: 1 } }, { status: 201 });
     fireEvent.click(save);
@@ -161,7 +161,7 @@ describe('긴 아티스트명의 저장 및 오류 복구', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('다른 곡을 선택해 주세요.');
     expect(screen.getByRole('button', { name: '저장' })).toBeEnabled();
     expect(screen.getByRole('textbox', { name: '장소 이름' })).toHaveValue('산책길');
-    expect(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' })).toHaveValue('평온한 오후');
+    expect(screen.getByRole('textbox', { name: '오늘의 기분과 한 줄' })).toHaveValue('평온한 오후');
     fireEvent.click(screen.getByRole('button', { name: '뒤로가기' }));
     fireEvent.click(screen.getByRole('button', { name: '확인' }));
     expect(window.location.pathname).toBe('/');

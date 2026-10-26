@@ -490,10 +490,294 @@ body .mypage-screen .mypage-header h1 {
   border-radius: 10px;
   background: var(--color-bg-secondary);
 }
+
+body .music-list-content {
+  padding: 24px 20px;
+}
 /* Record list reads like a streaming playlist: color header, large-cover track rows. */
+body .music-record-list-page .diary-page-intro {
+  margin: -24px -20px 16px;
+  padding: 40px 20px 20px;
+  background: linear-gradient(180deg, var(--color-brand-100) 0%, var(--color-bg-primary) 100%);
+}
+body .music-record-list-page .diary-page-intro .diary-eyebrow {
+  color: var(--color-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+body .music-record-list-page .diary-page-intro h2 {
+  margin: 6px 0 8px;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.05em;
+}
+body .music-record-list-page .record-list-count {
+  margin: 16px 0 12px;
+  padding: 0 2px 10px;
+  border-bottom: 1px solid var(--color-border-tertiary);
+}
 /* Each record is an album card: the cover sits on a wash of its own colors, details follow below. */
+body .music-record-list-page .record-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+body .music-record-list-page .record-card {
+  isolation: isolate;
+  display: grid;
+  height: auto;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'art'
+    'title'
+    'artist'
+    'place'
+    'meta';
+  align-content: start;
+  gap: 2px;
+  padding: 10px 10px 12px;
+  border: 0;
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--color-brand-800) 0%, var(--record-black) 100%);
+  box-shadow: 0 6px 16px rgb(22 32 26 / 16%);
+  color: var(--record-on-black);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
 /* Scrim keeps text legible on any cover: light over the artwork, dark under the details. */
+body .music-record-list-page .record-card::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgb(19 26 22 / 15%) 0%,
+    rgb(19 26 22 / 55%) 60%,
+    rgb(19 26 22 / 85%) 100%
+  );
+  content: '';
+  pointer-events: none;
+}
+body .music-record-list-page .record-card .record-card-backdrop {
+  position: absolute;
+  z-index: -2;
+  top: -20%;
+  left: -20%;
+  width: 140%;
+  height: 140%;
+  border-radius: 0;
+  filter: blur(28px) saturate(1.5) brightness(0.75);
+  object-fit: cover;
+  pointer-events: none;
+}
+body .music-record-list-page .record-card-copy {
+  display: contents;
+}
+body .music-record-list-page :is(.record-cover, .record-cover-placeholder) {
+  grid-area: art;
+  width: 100%;
+  height: auto;
+  margin-bottom: 10px;
+  aspect-ratio: 1;
+  border: 0;
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 40%);
+}
+body .music-record-list-page .record-card-copy h2 {
+  display: -webkit-box;
+  grid-area: title;
+  overflow: hidden;
+  color: var(--record-on-black);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  letter-spacing: -0.03em;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+body .music-record-list-page .record-card-copy .record-artist {
+  grid-area: artist;
+  color: rgb(255 255 255 / 72%);
+  font-size: 12px;
+  line-height: 18px;
+}
+body .music-record-list-page .record-card-copy .record-location {
+  position: static;
+  grid-area: place;
+  width: auto;
+  margin-top: 4px;
+  color: rgb(255 255 255 / 80%);
+  font-size: 12px;
+  line-height: 18px;
+}
+body .music-record-list-page .record-card-copy .record-card-meta-row {
+  position: static;
+  grid-area: meta;
+  width: auto;
+  align-items: center;
+  justify-content: flex-start;
+}
+body .music-record-list-page .record-card-copy time {
+  margin: 0;
+  color: rgb(255 255 255 / 64%);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  letter-spacing: 0.01em;
+}
+body .music-record-list-page .record-select-indicator {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 22px;
+  height: 22px;
+}
+body .music-record-list-page .record-card.selected {
+  background: linear-gradient(180deg, var(--color-brand-800) 0%, var(--record-black) 100%);
+  box-shadow:
+    0 0 0 2px var(--color-bg-primary),
+    0 0 0 4px var(--color-brand-600);
+}
+body .music-record-list-page .record-card.selected .record-select-indicator {
+  background: var(--color-bg-interactive-primary);
+  box-shadow:
+    inset 0 0 0 6px var(--color-bg-interactive-primary),
+    inset 0 0 0 7px var(--color-text-interactive-inverse);
+}
+.music-page .music-record-region-filter-button {
+  min-height: 44px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-bg-tertiary);
+  font-weight: 600;
+}
+.music-page .music-record-region-filter-button[aria-pressed='true'] {
+  background: var(--color-bg-interactive-primary);
+  color: var(--color-text-interactive-inverse);
+}
+.music-page .music-empty {
+  padding: 28px 16px;
+  border: 1px dashed var(--color-border-secondary);
+  border-radius: 10px;
+  background: var(--diary-paper);
+  text-align: center;
+  line-height: 1.8;
+}
+.music-page .music-empty p {
+  margin: 6px 0;
+}
+.music-page .music-form input,
+.music-page .music-form textarea,
+.music-page .music-search {
+  border-radius: 9px;
+  background: var(--diary-paper);
+}
+body .music-page .music-selected-content {
+  padding: 16px;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 10px;
+  background: var(--diary-tint);
+  box-shadow: var(--diary-shadow);
+}
 /* Record detail opens like an album page: dark card washed with the cover's own colors. */
+body .music-detail-page .music-selected-content {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  gap: 4px 12px;
+  padding: 28px 20px 20px;
+  border: 0;
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--color-brand-800) 0%, var(--record-black) 100%);
+  box-shadow: 0 12px 32px rgb(22 32 26 / 18%);
+  color: var(--record-on-black);
+}
+body .music-detail-page .music-selected-content::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgb(18 18 18 / 0%) 0%,
+    rgb(18 18 18 / 45%) 50%,
+    rgb(18 18 18 / 90%) 100%
+  );
+  content: '';
+}
+body .music-detail-page .music-selected-content .music-hero-backdrop {
+  position: absolute;
+  z-index: -2;
+  top: -15%;
+  left: -15%;
+  width: 130%;
+  height: 130%;
+  aspect-ratio: auto;
+  border-radius: 0;
+  filter: blur(40px) saturate(1.3);
+  opacity: 0.85;
+  object-fit: cover;
+  pointer-events: none;
+}
+body
+  .music-detail-page
+  .music-selected-content
+  :is(img:not(.music-hero-backdrop), .music-cover-placeholder) {
+  width: min(100%, 260px);
+  margin-bottom: 16px;
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 45%);
+}
+body .music-detail-page .music-selected-content .music-hero-eyebrow {
+  margin: 0 0 2px;
+  color: rgb(255 255 255 / 80%);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}
+body .music-detail-page .music-selected-content strong {
+  color: var(--record-on-black);
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+body .music-detail-page .music-selected-content span {
+  color: rgb(255 255 255 / 72%);
+  font-size: 14px;
+  line-height: 20px;
+}
+body .music-detail-page .music-change-button {
+  align-self: end;
+  min-height: 36px;
+  padding: 7px 14px;
+  border: 1px solid rgb(255 255 255 / 55%);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--record-on-black);
+  font-size: 13px;
+  font-weight: 600;
+}
+body .music-detail-page .music-change-button:disabled {
+  opacity: 0.45;
+}
+body .music-detail-page .music-change-button:focus-visible {
+  outline: 2px solid var(--record-on-black);
+  outline-offset: 2px;
+}
+.music-page :is(.music-primary-button, .music-secondary-button) {
+  border-radius: 8px;
+}
+.music-page .music-primary-button {
+  box-shadow: none;
+}
 
 body .mypage-screen .mypage-summary {
   margin-block: 12px 28px;
