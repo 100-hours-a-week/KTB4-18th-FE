@@ -9,5 +9,6 @@ export function formatMusicRecordTime(utc: string): string {
     hour12: true,
   }).formatToParts(new Date(utc));
   const part = (type: string) => parts.find((value) => value.type === type)?.value ?? '';
-  return `${part('year')}.${part('month')}.${part('day')}. ${part('dayPeriod')} ${part('hour')}:${part('minute')}`;
+  const dayPeriod = part('dayPeriod').replace('AM', '오전').replace('PM', '오후');
+  return `${part('year')}.${part('month')}.${part('day')}. ${dayPeriod} ${part('hour')}:${part('minute')}`;
 }
