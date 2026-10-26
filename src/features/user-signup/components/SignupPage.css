@@ -1,6 +1,6 @@
 .signup-page {
   min-height: 100dvh;
-  background: #fefeff;
+  background: var(--color-bg-primary);
   color: var(--color-text-primary);
 }
 
@@ -19,7 +19,7 @@ body:has(.signup-page)::-webkit-scrollbar {
   width: min(100%, 680px);
   min-height: 100dvh;
   margin: 0 auto;
-  background: #fefeff;
+  background: var(--color-bg-primary);
 }
 
 .signup-appbar {
@@ -29,12 +29,12 @@ body:has(.signup-page)::-webkit-scrollbar {
   grid-template-columns: 32px minmax(0, 1fr) 32px;
   align-items: center;
   padding: 0 16px;
-  border-bottom: 1px solid #e5e5e5;
+  border-bottom: 1px solid var(--color-border-tertiary);
 }
 
 .signup-appbar h1 {
   margin: 0;
-  color: #171717;
+  color: var(--color-text-primary);
   font-family: var(--font-sans);
   font-size: 20px;
   font-weight: 600;
@@ -54,7 +54,7 @@ body:has(.signup-page)::-webkit-scrollbar {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #2a2a37;
+  color: var(--color-text-primary);
   cursor: pointer;
 }
 
@@ -102,9 +102,9 @@ body:has(.signup-page)::-webkit-scrollbar {
   min-width: 0;
   flex-direction: column;
   align-items: stretch;
-  border: 1px solid #e5e5e5;
+  border: 1px solid var(--color-border-tertiary);
   border-radius: 12px;
-  background: #fefeff;
+  background: var(--color-bg-primary);
 }
 
 .signup-input-wrap:focus-within {
@@ -123,7 +123,7 @@ body:has(.signup-page)::-webkit-scrollbar {
   flex: none;
   align-items: flex-end;
   padding: 0 16px;
-  color: #a1a1a1;
+  color: var(--color-text-tertiary);
   font-family: 'Wanted Sans', var(--font-sans);
   font-size: 13px;
   font-weight: 400;
@@ -133,7 +133,7 @@ body:has(.signup-page)::-webkit-scrollbar {
 
 .signup-label span {
   margin-left: 3px;
-  color: #ff1818;
+  color: var(--color-text-error);
 }
 
 .signup-label em {
@@ -142,7 +142,7 @@ body:has(.signup-page)::-webkit-scrollbar {
 
 .signup-label em,
 .signup-terms h2 span {
-  color: #a1a1a1;
+  color: var(--color-text-tertiary);
   font-style: normal;
   font-weight: 400;
 }
@@ -156,7 +156,7 @@ body:has(.signup-page)::-webkit-scrollbar {
   border: 0;
   border-radius: inherit;
   padding: 4px 16px 10px;
-  color: #171717;
+  color: var(--color-text-primary);
   background: transparent;
   font-family: var(--font-sans);
   font-size: 16px;
@@ -167,7 +167,7 @@ body:has(.signup-page)::-webkit-scrollbar {
 }
 
 .signup-input::placeholder {
-  color: #a1a1a1;
+  color: var(--color-text-tertiary);
   opacity: 1;
 }
 
@@ -175,10 +175,10 @@ body:has(.signup-page)::-webkit-scrollbar {
 .signup-input:-webkit-autofill,
 .signup-input:-webkit-autofill:hover,
 .signup-input:-webkit-autofill:focus {
-  -webkit-text-fill-color: #171717;
-  caret-color: #171717;
-  -webkit-box-shadow: 0 0 0 1000px #fefeff inset;
-  box-shadow: 0 0 0 1000px #fefeff inset;
+  -webkit-text-fill-color: var(--color-text-primary);
+  caret-color: var(--color-text-primary);
+  -webkit-box-shadow: 0 0 0 1000px var(--color-bg-primary) inset;
+  box-shadow: 0 0 0 1000px var(--color-bg-primary) inset;
 }
 
 .signup-password-wrap .signup-input {
@@ -250,7 +250,7 @@ body:has(.signup-page)::-webkit-scrollbar {
   height: 34px;
   align-items: center;
   gap: 8px;
-  color: #171717;
+  color: var(--color-text-primary);
   font-family: 'Wanted Sans', var(--font-sans);
   font-size: 14px;
   line-height: 20px;
@@ -265,23 +265,26 @@ body:has(.signup-page)::-webkit-scrollbar {
   height: 22px;
   flex: none;
   margin: 0;
-  border: 1px solid #e5e5e5;
+  border: 1px solid var(--color-border-tertiary);
   border-radius: 4px;
-  background: #fefeff;
+  background: var(--color-bg-primary);
   cursor: pointer;
 }
 
 .signup-gender-option input:checked,
 .signup-checkbox:checked {
-  border-color: #171717;
-  background-color: #171717;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Cpath d='m4.5 11 4 4 9-9' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  border-color: var(--color-border-interactive-primary);
+  background-color: var(--color-bg-interactive-inverse);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Cpath d='m4.5 11 4 4 9-9' fill='none' stroke='%23fffdf9' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 .signup-checkbox:indeterminate {
-  border-color: #171717;
-  background-color: #171717;
-  background-image: linear-gradient(#ffffff, #ffffff);
+  border-color: var(--color-border-interactive-primary);
+  background-color: var(--color-bg-interactive-inverse);
+  background-image: linear-gradient(
+    var(--color-text-interactive-inverse),
+    var(--color-text-interactive-inverse)
+  );
   background-position: center;
   background-repeat: no-repeat;
   background-size: 10px 2px;
@@ -299,14 +302,14 @@ body:has(.signup-page)::-webkit-scrollbar {
   margin: 0;
   padding: 19px 16px;
   border-radius: 8px;
-  background: #f5f5f5;
-  color: #737373;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
   font-family: var(--font-sans);
   font-size: 15px;
   font-weight: 400;
   line-height: 1.45;
   letter-spacing: -0.375px;
-  color: #a1a1a1;
+  color: var(--color-text-tertiary);
 }
 
 .signup-terms {
@@ -324,7 +327,7 @@ body:has(.signup-page)::-webkit-scrollbar {
   align-items: flex-end;
   margin: 0;
   padding: 0 16px;
-  color: #a1a1a1;
+  color: var(--color-text-tertiary);
   font-family: 'Wanted Sans', var(--font-sans);
   font-size: 13px;
   font-weight: 400;
@@ -350,9 +353,9 @@ body:has(.signup-page)::-webkit-scrollbar {
   flex: none;
   align-items: center;
   gap: 8px;
-  border-bottom: 1px solid #e5e5e5;
+  border-bottom: 1px solid var(--color-border-tertiary);
   padding: 16px 16px 12px;
-  color: #737373;
+  color: var(--color-text-secondary);
   font-family: 'Wanted Sans', var(--font-sans);
   font-size: 15px;
   font-weight: 400;
@@ -387,7 +390,7 @@ body:has(.signup-page)::-webkit-scrollbar {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #737373;
+  color: var(--color-text-secondary);
   font-family: 'Wanted Sans', var(--font-sans);
   font-size: 15px;
   font-weight: 400;
@@ -401,8 +404,8 @@ body:has(.signup-page)::-webkit-scrollbar {
   width: 7px;
   height: 7px;
   flex: none;
-  border-top: 1.5px solid #737373;
-  border-right: 1.5px solid #737373;
+  border-top: 1.5px solid var(--color-border-interactive-primary);
+  border-right: 1.5px solid var(--color-border-interactive-primary);
   content: '';
   transform: rotate(45deg);
 }
@@ -447,13 +450,13 @@ body:has(.signup-page)::-webkit-scrollbar {
 }
 
 .signup-submit:not(:disabled) {
-  background: #171717;
-  color: #ffffff;
+  background: var(--color-bg-interactive-inverse);
+  color: var(--color-text-interactive-inverse);
 }
 
 .signup-submit:disabled {
-  background: #e5e5e5;
-  color: #a1a1a1;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-tertiary);
 }
 
 .signup-term-sheet-body {
@@ -477,20 +480,6 @@ body:has(.signup-page)::-webkit-scrollbar {
   clip-path: inset(50%);
 }
 
-@media (min-width: 451px) {
-  .signup-appbar {
-    height: 68px;
-    padding-inline: 24px;
-  }
-
-  .signup-form {
-    margin-top: 20px;
-    padding: 20px 20px 32px;
-  }
-}
-
-@media (max-width: 450px) {
-  .signup-personalization {
-    min-height: 104px;
-  }
+.signup-personalization {
+  min-height: 104px;
 }

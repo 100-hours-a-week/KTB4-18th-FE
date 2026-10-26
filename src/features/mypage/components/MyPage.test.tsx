@@ -195,7 +195,7 @@ describe('MyPage profile validation', () => {
     const onBack = vi.fn();
     render(<MyPage onLogin={vi.fn()} onBack={onBack} onLogout={vi.fn()} onWithdrawn={vi.fn()} />);
 
-    await user.click(screen.getByRole('button', { name: '마이페이지로 돌아가기' }));
+    await user.click(screen.getByRole('button', { name: '내 공간으로 돌아가기' }));
 
     expect(onBack).toHaveBeenCalledOnce();
   });
@@ -268,7 +268,7 @@ describe('MyPage profile validation', () => {
   it('shows the Figma withdrawal warning first and preserves password confirmation before deletion', async () => {
     const user = await openProfileEditor();
     await user.click(screen.getByRole('button', { name: '더보기' }));
-    await user.click(screen.getByText('마이페이지로 돌아가기'));
+    await user.click(screen.getByText('내 공간으로 돌아가기'));
     await user.click(screen.getByRole('button', { name: '더보기' }));
     await user.click(screen.getByText('회원 탈퇴'));
 
@@ -290,7 +290,7 @@ describe('MyPage profile validation', () => {
   it('shows the Figma app version and opens open-source licenses in the terms bottom sheet', async () => {
     const user = await openProfileEditor();
     await user.click(screen.getByRole('button', { name: '더보기' }));
-    await user.click(screen.getByText('마이페이지로 돌아가기'));
+    await user.click(screen.getByText('내 공간으로 돌아가기'));
     await user.click(screen.getByText('약관 및 정책'));
 
     expect(await screen.findByText('서비스 이용약관')).toBeTruthy();
@@ -423,7 +423,7 @@ describe('MyPage profile validation', () => {
     await user.click(screen.getByRole('button', { name: '저장' }));
     await screen.findByText(/프로필 이미지는 저장했지만/);
     expect(uploadMyProfileImage).toHaveBeenCalledTimes(2);
-    await user.click(screen.getByRole('button', { name: '마이페이지로 돌아가기' }));
+    await user.click(screen.getByRole('button', { name: '내 공간으로 돌아가기' }));
     expect(await screen.findByAltText('프로필')).toHaveAttribute('src', 'blob:preview');
     expect(getMyProfileImage).toHaveBeenLastCalledWith(imageUrl);
   });

@@ -199,6 +199,11 @@ export function MusicRecordListPage() {
         </button>
       </header>
       <div className="music-list-content">
+        <div className="diary-page-intro">
+          <span className="diary-eyebrow">나의 음악 기록</span>
+          <h2>노래로 남겨둔 하루들</h2>
+          <p>그날의 장소와 기분을 한 곡씩 모았어요.</p>
+        </div>
         {missingNotice && (
           <p role="status" className="music-success">
             {missingNotice}
@@ -251,14 +256,19 @@ export function MusicRecordListPage() {
             const placeName =
               record.custom_place_name?.trim() ||
               `${record.region.sido.name} ${record.region.sigungu.name}`;
+            const coverUrl = getHighResolutionArtworkUrl(record.music.album_cover_url);
             const content = (
               <>
-                {record.music.album_cover_url ? (
-                  <img
-                    className="record-cover"
-                    src={getHighResolutionArtworkUrl(record.music.album_cover_url) ?? ''}
-                    alt=""
-                  />
+                {coverUrl ? (
+                  <>
+                    <img
+                      className="record-card-backdrop"
+                      src={coverUrl}
+                      alt=""
+                      aria-hidden="true"
+                    />
+                    <img className="record-cover" src={coverUrl} alt="" />
+                  </>
                 ) : (
                   <span className="record-cover-placeholder" aria-hidden="true" />
                 )}
@@ -339,7 +349,13 @@ export function MusicRecordListPage() {
           </button>
         )}
         {!items.length && !error && !isLoading && (
-          <p className="music-empty">아직 기록한 음악이 없어요.</p>
+          <div className="music-empty">
+            <p>아직 비어 있는 음악 기록이에요.</p>
+            <p>오늘 머문 곳에 첫 곡을 남겨보세요.</p>
+            <a className="diary-empty-action" href="/music-records/new">
+              첫 음악 기록 남기기
+            </a>
+          </div>
         )}
       </div>
       <div
@@ -817,7 +833,7 @@ export function MusicRecordCreatePage() {
               autoComplete="off"
               value={query}
               onChange={(event) => handleQueryChange(event.target.value)}
-              placeholder="곡 제목, 아티스트 검색"
+              placeholder="노래 제목이나 아티스트를 찾아보세요"
             />
           </form>
           {query.trim().length === 1 && (
@@ -934,7 +950,7 @@ export function MusicRecordCreatePage() {
                   : '선택 중…'
                 : replacementRecordId !== null
                   ? '이 곡으로 변경'
-                  : '선택하기'}
+                  : '이 곡으로 기록하기'}
             </button>
           </div>
         </>
@@ -985,18 +1001,18 @@ export function MusicRecordCreatePage() {
               value={place}
               maxLength={100}
               onChange={(event) => setPlace(event.target.value)}
-              placeholder="장소 이름 (선택)"
+              placeholder="예: 집 앞 작은 공원 (선택)"
             />
           </label>
           <label>
-            지금 느끼는 것 기록
+            오늘의 기분과 한 줄
             <textarea
-              aria-label="지금 느끼는 것 기록"
+              aria-label="오늘의 기분과 한 줄"
               aria-describedby="create-memo-count"
               value={memo}
               maxLength={500}
               onChange={(event) => setMemo(event.target.value.slice(0, 500))}
-              placeholder="내용을 입력해 주세요."
+              placeholder="이 노래를 들으며 기억하고 싶은 순간은?"
             />
             <span className="music-memo-count" id="create-memo-count" aria-live="polite">
               {memo.length}/500

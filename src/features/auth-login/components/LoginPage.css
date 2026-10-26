@@ -13,11 +13,7 @@
   width: min(100%, 680px);
   min-height: 100dvh;
   margin: 0 auto;
-  background:
-    radial-gradient(ellipse 340px 500px at 73% 34%, rgb(232 232 232 / 48%), transparent 76%),
-    radial-gradient(ellipse 260px 430px at 14% 67%, rgb(238 238 238 / 42%), transparent 78%),
-    radial-gradient(ellipse 230px 420px at 50% 104%, rgb(237 237 237 / 38%), transparent 76%),
-    #fefeff;
+  background: var(--color-bg-primary);
 }
 
 .login-layout {
@@ -73,7 +69,7 @@
   left: -3.5px;
   width: 157px;
   margin: 0;
-  color: #171717;
+  color: var(--color-text-primary);
   font-family: Pretendard, var(--font-sans);
   font-size: 24px;
   font-weight: 500;
@@ -95,7 +91,7 @@
   align-items: center;
   gap: 8px;
   margin: 0 auto;
-  color: #171717;
+  color: var(--color-text-primary);
   font-size: 12px;
   font-weight: 400;
   line-height: 18px;
@@ -107,7 +103,7 @@
 .login-divider::after {
   height: 1px;
   flex: 1;
-  background: #171717;
+  background: var(--color-bg-interactive-inverse);
   content: '';
 }
 
@@ -127,13 +123,13 @@
 }
 
 .login-submit:not(:disabled) {
-  background: #171717;
-  color: #ffffff;
+  background: var(--color-bg-interactive-inverse);
+  color: var(--color-text-interactive-inverse);
 }
 
 .login-submit:disabled {
-  background: #e5e5e5;
-  color: #a1a1a1;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-tertiary);
 }
 
 .login-field {
@@ -148,7 +144,7 @@
   z-index: 1;
   top: 13px;
   left: 16px;
-  color: #a1a1a1;
+  color: var(--color-text-tertiary);
   font-size: 13px;
   font-weight: 400;
   line-height: 18px;
@@ -161,9 +157,9 @@
   display: flex;
   height: 71px;
   align-items: flex-end;
-  border: 1px solid #e5e5e5;
+  border: 1px solid var(--color-border-tertiary);
   border-radius: 12px;
-  background: #fefeff;
+  background: var(--color-bg-primary);
 }
 
 .login-input-wrap:focus-within {
@@ -184,7 +180,7 @@
   border: 0;
   border-radius: inherit;
   padding: 4px 16px 12px;
-  color: #171717;
+  color: var(--color-text-primary);
   background: transparent;
   font-family: var(--font-sans);
   font-size: 16px;
@@ -195,24 +191,24 @@
 }
 
 .login-input::placeholder {
-  color: #a1a1a1;
+  color: var(--color-text-tertiary);
   opacity: 1;
 }
 
 .login-input:autofill {
-  -webkit-text-fill-color: #171717;
-  caret-color: #171717;
-  -webkit-box-shadow: 0 0 0 1000px #fefeff inset;
-  box-shadow: 0 0 0 1000px #fefeff inset;
+  -webkit-text-fill-color: var(--color-text-primary);
+  caret-color: var(--color-text-primary);
+  -webkit-box-shadow: 0 0 0 1000px var(--color-bg-primary) inset;
+  box-shadow: 0 0 0 1000px var(--color-bg-primary) inset;
 }
 
 .login-input:-webkit-autofill,
 .login-input:-webkit-autofill:hover,
 .login-input:-webkit-autofill:focus {
-  -webkit-text-fill-color: #171717;
-  caret-color: #171717;
-  -webkit-box-shadow: 0 0 0 1000px #fefeff inset;
-  box-shadow: 0 0 0 1000px #fefeff inset;
+  -webkit-text-fill-color: var(--color-text-primary);
+  caret-color: var(--color-text-primary);
+  -webkit-box-shadow: 0 0 0 1000px var(--color-bg-primary) inset;
+  box-shadow: 0 0 0 1000px var(--color-bg-primary) inset;
 }
 
 .password-toggle {
@@ -263,9 +259,9 @@
   box-sizing: border-box;
   padding: 14px 16px;
   transform: translateX(-50%);
-  border: 1px solid #f1c7c7;
+  border: 1px solid var(--color-border-error);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--color-bg-primary);
   box-shadow: 0 8px 28px rgb(23 23 23 / 14%);
   color: var(--color-text-error);
   font-size: 14px;
@@ -328,9 +324,9 @@
   align-items: center;
   border-radius: 20px;
   padding: 40px 20px 20px;
-  background: #fff;
+  background: var(--color-bg-primary);
   box-shadow: 0 16px 48px rgb(0 0 0 / 18%);
-  color: #171717;
+  color: var(--color-text-primary);
   text-align: center;
 }
 
@@ -371,7 +367,7 @@
 
 .login-queue-dialog h2 {
   margin: 0;
-  color: #171717;
+  color: var(--color-text-primary);
   font-size: 18px;
   font-weight: 600;
   letter-spacing: -0.09px;
@@ -381,7 +377,7 @@
 .login-queue-dialog > p:not(.login-queue-live) {
   max-width: 335px;
   margin: 8px 0 32px;
-  color: #a1a1a1;
+  color: var(--color-text-tertiary);
   font-size: 14px;
   letter-spacing: 0.145px;
   line-height: 20px;
@@ -394,11 +390,11 @@
   min-height: 48px;
   align-items: center;
   justify-content: space-between;
-  border: 1px solid #171717;
+  border: 1px solid var(--color-border-interactive-primary);
   border-radius: 8px;
   padding: 14px 16px;
-  color: #737373;
-  background: #fefeff;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-primary);
   font-size: 14px;
   line-height: 20px;
 }
@@ -435,8 +431,8 @@
   min-height: 48px;
   border: 0;
   border-radius: 8px;
-  background: #f1f1f5;
-  color: #737373;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
   cursor: pointer;
   font: inherit;
   font-size: 14px;
@@ -461,10 +457,10 @@
 
 .login-ambiguity button {
   min-height: 38px;
-  border: 1px solid #dedede;
+  border: 1px solid var(--color-border-secondary);
   border-radius: 8px;
   padding: 6px 10px;
-  background: #fff;
+  background: var(--color-bg-primary);
   cursor: pointer;
   font: inherit;
   font-size: 12px;
@@ -494,11 +490,11 @@
   box-sizing: border-box;
   width: min(100%, 480px);
   margin: 12px auto 0;
-  border: 1px solid #dedede;
+  border: 1px solid var(--color-border-secondary);
   border-radius: 12px;
   padding: 16px;
-  background: #fff;
-  color: #171717;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
 }
 
 .login-capacity-wait h2 {
@@ -510,7 +506,7 @@
 
 .login-capacity-wait p {
   margin: 8px 0 0;
-  color: #595959;
+  color: var(--color-text-secondary);
   font-size: 14px;
   line-height: 21px;
   overflow-wrap: anywhere;
@@ -525,11 +521,11 @@
 
 .login-capacity-actions button {
   min-height: 44px;
-  border: 1px solid #dedede;
+  border: 1px solid var(--color-border-secondary);
   border-radius: 8px;
   padding: 8px 14px;
-  background: #fff;
-  color: #171717;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
   cursor: pointer;
   font: inherit;
   font-size: 14px;
@@ -551,7 +547,7 @@
   min-height: 44px;
   place-items: center;
   margin: 8px auto 0;
-  color: #171717;
+  color: var(--color-text-primary);
   font-size: 14px;
   font-weight: 500;
   line-height: 20px;

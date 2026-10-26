@@ -300,10 +300,10 @@ export default function ChatbotPage() {
   return (
     <main className="chat-app" ref={chatAppRef}>
       <header className="chat-header">
-        <a className="chat-header-back" href="/" aria-label="도트 지도 메인 페이지로 이동">
+        <a className="chat-header-back" href="/" aria-label="음악 지도로 돌아가기">
           <img src="/icons/chatbot/Arrow-reft.svg" alt="" aria-hidden="true" />
         </a>
-        <h1>음악 추천 챗봇</h1>
+        <h1>음악 찾기</h1>
         <span className="chat-header-spacer" aria-hidden="true" />
       </header>
       <div className="chat-content" role="log" aria-label="음악 추천 대화" aria-live="polite">
@@ -318,9 +318,20 @@ export default function ChatbotPage() {
         <div className="message-row assistant-row">
           <div className="message-group assistant-group">
             <div className="welcome-bubble">
-              <p>지금의 순간에 음악을 더해볼까요?</p>
-              <p>느껴지는 분위기나 장소, 날씨를 편하게 들려주세요.</p>
-              <p>이 순간에 어울리는 음악을 골라드릴게요.</p>
+              <span className="welcome-icon" aria-hidden="true">
+                <span className="vinyl-disc" />
+              </span>
+              <p>지금 어떤 순간에 머물고 있나요?</p>
+              <p>
+                날씨나 장소, 느껴지는 기분을 편하게 알려주세요.
+                <br />
+                글로 적어 주시거나 음성으로 말해도 좋아요.
+                <br />
+                지금 딱 어울리는 음악을 골라드릴게요.
+              </p>
+              <p className="welcome-hint">
+                추천받은 곡은 내 공간의 지난 선곡에서 다시 볼 수 있어요.
+              </p>
             </div>
             <time>{formatTime(openedAt)}</time>
           </div>
@@ -344,24 +355,34 @@ export default function ChatbotPage() {
                   <p className="user-bubble">{message.text}</p>
                 )
               ) : (
-                <div className="assistant-content">
-                  {message.text && <p className="assistant-text-bubble">{message.text}</p>}
-                  {message.streamStatus === 'PROCESSING' && (
-                    <p className="assistant-text-bubble" role="status">
-                      추천 결과를 받고 있어요…
-                    </p>
-                  )}
-                  {message.failureMessage && (
-                    <p role="alert" className="assistant-text-bubble error-message">
-                      {message.failureMessage}
-                    </p>
-                  )}
-                  {(message.streamStatus === 'COMPLETED' || message.result.items.length > 0) && (
+                <div
+                  className="assistant-content"
+                  aria-busy={message.streamStatus === 'PROCESSING'}
+                >
+                  {message.streamStatus === 'COMPLETED' || message.result.items.length > 0 ? (
                     <RecommendationCards
                       recommendation={message.result}
+                      intro={message.text}
                       activePreview={activePreview}
                       onPreviewChange={setActivePreview}
                     />
+                  ) : (
+                    <div className="assistant-text-bubble">
+                      {message.text ? (
+                        <p className="assistant-response-text">{message.text}</p>
+                      ) : (
+                        message.streamStatus === 'PROCESSING' && (
+                          <p className="assistant-response-text" role="status">
+                            어울리는 음악을 찾고 있어요…
+                          </p>
+                        )
+                      )}
+                      {message.failureMessage && (
+                        <p role="alert" className="assistant-response-text error-message">
+                          {message.failureMessage}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -369,14 +390,18 @@ export default function ChatbotPage() {
             </div>
           </div>
         ))}
-        {loading && (
-          <p className="status-message" role="status">
-            음악을 고르고 있어요…
-          </p>
+        {loading && messages.at(-1)?.role !== 'assistant' && (
+          <div className="message-row assistant-row">
+            <div className="message-group assistant-group">
+              <p className="assistant-text-bubble" role="status">
+                어울리는 음악을 찾고 있어요…
+              </p>
+            </div>
+          </div>
         )}
         {error && (
           <p role="alert" className="error-message">
-            {error} 입력창에서 다시 전송할 수 있습니다.
+            {error} 적어둔 내용을 확인하고 다시 보내 주세요.
           </p>
         )}
         <div ref={bottomRef} />
@@ -411,7 +436,7 @@ export default function ChatbotPage() {
             <div className="voice-error-actions">
               {voice.canRetry && (
                 <button type="button" onClick={voice.retryTranscription}>
-                  전사 다시 시도
+                  음성 변환 다시 시도
                 </button>
               )}
               <button type="button" onClick={() => void voice.startRecording()}>
@@ -442,13 +467,13 @@ export default function ChatbotPage() {
             onUsable={(id, url, confirmedAt) => void handleImageUsable(id, url, confirmedAt)}
           />
           <label className="sr-only" htmlFor="prompt">
-            추천받고 싶은 상황
+            음악을 찾고 싶은 순간
           </label>
           <div className="prompt-field">
             <textarea
               ref={inputRef}
               id="prompt"
-              placeholder="메시지를 입력하세요…"
+              placeholder="지금 분위기는?"
               rows={1}
               maxLength={MAX_PROMPT_LENGTH}
               aria-describedby="prompt-count prompt-limit-message"
@@ -496,7 +521,7 @@ export default function ChatbotPage() {
               isPromptTooLong ||
               !prompt.trim()
             }
-            aria-label="추천 요청 보내기"
+            aria-label="음악 찾기 요청 보내기"
           >
             <img
               src="/icons/chatbot/Arrow-up.svg"

@@ -69,11 +69,17 @@ function MarqueeText({ text, className }: { text: string; className: string }) {
 
 interface Props {
   recommendation: Recommendation;
+  intro?: string;
   activePreview: string | null;
   onPreviewChange: (key: string | null) => void;
 }
 
-export function RecommendationCards({ recommendation, activePreview, onPreviewChange }: Props) {
+export function RecommendationCards({
+  recommendation,
+  intro,
+  activePreview,
+  onPreviewChange,
+}: Props) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [error, setError] = useState('');
 
@@ -125,8 +131,9 @@ export function RecommendationCards({ recommendation, activePreview, onPreviewCh
   if (recommendation.items.length === 0) {
     return (
       <section className="recommendation-bubble" aria-label="추천 음악 없음">
-        <p className="recommendation-intro">조건에 맞는 추천곡을 찾지 못했어요.</p>
-        <p className="sample-notice">다른 분위기나 상황으로 다시 요청해 주세요.</p>
+        {intro?.trim() && <p className="recommendation-intro">{intro}</p>}
+        <p className="recommendation-intro">어울리는 곡을 아직 찾지 못했어요.</p>
+        <p className="sample-notice">장소나 기분을 조금 더 들려주시면 다시 골라볼게요.</p>
       </section>
     );
   }
@@ -137,9 +144,11 @@ export function RecommendationCards({ recommendation, activePreview, onPreviewCh
       aria-label={`추천 음악 ${recommendation.items.length}곡`}
     >
       <p className="recommendation-intro">
-        {recommendation.items.length < 5
-          ? `추천곡 ${recommendation.items.length}곡을 준비했어요.`
-          : '이런 곡은 어떠세요?'}
+        {intro?.trim()
+          ? intro
+          : recommendation.items.length < 5
+            ? `추천곡 ${recommendation.items.length}곡을 준비했어요.`
+            : '오늘의 순간에 이 곡들은 어때요?'}
       </p>
       <ol className="music-list">
         {recommendation.items.map(({ rank_no, music }) => {

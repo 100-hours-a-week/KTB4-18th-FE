@@ -13,5 +13,6 @@ export function formatMusicRecordDate(value: Date | string | null | undefined): 
     hourCycle: 'h12',
   }).formatToParts(date);
   const part = (type: string) => parts.find((entry) => entry.type === type)?.value ?? '';
-  return `${part('year')}.${part('month')}.${part('day')}. ${part('dayPeriod')} ${part('hour')}:${part('minute')}`;
+  const dayPeriod = part('dayPeriod').replace('AM', '오전').replace('PM', '오후');
+  return `${part('year')}.${part('month')}.${part('day')}. ${dayPeriod} ${part('hour')}:${part('minute')}`;
 }

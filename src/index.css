@@ -1,2 +1,4 @@
 @import './shared/styles/tailwind.css';
 @import '@seed-design/css/all.css';
+@import './shared/styles/mobile-shell.css';
+@import './shared/styles/music-diary.css';

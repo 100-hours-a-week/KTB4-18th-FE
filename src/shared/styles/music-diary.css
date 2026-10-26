@@ -1,0 +1,1370 @@
+:root {
+  color-scheme: light;
+  --diary-paper: #ffffff;
+  --diary-canvas: #e6ede8;
+  --diary-tint: var(--color-brand-50);
+  --diary-wash: #f5f8f6;
+  --diary-ink: #16201a;
+  --diary-line: #cbd6cf;
+  --diary-shadow: 0 3px 12px rgb(22 32 26 / 5%);
+  --font-editorial: var(--font-sans);
+  --record-black: #131a16;
+  --record-groove: #33403a;
+  --record-highlight: #98a79e;
+  --record-label: var(--color-brand-400);
+  --record-on-black: #ffffff;
+  --record-muted-on-black: #c3cec7;
+  --record-surface: #f1f5f2;
+  --record-vinyl:
+    radial-gradient(
+      circle,
+      var(--record-on-black) 0 2%,
+      var(--record-label) 2.5% 26%,
+      transparent 26.5%
+    ),
+    repeating-radial-gradient(
+      circle,
+      var(--record-black) 0 2px,
+      var(--record-groove) 2.5px 3px,
+      var(--record-black) 3.5px 5px
+    );
+  --seed-color-bg-layer-default: var(--color-bg-primary);
+  --seed-color-bg-layer-floating: var(--color-bg-secondary);
+  --seed-color-bg-layer-floating-pressed: var(--color-bg-tertiary);
+  --seed-color-bg-overlay: rgb(22 32 26 / 32%);
+  --seed-color-bg-neutral-weak: var(--color-bg-tertiary);
+  --seed-color-bg-neutral-weak-pressed: var(--color-bg-forty);
+  --seed-color-bg-neutral-weak-alpha: rgb(22 32 26 / 6%);
+  --seed-color-bg-neutral-inverted: var(--color-bg-interactive-inverse);
+  --seed-color-bg-neutral-inverted-pressed: var(--color-bg-interactive-primary-press);
+  --seed-color-bg-brand-solid: var(--color-bg-interactive-primary);
+  --seed-color-bg-brand-solid-pressed: var(--color-bg-interactive-primary-press);
+  --seed-color-bg-disabled: var(--color-bg-disabled);
+  --seed-color-bg-transparent-pressed: rgb(22 32 26 / 6%);
+  --seed-color-fg-neutral: var(--color-text-primary);
+  --seed-color-fg-neutral-muted: var(--color-text-secondary);
+  --seed-color-fg-neutral-subtle: var(--color-text-tertiary);
+  --seed-color-fg-neutral-inverted: var(--color-text-interactive-inverse);
+  --seed-color-fg-brand: var(--color-text-interactive-primary);
+  --seed-color-fg-critical: var(--color-text-error);
+  --seed-color-fg-disabled: var(--color-text-disabled);
+  --seed-color-fg-placeholder: var(--color-text-tertiary);
+  --seed-color-stroke-neutral-muted: var(--color-border-tertiary);
+  --seed-color-stroke-focus-ring: var(--color-border-interactive-primary);
+}
+
+.vinyl-disc,
+.gnb__record-disc {
+  display: block;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--record-black);
+  border-radius: 50%;
+  background: var(--record-vinyl);
+}
+
+body {
+  margin: 0;
+  background: var(--diary-canvas);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  scrollbar-color: var(--color-border-secondary) var(--color-bg-primary);
+}
+
+::selection {
+  background: var(--diary-tint);
+  color: var(--diary-ink);
+}
+
+body
+  :is(
+    .main-page,
+    .chat-app,
+    .mypage-screen,
+    .music-page,
+    .signup-shell,
+    .chat-image-page,
+    .chat-entry-shell
+  ) {
+  border-inline: 0;
+  background-color: var(--color-bg-primary);
+}
+
+body .main-page--map {
+  padding-inline: 24px;
+  padding-bottom: calc(104px + env(safe-area-inset-bottom));
+  background: var(--color-bg-primary);
+}
+
+body .main-header {
+  min-height: 100px;
+  flex-basis: 100px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--color-border-tertiary);
+  gap: 12px;
+}
+
+.main-header__identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+.main-header__copy {
+  display: grid;
+  gap: 3px;
+}
+.main-header .brand-mark {
+  width: 26px;
+  height: 34px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.main-header .brand-mark::before {
+  width: 25px;
+  height: 25px;
+  background: var(--color-text-primary);
+}
+.main-page .main-header__brand {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 32px;
+  letter-spacing: -0.045em;
+}
+.brand-wordmark {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--color-text-secondary);
+  letter-spacing: -0.015em;
+  word-break: keep-all;
+}
+.brand-tagline {
+  margin: 0;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--color-text-secondary);
+  letter-spacing: -0.025em;
+}
+.map-caption {
+  display: flex;
+  padding: 18px 0 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.map-caption h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  letter-spacing: -0.025em;
+  color: var(--color-text-secondary);
+}
+.main-page--intro .map-caption {
+  opacity: 0;
+}
+.main-page .zone-map__canvas {
+  filter: none;
+}
+.main-page .zone-map__dot {
+  fill: #8a988f;
+}
+.main-page .map-morph__dots {
+  --map-dot-color: #8a988f;
+}
+.main-page .zone-map__notice {
+  left: 0;
+  right: auto;
+  max-width: calc(100% - 124px);
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 6px;
+  background: var(--diary-paper);
+  font-size: 11px;
+  line-height: 17px;
+}
+
+.gnb .gnb__surface {
+  height: calc(80px + env(safe-area-inset-bottom));
+  margin: 0 12px 10px;
+  padding: 4px 6px calc(4px + env(safe-area-inset-bottom));
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 16px;
+  background: var(--diary-paper);
+  box-shadow: 0 4px 24px rgb(22 32 26 / 7%);
+  backdrop-filter: none;
+}
+.gnb .gnb__item {
+  min-height: 52px;
+  gap: 5px;
+  border-radius: 8px;
+  color: var(--color-text-secondary);
+  letter-spacing: -0.035em;
+  transition: background-color 160ms ease;
+}
+.gnb .gnb__item--active {
+  background: transparent;
+  color: var(--color-text-interactive-primary);
+}
+.gnb .gnb__item--active span {
+  color: inherit;
+}
+.gnb__icon {
+  display: block;
+  width: 21px;
+  height: 21px;
+  background: currentColor;
+  mask-position: center;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+}
+.gnb .gnb__create {
+  display: flex;
+  width: 56px;
+  height: 70px;
+  padding: 0;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-primary);
+  box-shadow: none;
+}
+
+.gnb__record-disc {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  color: var(--record-on-black);
+}
+.gnb__create .gnb__record-disc svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.7;
+}
+.gnb__create-label {
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 16px;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.gnb__create:focus-visible {
+  outline: 2px solid var(--color-border-interactive-primary);
+  outline-offset: 2px;
+}
+.gnb__create:active .gnb__record-disc {
+  opacity: 0.75;
+}
+
+body .chatbot-floating-button {
+  box-sizing: border-box;
+  display: flex;
+  width: 124px;
+  height: 52px;
+  min-width: 124px;
+  min-height: 52px;
+  padding: 6px 12px 6px 7px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 26px;
+  background: var(--diary-paper);
+  color: var(--color-text-primary);
+  box-shadow: var(--diary-shadow);
+  text-decoration: none;
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+.chatbot-floating-button .vinyl-disc {
+  width: 34px;
+  height: 34px;
+}
+.chatbot-floating-button__action {
+  color: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 20px;
+  white-space: nowrap;
+}
+.chatbot-floating-button:focus-visible {
+  outline: 3px solid var(--color-border-interactive-primary);
+  outline-offset: 4px;
+}
+body .chatbot-floating-button:active {
+  background: var(--diary-tint);
+  box-shadow: none;
+}
+
+.diary-eyebrow,
+.diary-section-label {
+  display: block;
+  color: var(--color-text-secondary);
+  font: 500 11px/18px var(--font-sans);
+  letter-spacing: 0.02em;
+}
+.diary-section-label {
+  margin: 0 0 10px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  letter-spacing: -0.025em;
+}
+.diary-page-intro {
+  margin-bottom: 24px;
+}
+.diary-page-intro h2 {
+  margin: 7px 0 6px;
+  color: var(--color-text-primary);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: -0.055em;
+  word-break: keep-all;
+}
+.diary-page-intro p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.8;
+  word-break: keep-all;
+}
+.diary-empty-action {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  margin-top: 16px;
+  border: 1px solid var(--color-border-primary);
+  border-radius: 8px;
+  background: var(--diary-tint);
+  color: var(--diary-ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.diary-login-intro {
+  margin-bottom: 24px;
+  text-align: center;
+}
+.diary-login-intro h2 {
+  margin: 7px 0 0;
+  color: var(--color-text-primary);
+  font-size: 18px;
+  line-height: 28px;
+  font-weight: 650;
+  letter-spacing: -0.05em;
+}
+
+body .login-layout {
+  box-sizing: border-box;
+  position: relative;
+  inset: auto;
+  width: 100%;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 40px 28px;
+  justify-content: center;
+  gap: 28px;
+  transform: none;
+}
+.login-layout .login-brand {
+  display: flex;
+  width: 100%;
+  height: auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  opacity: 1;
+}
+.login-brand .login-symbol-grid {
+  position: static;
+  width: 70px;
+  height: 70px;
+}
+.login-brand .login-symbol-frame {
+  position: static;
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 16px;
+  background: var(--diary-tint);
+  box-shadow: var(--diary-shadow);
+  transform: none;
+}
+.login-brand .login-symbol {
+  width: 36px;
+  height: 36px;
+}
+.login-brand-copy {
+  display: grid;
+  gap: 8px;
+  text-align: center;
+}
+.login-brand .login-wordmark {
+  position: static;
+  width: auto;
+  margin: 0;
+  font: 750 32px/40px var(--font-sans);
+  letter-spacing: -0.065em;
+}
+.login-brand .brand-tagline {
+  font-size: 13px;
+  line-height: 20px;
+}
+.login-layout .login-body {
+  padding: 0;
+}
+.login-body .login-divider {
+  color: var(--color-text-secondary);
+}
+.login-divider::before,
+.login-divider::after {
+  opacity: 0.15;
+}
+.login-body .login-form {
+  margin-top: 20px;
+  gap: 12px;
+}
+.login-form .login-input-wrap,
+.signup-form .signup-input-wrap {
+  border-color: var(--color-border-primary);
+  border-radius: 9px;
+  background: var(--diary-paper);
+}
+.login-form .login-submit {
+  margin-top: 8px;
+  border-radius: 9px;
+}
+.signup-form > .diary-page-intro {
+  padding: 20px 0 8px;
+  margin-bottom: 0;
+}
+.signup-form .signup-input-wrap.signup-terms {
+  background: var(--diary-paper);
+}
+
+body .chat-app {
+  background: var(--diary-paper);
+}
+body .chat-app .chat-header {
+  flex-basis: calc(64px + env(safe-area-inset-top));
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  padding-top: env(safe-area-inset-top);
+  border-bottom: 1px solid var(--color-border-secondary);
+  background: var(--diary-paper);
+}
+body .chat-header-back {
+  width: 44px;
+  height: 44px;
+}
+body .chat-app .chat-header h1,
+body .music-page .music-page-header h1,
+body .mypage-screen .mypage-header h1 {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+}
+.chat-app .chat-content {
+  padding: 20px 16px 24px;
+  background: var(--color-bg-primary);
+}
+.chat-app .date-label {
+  height: auto;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+  line-height: 18px;
+}
+.chat-app .assistant-group {
+  width: min(100%, 360px);
+}
+.chat-app :is(.welcome-bubble, .assistant-text-bubble, .recommendation-bubble),
+.chat-entry-shell .region-chat-bubble {
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 5px 12px 12px;
+  background: var(--diary-paper);
+  box-shadow: 2px 2px 0 rgb(22 32 26 / 4%);
+}
+.chat-app .welcome-bubble {
+  box-sizing: border-box;
+  padding: 20px;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 12px;
+  background: var(--record-surface);
+  color: var(--color-text-primary);
+  box-shadow: none;
+}
+.chat-app .welcome-bubble > p {
+  color: var(--color-text-primary);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.8;
+  letter-spacing: -0.01em;
+  word-break: keep-all;
+}
+.chat-app .welcome-bubble .welcome-hint {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border-secondary);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.7;
+}
+.welcome-icon {
+  display: block;
+  margin-bottom: 16px;
+}
+.welcome-icon .vinyl-disc {
+  width: 32px;
+  height: 32px;
+}
+.chat-app .assistant-response-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.chat-app .assistant-response-text + .assistant-response-text {
+  margin-top: 10px;
+}
+.chat-app .recommendation-intro {
+  white-space: pre-wrap;
+}
+.chat-app .user-bubble,
+.chat-entry-shell .region-chat-own .region-chat-bubble {
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 12px 5px 12px 12px;
+  background: var(--diary-tint);
+  color: var(--color-text-primary);
+}
+.chat-app .music-card,
+.music-page .music-result {
+  border-color: var(--color-border-secondary);
+  border-radius: 8px;
+  background: var(--color-bg-secondary);
+  box-shadow: none;
+}
+.chat-app .music-card {
+  padding: 12px 10px;
+}
+.chat-app .music-info img {
+  width: 48px;
+  height: 48px;
+  border-radius: 4px;
+}
+.chat-app .music-info h2 {
+  font-size: 14px;
+}
+.chat-app .music-copy p {
+  font-size: 12px;
+}
+.chat-app .input-area {
+  border-top: 1px solid var(--color-border-secondary);
+  background: var(--diary-paper);
+}
+.chat-app .input-bar textarea,
+.chat-entry-shell .region-chat-composer textarea {
+  border-color: var(--color-border-primary);
+  border-radius: 10px;
+  background: var(--color-bg-secondary);
+}
+.chat-app .send-button {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+  background: var(--color-bg-interactive-primary);
+}
+.chat-app .send-button:disabled {
+  background: var(--color-bg-disabled);
+}
+.chat-app .send-button:disabled img {
+  filter: brightness(0);
+  opacity: 0.35;
+}
+body .chat-image-entry {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+  margin-right: 8px;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 10px;
+  background: var(--record-surface);
+}
+.chat-app .preview-button {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 50%;
+}
+.chat-app .image-message-group .chat-image-message {
+  border: 5px solid var(--diary-paper);
+  border-radius: 5px;
+  box-shadow: var(--diary-shadow);
+}
+
+.chat-image-page .chat-image-page-header {
+  padding-top: env(safe-area-inset-top);
+  min-height: calc(64px + env(safe-area-inset-top));
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+}
+.chat-image-page .chat-image-page-header button {
+  width: 44px;
+  height: 44px;
+}
+.chat-image-page .chat-image-placeholder {
+  position: relative;
+  height: clamp(156px, 30dvh, 240px);
+  aspect-ratio: auto;
+  margin-bottom: 16px;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  background: var(--record-surface);
+}
+.chat-image-page .chat-image-placeholder img {
+  width: 56px;
+  height: 56px;
+  opacity: 0.65;
+}
+.chat-image-page .chat-image-empty-state h3 {
+  margin: 0 0 10px;
+  font-size: 23px;
+  font-weight: 650;
+  line-height: 1.45;
+  letter-spacing: -0.025em;
+  word-break: keep-all;
+}
+.chat-image-page .chat-image-empty-state p {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.chat-image-page .chat-image-review {
+  width: min(100%, 340px);
+  max-height: 34dvh;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  object-fit: cover;
+}
+.chat-image-page .chat-image-review-title {
+  margin: 20px 0 10px;
+  font-size: 23px;
+  font-weight: 650;
+  line-height: 1.45;
+  letter-spacing: -0.025em;
+  word-break: keep-all;
+  text-wrap: balance;
+}
+.chat-image-page .chat-image-review-description {
+  font-size: 14px;
+  line-height: 1.7;
+  word-break: keep-all;
+  text-wrap: pretty;
+}
+.chat-image-page .chat-image-page-actions {
+  gap: 16px;
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
+}
+.chat-image-page :is(.chat-image-primary, .chat-image-capture, .chat-image-secondary) {
+  border-radius: 9px;
+}
+.chat-image-page .chat-image-secondary {
+  border: 1px solid var(--color-border-secondary);
+  background: var(--diary-paper);
+}
+.chat-image-page :is(.chat-image-primary, .chat-image-capture) {
+  min-height: 48px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.chat-image-page .chat-image-capture {
+  background: var(--record-black);
+  color: var(--record-on-black);
+}
+.chat-image-page .chat-image-primary:not(:disabled) {
+  background: var(--color-bg-interactive-primary);
+  color: var(--color-text-interactive-inverse);
+}
+
+body .music-list-content {
+  padding: 24px 20px;
+}
+/* Record list reads like a streaming playlist: color header, large-cover track rows. */
+body .music-record-list-page .diary-page-intro {
+  margin: -24px -20px 16px;
+  padding: 40px 20px 20px;
+  background: linear-gradient(180deg, var(--color-brand-100) 0%, var(--color-bg-primary) 100%);
+}
+body .music-record-list-page .diary-page-intro .diary-eyebrow {
+  color: var(--color-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+body .music-record-list-page .diary-page-intro h2 {
+  margin: 6px 0 8px;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.05em;
+}
+body .music-record-list-page .record-list-count {
+  margin: 16px 0 12px;
+  padding: 0 2px 10px;
+  border-bottom: 1px solid var(--color-border-tertiary);
+}
+/* Each record is an album card: the cover sits on a wash of its own colors, details follow below. */
+body .music-record-list-page .record-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+body .music-record-list-page .record-card {
+  isolation: isolate;
+  display: grid;
+  height: auto;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'art'
+    'title'
+    'artist'
+    'place'
+    'meta';
+  align-content: start;
+  gap: 2px;
+  padding: 10px 10px 12px;
+  border: 0;
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--color-brand-800) 0%, var(--record-black) 100%);
+  box-shadow: 0 6px 16px rgb(22 32 26 / 16%);
+  color: var(--record-on-black);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+/* Scrim keeps text legible on any cover: light over the artwork, dark under the details. */
+body .music-record-list-page .record-card::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgb(19 26 22 / 15%) 0%,
+    rgb(19 26 22 / 55%) 60%,
+    rgb(19 26 22 / 85%) 100%
+  );
+  content: '';
+  pointer-events: none;
+}
+body .music-record-list-page .record-card .record-card-backdrop {
+  position: absolute;
+  z-index: -2;
+  top: -20%;
+  left: -20%;
+  width: 140%;
+  height: 140%;
+  border-radius: 0;
+  filter: blur(28px) saturate(1.5) brightness(0.75);
+  object-fit: cover;
+  pointer-events: none;
+}
+body .music-record-list-page .record-card-copy {
+  display: contents;
+}
+body .music-record-list-page :is(.record-cover, .record-cover-placeholder) {
+  grid-area: art;
+  width: 100%;
+  height: auto;
+  margin-bottom: 10px;
+  aspect-ratio: 1;
+  border: 0;
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 40%);
+}
+body .music-record-list-page .record-card-copy h2 {
+  display: -webkit-box;
+  grid-area: title;
+  overflow: hidden;
+  color: var(--record-on-black);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  letter-spacing: -0.03em;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+body .music-record-list-page .record-card-copy .record-artist {
+  grid-area: artist;
+  color: rgb(255 255 255 / 72%);
+  font-size: 12px;
+  line-height: 18px;
+}
+body .music-record-list-page .record-card-copy .record-location {
+  position: static;
+  grid-area: place;
+  width: auto;
+  margin-top: 4px;
+  color: rgb(255 255 255 / 80%);
+  font-size: 12px;
+  line-height: 18px;
+}
+body .music-record-list-page .record-card-copy .record-card-meta-row {
+  position: static;
+  grid-area: meta;
+  width: auto;
+  align-items: center;
+  justify-content: flex-start;
+}
+body .music-record-list-page .record-card-copy time {
+  margin: 0;
+  color: rgb(255 255 255 / 64%);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  letter-spacing: 0.01em;
+}
+body .music-record-list-page .record-select-indicator {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 22px;
+  height: 22px;
+}
+body .music-record-list-page .record-card.selected {
+  background: linear-gradient(180deg, var(--color-brand-800) 0%, var(--record-black) 100%);
+  box-shadow:
+    0 0 0 2px var(--color-bg-primary),
+    0 0 0 4px var(--color-brand-600);
+}
+body .music-record-list-page .record-card.selected .record-select-indicator {
+  background: var(--color-bg-interactive-primary);
+  box-shadow:
+    inset 0 0 0 6px var(--color-bg-interactive-primary),
+    inset 0 0 0 7px var(--color-text-interactive-inverse);
+}
+.music-page .music-record-region-filter-button {
+  min-height: 44px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-bg-tertiary);
+  font-weight: 600;
+}
+.music-page .music-record-region-filter-button[aria-pressed='true'] {
+  background: var(--color-bg-interactive-primary);
+  color: var(--color-text-interactive-inverse);
+}
+.music-page .music-empty {
+  padding: 28px 16px;
+  border: 1px dashed var(--color-border-secondary);
+  border-radius: 10px;
+  background: var(--diary-paper);
+  text-align: center;
+  line-height: 1.8;
+}
+.music-page .music-empty p {
+  margin: 6px 0;
+}
+.music-page .music-form input,
+.music-page .music-form textarea,
+.music-page .music-search {
+  border-radius: 9px;
+  background: var(--diary-paper);
+}
+body .music-page .music-selected-content {
+  padding: 16px;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 10px;
+  background: var(--diary-tint);
+  box-shadow: var(--diary-shadow);
+}
+/* Record detail opens like an album page: dark card washed with the cover's own colors. */
+body .music-detail-page .music-selected-content {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  gap: 4px 12px;
+  padding: 28px 20px 20px;
+  border: 0;
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--color-brand-800) 0%, var(--record-black) 100%);
+  box-shadow: 0 12px 32px rgb(22 32 26 / 18%);
+  color: var(--record-on-black);
+}
+body .music-detail-page .music-selected-content::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgb(18 18 18 / 0%) 0%,
+    rgb(18 18 18 / 45%) 50%,
+    rgb(18 18 18 / 90%) 100%
+  );
+  content: '';
+}
+body .music-detail-page .music-selected-content .music-hero-backdrop {
+  position: absolute;
+  z-index: -2;
+  top: -15%;
+  left: -15%;
+  width: 130%;
+  height: 130%;
+  aspect-ratio: auto;
+  border-radius: 0;
+  filter: blur(40px) saturate(1.3);
+  opacity: 0.85;
+  object-fit: cover;
+  pointer-events: none;
+}
+body
+  .music-detail-page
+  .music-selected-content
+  :is(img:not(.music-hero-backdrop), .music-cover-placeholder) {
+  width: min(100%, 260px);
+  margin-bottom: 16px;
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 45%);
+}
+body .music-detail-page .music-selected-content .music-hero-eyebrow {
+  margin: 0 0 2px;
+  color: rgb(255 255 255 / 80%);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}
+body .music-detail-page .music-selected-content strong {
+  color: var(--record-on-black);
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+body .music-detail-page .music-selected-content span {
+  color: rgb(255 255 255 / 72%);
+  font-size: 14px;
+  line-height: 20px;
+}
+body .music-detail-page .music-change-button {
+  align-self: end;
+  min-height: 36px;
+  padding: 7px 14px;
+  border: 1px solid rgb(255 255 255 / 55%);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--record-on-black);
+  font-size: 13px;
+  font-weight: 600;
+}
+body .music-detail-page .music-change-button:disabled {
+  opacity: 0.45;
+}
+body .music-detail-page .music-change-button:focus-visible {
+  outline: 2px solid var(--record-on-black);
+  outline-offset: 2px;
+}
+.music-page :is(.music-primary-button, .music-secondary-button) {
+  border-radius: 8px;
+}
+.music-page .music-primary-button {
+  box-shadow: none;
+}
+
+body .mypage-screen .mypage-summary {
+  margin-block: 12px 28px;
+  padding: 20px 14px;
+  justify-content: flex-start;
+  gap: 12px;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 12px;
+  background: var(--diary-tint);
+  box-shadow: var(--diary-shadow);
+}
+body .mypage-screen .mypage-navigation {
+  padding: 4px 12px;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 10px;
+  background: var(--diary-paper);
+}
+.mypage-navigation .mypage-navigation-row {
+  min-height: 60px;
+  padding-inline: 4px;
+  border: 0;
+  border-bottom: 1px solid var(--color-border-tertiary);
+  border-radius: 0;
+  background: transparent;
+}
+.mypage-navigation .mypage-navigation-row:last-child {
+  border-bottom: 0;
+}
+.mypage-screen .mypage-avatar {
+  border: 1px solid var(--color-border-secondary);
+  box-shadow: none;
+  background: var(--diary-paper);
+}
+.mypage-screen .mypage-summary .mypage-avatar {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+}
+.mypage-screen .mypage-summary > div:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.mypage-screen .mypage-summary > div:nth-child(2) strong {
+  font-size: 15px;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.mypage-screen .mypage-summary .mypage-song-count {
+  min-width: 52px;
+  padding-left: 12px;
+  flex: 0 0 52px;
+}
+.mypage-screen .mypage-song-count span {
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.chat-entry-shell .chat-entry-header {
+  height: 64px;
+  border-bottom: 1px solid var(--color-border-secondary);
+  background: var(--diary-paper);
+}
+.chat-entry-shell .chat-entry-header h1 {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+}
+.chat-entry-shell .chat-entry-back {
+  width: 44px;
+  height: 44px;
+}
+.chat-entry-shell .region-chat-status {
+  background: var(--record-surface);
+}
+.chat-entry-shell .region-chat-status p:not(.chat-entry-visually-hidden) {
+  flex: 1 1 0;
+  min-width: 0;
+  color: var(--color-text-secondary);
+  word-break: keep-all;
+}
+.chat-entry-shell
+  :is(.region-chat-status button:not(.chat-entry-exit), .region-chat-pending button) {
+  min-height: 40px;
+  padding: 8px 14px;
+  border-color: var(--color-border-secondary);
+  background: var(--diary-paper);
+  font-weight: 600;
+}
+.chat-entry-shell .region-chat-status button:not(.chat-entry-exit) {
+  margin-right: 20px;
+}
+.chat-entry-shell .region-chat-composer {
+  padding: 16px 16px max(16px, env(safe-area-inset-bottom));
+  background: var(--diary-paper);
+}
+.chat-entry-shell .region-chat-composer .region-chat-send {
+  width: 44px;
+  height: 44px;
+  margin-bottom: 0;
+  background: var(--color-bg-interactive-primary);
+}
+.chat-entry-shell .region-chat-composer .region-chat-send:disabled {
+  background: var(--color-bg-disabled);
+}
+.chat-entry-shell .region-chat-send:disabled img {
+  filter: brightness(0);
+  opacity: 0.35;
+}
+
+.desktop-intro__brand {
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: -0.035em;
+}
+.desktop-intro__brand .brand-mark {
+  width: 32px;
+  height: 36px;
+}
+.desktop-intro__brand .brand-mark::before {
+  width: 27px;
+  height: 27px;
+}
+.desktop-intro__content {
+  padding-block: 24px;
+}
+.desktop-intro__eyebrow {
+  display: flex;
+  margin: 0 0 22px;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  letter-spacing: 0.035em;
+}
+.desktop-intro__eyebrow::before {
+  width: 24px;
+  height: 1px;
+  background: var(--color-text-interactive-primary);
+  content: '';
+}
+.desktop-intro__headline {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: clamp(34px, 3.2vw, 46px);
+  font-weight: 450;
+  letter-spacing: -0.055em;
+  line-height: 1.25;
+  word-break: keep-all;
+  text-wrap: balance;
+}
+.desktop-intro__headline > span:last-child {
+  font-weight: 750;
+}
+.desktop-intro__headline em {
+  color: var(--color-text-interactive-primary);
+  font-style: normal;
+}
+.desktop-intro__description {
+  margin-top: 26px;
+  font-size: 13px;
+  line-height: 1.9;
+  letter-spacing: -0.015em;
+}
+.desktop-intro__note {
+  box-sizing: border-box;
+  gap: 18px;
+  margin-top: 34px;
+  padding: 24px 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-border-secondary);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.desktop-intro__record {
+  position: relative;
+  width: 156px;
+  height: 128px;
+  flex: 0 0 156px;
+}
+.desktop-intro__disc {
+  position: absolute;
+  top: 12px;
+  left: 48px;
+  width: 104px;
+  height: 104px;
+  box-shadow: 0 8px 16px rgb(22 32 26 / 12%);
+}
+.desktop-intro__sleeve {
+  position: absolute;
+  top: 8px;
+  left: 4px;
+  display: grid;
+  width: 106px;
+  height: 106px;
+  place-items: center;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 2px;
+  background: var(--color-bg-primary);
+  box-shadow: 0 6px 12px rgb(22 32 26 / 7%);
+  transform: rotate(-6deg);
+}
+.desktop-intro__sleeve .brand-mark {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 8px;
+}
+.desktop-intro__sleeve .brand-mark::before {
+  width: 27px;
+  height: 27px;
+}
+.desktop-intro__sleeve-label {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  color: var(--color-text-secondary);
+  font: 7px/10px var(--font-sans);
+  letter-spacing: 0.08em;
+}
+.desktop-intro__sleeve::after {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 10px;
+  height: 2px;
+  background: var(--color-text-interactive-primary);
+  content: '';
+}
+.desktop-intro__note p {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.9;
+  letter-spacing: -0.015em;
+}
+.desktop-intro__note p span {
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+.desktop-intro__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 18px;
+  border-color: var(--color-border-secondary);
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0.09em;
+}
+@media (max-height: 650px) {
+  .desktop-intro__note {
+    display: none;
+  }
+}
+
+.chat-header-back img,
+.chat-entry-back img,
+.music-back img,
+.music-list-back img,
+.mypage-icon-button img,
+.mypage-navigation-row > img,
+.mypage-avatar-placeholder img,
+.mypage-password-visibility img,
+.mypage-recommendation-play img,
+.password-toggle img,
+.signup-back img,
+.signup-password-visibility img,
+.chat-image-page-header button img,
+.preview-button img,
+.music-preview-button img {
+  filter: none;
+}
+.chat-app .prompt-field .voice-button img,
+.chat-image-entry img,
+.chat-image-secondary img {
+  filter: brightness(0);
+}
+.send-button img,
+.region-chat-send img,
+.chat-image-capture img {
+  filter: none;
+}
+
+@media (hover: hover) {
+  body .chatbot-floating-button:hover {
+    background: var(--diary-tint);
+  }
+  .gnb__item:hover,
+  .mypage-navigation-row:hover {
+    background: var(--color-bg-tertiary);
+  }
+  .diary-empty-action:hover {
+    background: var(--diary-wash);
+  }
+  body .music-record-list-page .record-card:not(.selected):hover {
+    box-shadow: 0 10px 22px rgb(22 32 26 / 22%);
+    transform: translateY(-2px);
+  }
+  body .music-detail-page .music-change-button:not(:disabled):hover {
+    border-color: var(--record-on-black);
+    background: rgb(255 255 255 / 8%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  body .chatbot-floating-button,
+  body .music-record-list-page .record-card,
+  .gnb .gnb__item {
+    transition: none;
+  }
+  body .music-record-list-page .record-card:not(.selected):hover {
+    transform: none;
+  }
+}
+@media (max-width: 359px) {
+  body .main-page--map {
+    padding-inline: 16px;
+  }
+  .main-page .main-header__brand {
+    font-size: 24px;
+  }
+  .main-header__record {
+    width: 44px;
+    height: 44px;
+  }
+  .chat-app .welcome-bubble {
+    padding: 20px 18px;
+  }
+  .chat-entry-shell .region-chat-composer textarea::placeholder {
+    font-size: 13px;
+  }
+  body .music-record-list-page .record-card {
+    padding: 8px 8px 10px;
+  }
+}
+@media (max-height: 520px) {
+  body .main-header {
+    min-height: 68px;
+    flex-basis: 68px;
+    padding-block: 8px;
+  }
+  .map-caption {
+    padding-block: 8px 4px;
+  }
+  body .chatbot-floating-button {
+    width: 124px;
+    height: 48px;
+    min-width: 124px;
+    min-height: 48px;
+    padding: 8px 14px;
+    gap: 8px;
+  }
+  .desktop-intro__content {
+    padding-block: 12px;
+  }
+  .desktop-intro__eyebrow {
+    margin-bottom: 12px;
+  }
+  .desktop-intro__headline {
+    gap: 6px;
+    font-size: 32px;
+  }
+  .desktop-intro__description {
+    margin-top: 16px;
+    font-size: 12px;
+  }
+  .desktop-intro__footer {
+    display: none;
+  }
+}
