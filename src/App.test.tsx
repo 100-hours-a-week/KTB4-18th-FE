@@ -124,7 +124,7 @@ vi.mock('./features/mypage/api/mypageApi', async (importOriginal) => ({
   withdrawMyAccount: vi.fn(),
 }));
 vi.mock('./features/chat-entry/components/ChatEntryPage', () => ({
-  ChatEntryPage: () => <h1>우리 지역 채팅방</h1>,
+  ChatEntryPage: () => <h1>동네 이야기</h1>,
 }));
 
 beforeEach(() => {
@@ -831,7 +831,9 @@ describe('추천 결과 없음 안내', () => {
     await user.click(screen.getByRole('button', { name: '추천 요청 보내기' }));
 
     expect(await screen.findByText('조건에 맞는 추천곡을 찾지 못했어요.')).toBeInTheDocument();
-    expect(screen.getByText('다른 분위기나 상황으로 다시 요청해 주세요.')).toBeInTheDocument();
+    expect(
+      screen.getByText('다른 분위기나 상황으로 다시 요청해 주세요.'),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/입력창에서 다시 전송할 수 있습니다/)).not.toBeInTheDocument();
   });
 });
@@ -948,7 +950,7 @@ describe('로그인과 회원가입 화면 연결', () => {
 
     render(<App />);
 
-    expect(await screen.findByRole('heading', { name: '우리 지역 채팅방' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '동네 이야기' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/chat');
   });
 
@@ -1190,7 +1192,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
     await user.click(screen.getByRole('button', { name: '로그인' }));
 
-    expect(await screen.findByRole('heading', { name: '우리 지역 채팅방' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '동네 이야기' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/chat');
     expect(window.location.search).toBe('?room=music');
     expect(window.location.hash).toBe('#latest');
@@ -1220,8 +1222,8 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.type(await screen.findByLabelText('이메일'), 'login.test@example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
     await user.click(screen.getByRole('button', { name: '로그인' }));
-    await screen.findByRole('button', { name: '마이' });
-    await user.click(screen.getByRole('button', { name: '마이' }));
+    await screen.findByRole('button', { name: '내 공간' });
+    await user.click(screen.getByRole('button', { name: '내 공간' }));
     expect(window.location.pathname).toBe('/my');
     const queueStatusReadsBeforeLogout = vi.mocked(getLoginQueueStatus).mock.calls.length;
     await user.click(await screen.findByRole('button', { name: '로그아웃' }));
@@ -1284,7 +1286,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     expect(await screen.findByRole('heading', { name: '음악 지도' })).toBeInTheDocument();
     expect(getAccessToken()).toBe('test-access-token');
 
-    const chatbotLink = screen.getByRole('link', { name: '음악 추천 챗봇 열기' });
+    const chatbotLink = screen.getByRole('link', { name: '음악 찾기 열기' });
     await user.click(chatbotLink);
     expect(await screen.findByRole('heading', { name: '음악 추천 챗봇' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/chatbot');
@@ -1373,9 +1375,9 @@ describe('로그인과 회원가입 화면 연결', () => {
     window.history.replaceState(null, '', '/');
     const user = userEvent.setup();
     render(<App />);
-    await screen.findByRole('button', { name: '기록' });
+    await screen.findByRole('button', { name: '음악 기록' });
     expect(getAccessToken()).toBe('test-token');
-    await user.click(screen.getByRole('button', { name: '기록' }));
+    await user.click(screen.getByRole('button', { name: '음악 기록' }));
     expect(await screen.findByRole('heading', { name: '머문음' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/login');
     expect(new URLSearchParams(window.location.search).get('returnTo')).toBe('/music-records');
@@ -1391,9 +1393,9 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.type(await screen.findByLabelText('이메일'), 'login.test@example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
     await user.click(screen.getByRole('button', { name: '로그인' }));
-    await user.click(await screen.findByRole('button', { name: '채팅' }));
+    await user.click(await screen.findByRole('button', { name: '동네 이야기' }));
 
-    expect(await screen.findByRole('heading', { name: '우리 지역 채팅방' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '동네 이야기' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/chat');
   });
 
@@ -1417,7 +1419,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     expect(withdrawalItem).toHaveAttribute('aria-disabled', 'true');
     await user.click(withdrawalItem);
     expect(withdrawMyAccount).not.toHaveBeenCalled();
-    expect(screen.getByRole('heading', { name: '마이페이지' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '내 공간' })).toBeInTheDocument();
     expect(screen.queryByText('인증 상태를 갱신하고 있어요.')).not.toBeInTheDocument();
 
     await act(async () => {
@@ -1460,7 +1462,7 @@ describe('로그인과 회원가입 화면 연결', () => {
       await user.click(screen.getByRole('button', { name: '로그아웃' }));
 
       expect(await screen.findByText(message)).toBeInTheDocument();
-      expect(screen.getByRole('heading', { name: '마이페이지' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '내 공간' })).toBeInTheDocument();
       expect(getAccessToken()).not.toBeNull();
       await user.click(screen.getByRole('button', { name: '로그아웃' }));
       expect(logout).toHaveBeenCalledTimes(2);
@@ -1486,7 +1488,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(message);
     expect(screen.getByRole('button', { name: '다시 시도' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '로그인' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: '마이페이지' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '내 공간' })).not.toBeInTheDocument();
   });
 });
 

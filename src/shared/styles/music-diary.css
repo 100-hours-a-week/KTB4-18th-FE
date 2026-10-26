@@ -91,6 +91,51 @@ body
   border-inline: 0;
   background-color: var(--color-bg-primary);
 }
+
+body .main-page--map {
+  padding-inline: 24px;
+  padding-bottom: calc(104px + env(safe-area-inset-bottom));
+  background: var(--color-bg-primary);
+}
+
+body .main-header {
+  min-height: 100px;
+  flex-basis: 100px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--color-border-tertiary);
+  gap: 12px;
+}
+
+.main-header__identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+.main-header__copy {
+  display: grid;
+  gap: 3px;
+}
+.main-header .brand-mark {
+  width: 26px;
+  height: 34px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.main-header .brand-mark::before {
+  width: 25px;
+  height: 25px;
+  background: var(--color-text-primary);
+}
+.main-page .main-header__brand {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 32px;
+  letter-spacing: -0.045em;
+}
 .brand-wordmark {
   font-family: var(--font-sans);
   font-size: 11px;
@@ -105,6 +150,163 @@ body
   line-height: 18px;
   color: var(--color-text-secondary);
   letter-spacing: -0.025em;
+}
+.map-caption {
+  display: flex;
+  padding: 18px 0 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.map-caption h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  letter-spacing: -0.025em;
+  color: var(--color-text-secondary);
+}
+.main-page--intro .map-caption {
+  opacity: 0;
+}
+.main-page .zone-map__canvas {
+  filter: none;
+}
+.main-page .zone-map__dot {
+  fill: #8a988f;
+}
+.main-page .map-morph__dots {
+  --map-dot-color: #8a988f;
+}
+.main-page .zone-map__notice {
+  left: 0;
+  right: auto;
+  max-width: calc(100% - 124px);
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 6px;
+  background: var(--diary-paper);
+  font-size: 11px;
+  line-height: 17px;
+}
+
+.gnb .gnb__surface {
+  height: calc(80px + env(safe-area-inset-bottom));
+  margin: 0 12px 10px;
+  padding: 4px 6px calc(4px + env(safe-area-inset-bottom));
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 16px;
+  background: var(--diary-paper);
+  box-shadow: 0 4px 24px rgb(22 32 26 / 7%);
+  backdrop-filter: none;
+}
+.gnb .gnb__item {
+  min-height: 52px;
+  gap: 5px;
+  border-radius: 8px;
+  color: var(--color-text-secondary);
+  letter-spacing: -0.035em;
+  transition: background-color 160ms ease;
+}
+.gnb .gnb__item--active {
+  background: transparent;
+  color: var(--color-text-interactive-primary);
+}
+.gnb .gnb__item--active span {
+  color: inherit;
+}
+.gnb__icon {
+  display: block;
+  width: 21px;
+  height: 21px;
+  background: currentColor;
+  mask-position: center;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+}
+.gnb .gnb__create {
+  display: flex;
+  width: 56px;
+  height: 70px;
+  padding: 0;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-primary);
+  box-shadow: none;
+}
+
+.gnb__record-disc {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  color: var(--record-on-black);
+}
+.gnb__create .gnb__record-disc svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.7;
+}
+.gnb__create-label {
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 16px;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.gnb__create:focus-visible {
+  outline: 2px solid var(--color-border-interactive-primary);
+  outline-offset: 2px;
+}
+.gnb__create:active .gnb__record-disc {
+  opacity: 0.75;
+}
+
+body .chatbot-floating-button {
+  box-sizing: border-box;
+  display: flex;
+  width: 124px;
+  height: 52px;
+  min-width: 124px;
+  min-height: 52px;
+  padding: 6px 12px 6px 7px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 26px;
+  background: var(--diary-paper);
+  color: var(--color-text-primary);
+  box-shadow: var(--diary-shadow);
+  text-decoration: none;
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+.chatbot-floating-button .vinyl-disc {
+  width: 34px;
+  height: 34px;
+}
+.chatbot-floating-button__action {
+  color: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 20px;
+  white-space: nowrap;
+}
+.chatbot-floating-button:focus-visible {
+  outline: 3px solid var(--color-border-interactive-primary);
+  outline-offset: 4px;
+}
+body .chatbot-floating-button:active {
+  background: var(--diary-tint);
+  box-shadow: none;
 }
 
 .diary-eyebrow,
@@ -154,6 +356,106 @@ body
   font-weight: 600;
   text-decoration: none;
 }
+.diary-login-intro {
+  margin-bottom: 24px;
+  text-align: center;
+}
+.diary-login-intro h2 {
+  margin: 7px 0 0;
+  color: var(--color-text-primary);
+  font-size: 18px;
+  line-height: 28px;
+  font-weight: 650;
+  letter-spacing: -0.05em;
+}
+
+body .login-layout {
+  box-sizing: border-box;
+  position: relative;
+  inset: auto;
+  width: 100%;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 40px 28px;
+  justify-content: center;
+  gap: 28px;
+  transform: none;
+}
+.login-layout .login-brand {
+  display: flex;
+  width: 100%;
+  height: auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  opacity: 1;
+}
+.login-brand .login-symbol-grid {
+  position: static;
+  width: 70px;
+  height: 70px;
+}
+.login-brand .login-symbol-frame {
+  position: static;
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 16px;
+  background: var(--diary-tint);
+  box-shadow: var(--diary-shadow);
+  transform: none;
+}
+.login-brand .login-symbol {
+  width: 36px;
+  height: 36px;
+}
+.login-brand-copy {
+  display: grid;
+  gap: 8px;
+  text-align: center;
+}
+.login-brand .login-wordmark {
+  position: static;
+  width: auto;
+  margin: 0;
+  font: 750 32px/40px var(--font-sans);
+  letter-spacing: -0.065em;
+}
+.login-brand .brand-tagline {
+  font-size: 13px;
+  line-height: 20px;
+}
+.login-layout .login-body {
+  padding: 0;
+}
+.login-body .login-divider {
+  color: var(--color-text-secondary);
+}
+.login-divider::before,
+.login-divider::after {
+  opacity: 0.15;
+}
+.login-body .login-form {
+  margin-top: 20px;
+  gap: 12px;
+}
+.login-form .login-input-wrap,
+.signup-form .signup-input-wrap {
+  border-color: var(--color-border-primary);
+  border-radius: 9px;
+  background: var(--diary-paper);
+}
+.login-form .login-submit {
+  margin-top: 8px;
+  border-radius: 9px;
+}
+.signup-form > .diary-page-intro {
+  padding: 20px 0 8px;
+  margin-bottom: 0;
+}
+.signup-form .signup-input-wrap.signup-terms {
+  background: var(--diary-paper);
+}
 body .chat-app .chat-header h1,
 body .music-page .music-page-header h1,
 body .mypage-screen .mypage-header h1 {
@@ -192,6 +494,114 @@ body .mypage-screen .mypage-header h1 {
 /* Each record is an album card: the cover sits on a wash of its own colors, details follow below. */
 /* Scrim keeps text legible on any cover: light over the artwork, dark under the details. */
 /* Record detail opens like an album page: dark card washed with the cover's own colors. */
+
+body .mypage-screen .mypage-summary {
+  margin-block: 12px 28px;
+  padding: 20px 14px;
+  justify-content: flex-start;
+  gap: 12px;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 12px;
+  background: var(--diary-tint);
+  box-shadow: var(--diary-shadow);
+}
+body .mypage-screen .mypage-navigation {
+  padding: 4px 12px;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 10px;
+  background: var(--diary-paper);
+}
+.mypage-navigation .mypage-navigation-row {
+  min-height: 60px;
+  padding-inline: 4px;
+  border: 0;
+  border-bottom: 1px solid var(--color-border-tertiary);
+  border-radius: 0;
+  background: transparent;
+}
+.mypage-navigation .mypage-navigation-row:last-child {
+  border-bottom: 0;
+}
+.mypage-screen .mypage-avatar {
+  border: 1px solid var(--color-border-secondary);
+  box-shadow: none;
+  background: var(--diary-paper);
+}
+.mypage-screen .mypage-summary .mypage-avatar {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+}
+.mypage-screen .mypage-summary > div:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.mypage-screen .mypage-summary > div:nth-child(2) strong {
+  font-size: 15px;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.mypage-screen .mypage-summary .mypage-song-count {
+  min-width: 52px;
+  padding-left: 12px;
+  flex: 0 0 52px;
+}
+.mypage-screen .mypage-song-count span {
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.chat-entry-shell .chat-entry-header {
+  height: 64px;
+  border-bottom: 1px solid var(--color-border-secondary);
+  background: var(--diary-paper);
+}
+.chat-entry-shell .chat-entry-header h1 {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+}
+.chat-entry-shell .chat-entry-back {
+  width: 44px;
+  height: 44px;
+}
+.chat-entry-shell .region-chat-status {
+  background: var(--record-surface);
+}
+.chat-entry-shell .region-chat-status p:not(.chat-entry-visually-hidden) {
+  flex: 1 1 0;
+  min-width: 0;
+  color: var(--color-text-secondary);
+  word-break: keep-all;
+}
+.chat-entry-shell
+  :is(.region-chat-status button:not(.chat-entry-exit), .region-chat-pending button) {
+  min-height: 40px;
+  padding: 8px 14px;
+  border-color: var(--color-border-secondary);
+  background: var(--diary-paper);
+  font-weight: 600;
+}
+.chat-entry-shell .region-chat-status button:not(.chat-entry-exit) {
+  margin-right: 20px;
+}
+.chat-entry-shell .region-chat-composer {
+  padding: 16px 16px max(16px, env(safe-area-inset-bottom));
+  background: var(--diary-paper);
+}
+.chat-entry-shell .region-chat-composer .region-chat-send {
+  width: 44px;
+  height: 44px;
+  margin-bottom: 0;
+  background: var(--color-bg-interactive-primary);
+}
+.chat-entry-shell .region-chat-composer .region-chat-send:disabled {
+  background: var(--color-bg-disabled);
+}
+.chat-entry-shell .region-chat-send:disabled img {
+  filter: brightness(0);
+  opacity: 0.35;
+}
 
 .desktop-intro__brand {
   gap: 8px;

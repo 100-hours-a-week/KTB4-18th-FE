@@ -142,7 +142,7 @@ export class ChatParticipation {
 
   private async enter(location: LocationResolution) {
     if (!this.ownsSession()) return;
-    this.update('joining', '현재 지역 채팅방에 입장하고 있어요.');
+    this.update('joining', '현재 지역 이야기방에 입장하고 있어요.');
     const room = await getRegionChatRoom(location.region.sigungu.regionId, this.controller.signal);
     await transition(async () => {
       if (!this.ownsSession()) return;
@@ -372,7 +372,7 @@ export class ChatParticipation {
       : Array.from(text).length > 300
         ? '메시지는 300자까지 보낼 수 있어요.'
         : this.status !== 'ready'
-          ? '채팅방 연결이 완료된 후 보내 주세요.'
+          ? '이야기방 연결이 완료된 후 보내 주세요.'
           : '';
     if (this.sendNotice) {
       this.update(this.status, this.statusMessage);
@@ -460,7 +460,7 @@ export class ChatParticipation {
         confirmation.region.sigungu.regionId !== candidate.region.sigungu.regionId
       )
         return;
-      this.update('joining', '지역 이동이 확인되어 새 채팅방으로 이동하고 있어요.');
+      this.update('joining', '지역 이동이 확인되어 새 이야기방으로 이동하고 있어요.');
       // Always leave the old room before any destination lookup, including failed/full destinations.
       await this.depart(confirmation.locationResolutionToken);
       await this.enter(confirmation);
@@ -480,7 +480,9 @@ export class ChatParticipation {
         : error instanceof ChatRoomRequestError && error.status === 409
           ? 'full'
           : 'error',
-      error instanceof Error ? error.message : '채팅방에 입장하지 못했습니다. 다시 시도해 주세요.',
+      error instanceof Error
+        ? error.message
+        : '이야기방에 입장하지 못했습니다. 다시 시도해 주세요.',
     );
   }
 

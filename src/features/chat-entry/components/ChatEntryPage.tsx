@@ -155,9 +155,15 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
             aria-label="뒤로가기"
             onClick={navigateBack}
           >
-            <img src="/icons/chat/back.svg" alt="" aria-hidden="true" width="24" height="24" />
+            <img
+              src="/icons/chatbot/Arrow-reft.svg"
+              alt=""
+              aria-hidden="true"
+              width="24"
+              height="24"
+            />
           </button>
-          <h1 id="chat-entry-title">{regionName ? `${regionName} 채팅방` : '우리 지역 채팅방'}</h1>
+          <h1 id="chat-entry-title">{regionName ? `${regionName} 이야기` : '동네 이야기'}</h1>
           <div className="chat-entry-capacity" aria-hidden="true">
             <span>{isLiveCount ? chat.connectedCount : '-'}</span>
             <span>/{capacity ?? '-'}</span>
@@ -198,7 +204,7 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
             </button>
           )}
         </div>
-        <section className="region-chat-panel" aria-label="실시간 지역 채팅">
+        <section className="region-chat-panel" aria-label="실시간 동네 이야기">
           <div
             ref={list}
             className="region-chat-messages"
@@ -209,7 +215,7 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
             }}
             tabIndex={0}
             role="log"
-            aria-label="채팅 메시지"
+            aria-label="동네 이야기 메시지"
             aria-live="polite"
           >
             {displayedMessages.map(
@@ -335,7 +341,7 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
                 rows={1}
                 value={draft}
                 disabled={!chat.isReady}
-                placeholder="메시지를 입력하세요..."
+                placeholder="이웃에게 들려줄 이야기를 적어 주세요"
                 aria-describedby="region-chat-count region-chat-notice"
                 onChange={(event) => {
                   setDraft(event.target.value);

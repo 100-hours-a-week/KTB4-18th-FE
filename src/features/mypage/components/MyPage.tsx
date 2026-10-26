@@ -261,7 +261,7 @@ function Header({
           className="mypage-icon-button"
           type="button"
           onClick={onBack}
-          aria-label="마이페이지로 돌아가기"
+          aria-label="내 공간으로 돌아가기"
         >
           <img src="/icons/chatbot/Arrow-reft.svg" alt="" aria-hidden="true" />
         </button>
@@ -339,7 +339,7 @@ function ProfilePage({
   return (
     <>
       <Header title="프로필 수정" onBack={back}>
-        <Menu.Root>
+        <Menu.Root placement="bottom-end">
           <Menu.Trigger className="mypage-icon-button" aria-label="더보기">
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <circle cx="5" cy="12" r="1.5" />
@@ -349,7 +349,7 @@ function ProfilePage({
           </Menu.Trigger>
           <Menu.Positioner>
             <Menu.Content>
-              <Menu.Item onClick={back}>마이페이지로 돌아가기</Menu.Item>
+              <Menu.Item onClick={back}>내 공간으로 돌아가기</Menu.Item>
             </Menu.Content>
           </Menu.Positioner>
         </Menu.Root>
@@ -1038,12 +1038,12 @@ function RecommendationPage({ back }: { back: () => void }) {
   const preloadIndex = lastPage.start + Math.max(0, Math.ceil(lastPage.length / 2) - 1);
   return (
     <>
-      <Header title="챗봇 추천" onBack={back} />
+      <Header title="지난 선곡" onBack={back} />
       <section
         className="mypage-page-content mypage-recommendations"
         aria-labelledby="recommendations-title"
       >
-        <h2 id="recommendations-title">챗봇 추천</h2>
+        <h2 id="recommendations-title">지난 선곡</h2>
         <p className="mypage-recommendations-caption">추천 받은 곡 {songs.length}곡</p>
         {songs.map((song, index) => {
           const trackKey = [song.music_id, song.date, index].join('-');
@@ -1120,7 +1120,7 @@ function RecommendationPage({ back }: { back: () => void }) {
           </p>
         )}
         {!songs.length && !isLoading && !error && (
-          <p className="mypage-loading">아직 챗봇으로 추천 받은 곡이 없어요.</p>
+          <p className="mypage-loading">아직 지난 선곡이 없어요.</p>
         )}
         {hasNext && !isLoading && (
           <button className="mypage-inline-button" type="button" onClick={() => void load(cursor)}>
@@ -1327,7 +1327,7 @@ export function MyPage({
       ) {
         setIsAuthenticated(false);
       } else if (current === version.current) {
-        setError(message(caught, '마이페이지 정보를 불러오지 못했어요.'));
+        setError(message(caught, '내 공간 정보를 불러오지 못했어요.'));
       }
       return;
     }
@@ -1360,7 +1360,7 @@ export function MyPage({
     return (
       <main className="mypage-screen">
         <section className="mypage-empty">
-          <h1>마이페이지</h1>
+          <h1>내 공간</h1>
           <p>내 정보와 음악 활동을 보려면 로그인이 필요해요.</p>
           <ActionButton type="button" variant="brandSolid" size="large" onClick={onLogin}>
             로그인
@@ -1402,8 +1402,8 @@ export function MyPage({
   else
     content = (
       <>
-        <Header title="마이페이지" onBack={onBack} className="mypage-overview-header">
-          <Menu.Root>
+        <Header title="내 공간" onBack={onBack} className="mypage-overview-header">
+          <Menu.Root placement="bottom-end">
             <Menu.Trigger
               className="mypage-icon-button"
               aria-label="더보기"
@@ -1435,7 +1435,7 @@ export function MyPage({
         )}
         {!profile ? (
           <p className="mypage-loading" role="status">
-            마이페이지를 불러오고 있어요.
+            내 공간을 불러오고 있어요.
           </p>
         ) : (
           <>
@@ -1458,7 +1458,7 @@ export function MyPage({
               </div>
               <div className="mypage-song-count">
                 <strong>{savedSongCount ?? '—'}</strong>
-                <span>저장한 곡</span>
+                <span>남긴 곡</span>
                 {savedSongError && (
                   <button
                     className="mypage-inline-button"
@@ -1475,13 +1475,14 @@ export function MyPage({
                 {savedSongError}
               </p>
             )}
-            <nav className="mypage-navigation" aria-label="마이페이지 메뉴">
+            <div className="diary-section-label">나의 음악과 설정</div>
+            <nav className="mypage-navigation" aria-label="내 공간 메뉴">
               <button
                 className="mypage-navigation-row"
                 type="button"
                 onClick={() => setView('recommendations')}
               >
-                <span>챗봇 추천</span>
+                <span>지난 선곡</span>
                 <img src="/icons/mypage/arrow-right.svg" alt="" />
               </button>
               <button

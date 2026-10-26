@@ -28,7 +28,7 @@ function readyState() {
     retryMessage: vi.fn().mockReturnValue(true),
     retryRecovery: vi.fn(),
     status: 'ready' as const,
-    message: '채팅방에 입장했어요.',
+    message: '이야기방에 입장했어요.',
     isReady: true,
     currentUserId: 7,
     presenceStatus: 'live' as const,
@@ -227,7 +227,7 @@ describe('ChatEntryPage', () => {
     render(<ChatEntryPage />);
     const button = screen.getByRole('button', { name: '뒤로가기' });
     expect(button).toHaveAttribute('type', 'button');
-    expect(button.querySelector('img')).toHaveAttribute('src', '/icons/chat/back.svg');
+    expect(button.querySelector('img')).toHaveAttribute('src', '/icons/chatbot/Arrow-reft.svg');
     fireEvent.click(button);
     expect(back).not.toHaveBeenCalled();
     expect(window.location.pathname).toBe('/');
@@ -236,7 +236,7 @@ describe('ChatEntryPage', () => {
   it.each([25, 1000])('서버 정원 %i명과 현재 인원을 표시하고 퇴장 버튼을 제공한다', (capacity) => {
     vi.mocked(useChatParticipation).mockReturnValue({
       status: 'ready',
-      message: '채팅방에 입장했어요.',
+      message: '이야기방에 입장했어요.',
       isReady: true,
       presenceStatus: 'live',
       connectedCount: capacity,
@@ -262,7 +262,7 @@ describe('ChatEntryPage', () => {
       },
     });
     render(<ChatEntryPage />);
-    expect(screen.getByRole('heading', { name: '성남시 분당구 채팅방' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '성남시 분당구 이야기' })).toBeInTheDocument();
     expect(screen.getByText(`정원 ${capacity}명`)).toBeInTheDocument();
     expect(screen.getByLabelText('현재 접속 인원')).toHaveTextContent(
       `${capacity} / ${capacity}명`,
@@ -327,7 +327,7 @@ describe('ChatEntryPage', () => {
     vi.mocked(useChatParticipation).mockReturnValue({ ...readyState(), activeRoom: null });
     render(<ChatEntryPage />);
     expect(
-      screen.getByRole('heading', { name: '우리 지역 채팅방' }).closest('header'),
+      screen.getByRole('heading', { name: '동네 이야기' }).closest('header'),
     ).toHaveTextContent('4/-');
     expect(screen.getByLabelText('현재 접속 인원')).toHaveTextContent('4 / -명');
     expect(screen.queryByText(/^정원 /)).not.toBeInTheDocument();
@@ -386,7 +386,7 @@ describe('ChatEntryPage', () => {
   it('제재 상태에서는 자동 또는 버튼 재입장을 제공하지 않는다', () => {
     vi.mocked(useChatParticipation).mockReturnValue({
       status: 'banned',
-      message: '채팅 이용이 제한되었습니다.',
+      message: '동네 이야기 이용이 제한되었습니다.',
       activeRoom: null,
       isReady: false,
       retry,

@@ -31,7 +31,7 @@ export function useChatParticipation() {
       void participation.stop().catch(() => undefined);
       setState({
         status: 'left',
-        message: '채팅방에서 퇴장했어요.',
+        message: '이야기방에서 퇴장했어요.',
         activeRoom: null,
         isReady: false,
       });
