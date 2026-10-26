@@ -148,7 +148,7 @@ describe('useChatRoomLocationRevalidation', () => {
     await act(async () => vi.advanceTimersByTimeAsync(15_000));
 
     expect(result.current.status).toBe('mismatch');
-    expect(result.current.message).toContain('기존 채팅방을 유지');
+    expect(result.current.message).toContain('기존 이야기방을 유지');
     expect(joinChatRoom).not.toHaveBeenCalled();
     expect(onMoved).not.toHaveBeenCalled();
   });
@@ -158,7 +158,7 @@ describe('useChatRoomLocationRevalidation', () => {
       .mockResolvedValueOnce(resolution(30, 'candidate-token'))
       .mockResolvedValueOnce(resolution(30, 'confirmed-token'));
     vi.mocked(joinChatRoom).mockRejectedValue(
-      new ChatRoomRequestError('현재 지역 채팅방의 정원이 가득 찼습니다.', 409),
+      new ChatRoomRequestError('현재 지역 이야기방의 정원이 가득 찼습니다.', 409),
     );
     const onMembershipEnded = vi.fn();
     const { result } = renderHook(() =>
@@ -173,7 +173,7 @@ describe('useChatRoomLocationRevalidation', () => {
     await act(async () => vi.advanceTimersByTimeAsync(15_000));
 
     expect(result.current.status).toBe('roomFull');
-    expect(result.current.message).toContain('기존 채팅방에서도 퇴장');
+    expect(result.current.message).toContain('기존 이야기방에서도 퇴장');
     expect(onMembershipEnded).toHaveBeenCalledOnce();
   });
 

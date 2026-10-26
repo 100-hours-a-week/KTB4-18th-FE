@@ -47,7 +47,7 @@ export function connectChatRoom(
   const ownsCurrentAuth = () => sameChatAuthContext(owner, chatAuthContext(getAccessToken()));
   const onAuthChange = () => {
     if (!ownsCurrentAuth())
-      terminal('error', '로그인 상태가 변경됐어요. 채팅 탭에 다시 입장해 주세요.');
+      terminal('error', '로그인 상태가 변경됐어요. 동네 이야기에 다시 입장해 주세요.');
   };
 
   const cancelRecovery = () => {
@@ -183,7 +183,7 @@ export function connectChatRoom(
       if (isStopped || !ownsCurrentAuth()) return;
       recovery = undefined;
       isReady = true;
-      onStatus('ready', '채팅방에 입장했어요.');
+      onStatus('ready', '이야기방에 입장했어요.');
     } catch (error) {
       if (
         isStopped ||
@@ -196,7 +196,7 @@ export function connectChatRoom(
       if (error instanceof ChatRecoveryError && error.code === 'CHAT_ROOM_403_BANNED') {
         terminal('banned', chatBanNotice(error.bannedUntil));
       } else if (error instanceof ChatRecoveryError && error.status === 401) {
-        terminal('error', '다시 로그인한 후 채팅 탭에 입장해 주세요.');
+        terminal('error', '다시 로그인한 후 동네 이야기에 입장해 주세요.');
       } else recoveryFailed();
     }
   };
@@ -211,7 +211,7 @@ export function connectChatRoom(
         const token = shouldRefreshAccessToken() ? await refreshAccessToken() : getAccessToken();
         if (isStopped || isPaused) return;
         if (!token || !sameChatAuthContext(owner, chatAuthContext(token)) || !ownsCurrentAuth()) {
-          terminal('error', '다시 로그인한 후 채팅 탭에 입장해 주세요.');
+          terminal('error', '다시 로그인한 후 동네 이야기에 입장해 주세요.');
           return;
         }
         client.connectHeaders = {
@@ -232,7 +232,7 @@ export function connectChatRoom(
       isReady = false;
       cancelRecovery();
       const connectionGeneration = ++generation;
-      onStatus('connecting', '채팅방에 연결하고 있어요.');
+      onStatus('connecting', '이야기방에 연결하고 있어요.');
       let remaining = 2;
       let ready: Ready | undefined;
       let started = false;
@@ -299,10 +299,10 @@ export function connectChatRoom(
         return;
       }
       if (code === 'CHAT_BANNED') terminal('banned', chatBanNotice(frame.headers.banned_until));
-      else if (code === 'CHAT_FULL') terminal('full', '현재 지역 채팅방의 정원이 가득 찼습니다.');
+      else if (code === 'CHAT_FULL') terminal('full', '현재 지역 이야기방의 정원이 가득 찼습니다.');
       else if (code === 'CHAT_LEFT')
-        terminal('left', '현재 채팅 참여가 종료됐어요. 채팅 탭에 다시 입장해 주세요.');
-      else terminal('error', '채팅 연결 인증에 실패했습니다. 다시 입장해 주세요.');
+        terminal('left', '현재 대화 참여가 종료됐어요. 동네 이야기에 다시 입장해 주세요.');
+      else terminal('error', '대화 연결 인증에 실패했습니다. 다시 입장해 주세요.');
     },
     onWebSocketClose: (event) => {
       if (isStopped || isPaused) return;
@@ -310,23 +310,23 @@ export function connectChatRoom(
       generation += 1;
       cancelRecovery();
       if (event.code === 4100 && event.reason === 'CHAT_LOGGED_OUT') {
-        terminal('left', '로그아웃되어 채팅이 종료됐어요.');
+        terminal('left', '로그아웃되어 대화가 종료됐어요.');
       } else if (event.code === 4100)
-        terminal('left', '현재 채팅 참여가 종료됐어요. 채팅 탭에 다시 입장해 주세요.');
+        terminal('left', '현재 대화 참여가 종료됐어요. 동네 이야기에 다시 입장해 주세요.');
       else if (event.code === 4101) terminal('banned', chatBanNotice(event.reason?.split('|')[1]));
       else if (event.code === 4103) recoveryFailed();
       else {
-        onStatus('reconnecting', '연결이 끊겼어요. 채팅방에 다시 연결하고 있습니다.');
+        onStatus('reconnecting', '연결이 끊겼어요. 이야기방에 다시 연결하고 있습니다.');
         // Established views can reconnect beyond grace; only the server decides recoverable intervals.
         if (!hasReceivedReady)
           initialDeadline ??= window.setTimeout(
-            () => terminal('error', '채팅방에 연결하지 못했습니다. 다시 입장해 주세요.'),
+            () => terminal('error', '이야기방에 연결하지 못했습니다. 다시 입장해 주세요.'),
             30_000,
           );
       }
     },
   });
-  onStatus('connecting', '채팅방에 연결하고 있어요.');
+  onStatus('connecting', '이야기방에 연결하고 있어요.');
   window.addEventListener?.(ACCESS_TOKEN_CHANGED_EVENT, onAuthChange);
   client.activate();
   return Object.assign(stop, {

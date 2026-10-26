@@ -409,7 +409,7 @@ describe('구독 완료와 누락 메시지 복구', () => {
     event.mockClear();
     const token = auth.token;
     config?.onWebSocketClose?.({ code: 4100, reason: 'CHAT_LOGGED_OUT' } as CloseEvent);
-    expect(status).toHaveBeenLastCalledWith('left', '로그아웃되어 채팅이 종료됐어요.');
+    expect(status).toHaveBeenLastCalledWith('left', '로그아웃되어 대화가 종료됐어요.');
     expect(connection.send('id', 'hello')).toBe(false);
     oldReceive(live(99));
     await vi.advanceTimersByTimeAsync(31_000);

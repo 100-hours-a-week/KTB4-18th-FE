@@ -64,7 +64,7 @@ function errorMessage(status: number, serverMessage?: string) {
     case 400: {
       const normalizedMessage = serverMessage?.toLowerCase() ?? '';
       if (normalizedMessage.includes('mismatch') || normalizedMessage.includes('region')) {
-        return '요청한 채팅방이 현재 지역과 일치하지 않습니다. 위치를 다시 확인해 주세요.';
+        return '요청한 이야기방이 현재 지역과 일치하지 않습니다. 위치를 다시 확인해 주세요.';
       }
       if (normalizedMessage.includes('expired')) {
         return '위치 정보가 만료되었습니다. 현재 위치를 다시 확인해 주세요.';
@@ -75,14 +75,14 @@ function errorMessage(status: number, serverMessage?: string) {
       return '로그인이 만료되었습니다. 다시 로그인해 주세요.';
     case 403:
       if (serverMessage === 'chat use banned')
-        return '채팅 이용이 일주일간 제한되어 입장할 수 없습니다.';
-      return '현재 계정은 채팅방을 이용할 수 없습니다.';
+        return '동네 이야기 이용이 일주일간 제한되어 입장할 수 없습니다.';
+      return '현재 계정은 이야기방을 이용할 수 없습니다.';
     case 404:
-      return '현재 지역의 채팅방을 찾지 못했습니다.';
+      return '현재 지역의 이야기방을 찾지 못했습니다.';
     case 409:
-      return '현재 지역 채팅방의 정원이 가득 찼습니다. 잠시 후 다시 시도해 주세요.';
+      return '현재 지역 이야기방의 정원이 가득 찼습니다. 잠시 후 다시 시도해 주세요.';
     default:
-      return serverMessage ?? '채팅방에 입장하지 못했습니다. 다시 시도해 주세요.';
+      return serverMessage ?? '이야기방에 입장하지 못했습니다. 다시 시도해 주세요.';
   }
 }
 
@@ -134,7 +134,7 @@ async function request<T>(
     );
   }
   if (!body) {
-    throw new ChatRoomRequestError('채팅방 응답을 확인할 수 없습니다.', 502);
+    throw new ChatRoomRequestError('이야기방 응답을 확인할 수 없습니다.', 502);
   }
   return body;
 }
@@ -155,7 +155,7 @@ export async function getRegionChatRoom(
     typeof data.capacity !== 'number' ||
     typeof data.status !== 'string'
   ) {
-    throw new ChatRoomRequestError('채팅방 정보를 확인할 수 없습니다.', 502);
+    throw new ChatRoomRequestError('이야기방 정보를 확인할 수 없습니다.', 502);
   }
 
   return {
@@ -194,7 +194,7 @@ export async function joinChatRoom(
     typeof data.view_session_id !== 'string' ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(data.view_session_id)
   ) {
-    throw new ChatRoomRequestError('채팅방 입장 결과를 확인할 수 없습니다.', 502);
+    throw new ChatRoomRequestError('이야기방 입장 결과를 확인할 수 없습니다.', 502);
   }
 
   return {
@@ -260,7 +260,7 @@ async function departChatRoom(
   );
   if (!response.ok && response.status !== 401 && response.status !== 403) {
     throw new ChatRoomRequestError(
-      '채팅방 퇴장을 확인하지 못했습니다. 다시 시도해 주세요.',
+      '이야기방 퇴장을 확인하지 못했습니다. 다시 시도해 주세요.',
       response.status,
     );
   }

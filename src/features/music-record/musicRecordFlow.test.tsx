@@ -301,7 +301,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     await openCandidate(true);
     expect(songPosts()).toHaveLength(0);
     expect(recordWrites()).toHaveLength(0);
-    const confirm = screen.getByRole('button', { name: '선택하기' });
+    const confirm = screen.getByRole('button', { name: '이 곡으로 기록하기' });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
     await waitFor(() => expect(songPosts()).toHaveLength(1));
@@ -319,7 +319,9 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
   it('DB 내부 ID 후보는 CSRF와 등록 없이 기존 전체 곡을 선택한다', async () => {
     searchItems = [{ ...music, music_id: 11 }];
     await openCandidate();
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' })),
+    );
     expect(screen.getByRole('region', { name: '음악 기록 입력' })).toHaveTextContent('밤편지');
     expect(songPosts()).toHaveLength(0);
     expect(
@@ -349,7 +351,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
         }),
       );
       await openCandidate();
-      fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+      fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' }));
       expect(await screen.findByRole('alert')).toBeInTheDocument();
       expect(screen.getByRole('textbox', { name: '음악 검색' })).toHaveValue('아이유');
       expect(screen.getByRole('button', { name: '밤편지아이유' })).toHaveAttribute(
@@ -359,7 +361,9 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       expect(recordWrites()).toHaveLength(0);
       expect(attempts).toBe(1);
       setAccessToken('test-access-token');
-      await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
+      await act(async () =>
+        fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' })),
+      );
       expect(screen.getByRole('region', { name: '음악 기록 입력' })).toBeInTheDocument();
       expect(attempts).toBe(2);
     },
@@ -411,14 +415,14 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       }),
     );
     await openCandidate();
-    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' }));
     await waitFor(() => expect(completions.has('123')).toBe(true));
     searchItems = [{ ...music, external_music_id: '456', title: '새 곡' }];
     fireEvent.change(screen.getByRole('textbox', { name: '음악 검색' }), {
       target: { value: '새 검색' },
     });
     fireEvent.click(await screen.findByRole('button', { name: '새 곡아이유' }));
-    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' }));
     await waitFor(() => expect(completions.has('456')).toBe(true));
     await act(async () =>
       completions.get('123')!(
@@ -439,7 +443,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
   it('검색어를 바꾼 뒤 늦은 등록 완료는 새 선택을 바꾸지 않는다', async () => {
     const finish = holdRegistration();
     await openCandidate();
-    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' }));
     await waitFor(() => expect(songPosts()).toHaveLength(1));
     fireEvent.change(screen.getByRole('textbox', { name: '음악 검색' }), {
       target: { value: '새 검색' },
@@ -638,10 +642,10 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     const finish = holdRegistration();
     await openCandidate();
     vi.useFakeTimers();
-    fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
+    fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' }));
     await act(async () => vi.advanceTimersByTimeAsync(10_000));
     expect(screen.getByRole('alert')).toHaveTextContent('시간이 초과');
-    expect(screen.getByRole('button', { name: '선택하기' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '이 곡으로 기록하기' })).toBeEnabled();
     await act(async () => finish());
     expect(screen.queryByRole('region', { name: '음악 기록 입력' })).not.toBeInTheDocument();
     vi.useRealTimers();
@@ -701,7 +705,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     render(<MusicRecordDetailPage recordId={1} />);
 
     expect(await screen.findByRole('textbox', { name: '장소 이름' })).toHaveValue('홍대');
-    expect(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' })).toHaveValue('산책 중');
+    expect(screen.getByRole('textbox', { name: '오늘의 기분과 한 줄' })).toHaveValue('산책 중');
   });
 
   it('리스트 휴지통은 삭제 선택 상태로 진입하고 확인 후 선택한 기록만 삭제한다', async () => {
@@ -793,7 +797,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     expect(String(searchUrl)).toContain('query=%EB%B0%A4%ED%8E%B8%EC%A7%80');
     expect(String(searchUrl)).toContain('provider=ITUNES');
     expect(String(searchUrl)).toContain('size=20');
-    const next = screen.getByRole('button', { name: '선택하기' });
+    const next = screen.getByRole('button', { name: '이 곡으로 기록하기' });
     expect(next).toBeDisabled();
     fireEvent.click(result);
     expect(next).toBeEnabled();
@@ -1131,8 +1135,10 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
-    const memo = await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' });
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' })),
+    );
+    const memo = await screen.findByRole('textbox', { name: '오늘의 기분과 한 줄' });
     fireEvent.change(memo, { target: { value: '퇴근길 산책' } });
     expect((screen.getByLabelText('저장 날짜') as HTMLInputElement).value).toMatch(
       /^\d{4}\.\d{2}\.\d{2}\. (오전|오후) \d{1,2}:\d{2}$/,
@@ -1169,20 +1175,24 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     const query = screen.getByRole('textbox', { name: '음악 검색' });
     fireEvent.change(query, { target: { value: '밤편지' } });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' })),
+    );
 
     const place = await screen.findByRole('textbox', { name: '장소 이름' });
-    const memo = screen.getByRole('textbox', { name: '지금 느끼는 것 기록' });
+    const memo = screen.getByRole('textbox', { name: '오늘의 기분과 한 줄' });
     fireEvent.change(place, { target: { value: '홍대' } });
     fireEvent.change(memo, { target: { value: '퇴근길 산책' } });
     fireEvent.click(screen.getByRole('button', { name: '음악 변경' }));
 
     expect(screen.getByRole('textbox', { name: '음악 검색' })).toHaveValue('밤편지');
     fireEvent.click(screen.getByRole('button', { name: /^다른 노래아이유$/ }));
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' })),
+    );
     expect(screen.getByText('다른 노래')).toBeInTheDocument();
     expect(await screen.findByRole('textbox', { name: '장소 이름' })).toHaveValue('홍대');
-    expect(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' })).toHaveValue('퇴근길 산책');
+    expect(screen.getByRole('textbox', { name: '오늘의 기분과 한 줄' })).toHaveValue('퇴근길 산책');
     expect(
       vi
         .mocked(fetch)
@@ -1200,8 +1210,10 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
-    const createMemo = await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' });
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' })),
+    );
+    const createMemo = await screen.findByRole('textbox', { name: '오늘의 기분과 한 줄' });
     for (const length of [499, 500, 501]) {
       fireEvent.change(createMemo, { target: { value: '가'.repeat(length) } });
       const expectedLength = Math.min(length, 500);
@@ -1213,7 +1225,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
 
     cleanup();
     render(<MusicRecordDetailPage recordId={1} />);
-    const detailMemo = await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' });
+    const detailMemo = await screen.findByRole('textbox', { name: '오늘의 기분과 한 줄' });
     for (const length of [499, 500, 501]) {
       fireEvent.change(detailMemo, { target: { value: '나'.repeat(length) } });
       const expectedLength = Math.min(length, 500);
@@ -1248,7 +1260,9 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' })),
+    );
     const place = await screen.findByRole('textbox', { name: '장소 이름' });
     fireEvent.change(place, { target: { value: '홍대' } });
     fireEvent.click(screen.getByRole('button', { name: '저장' }));
@@ -1307,7 +1321,9 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' })),
+    );
     const place = await screen.findByRole('textbox', { name: '장소 이름' });
     fireEvent.change(place, { target: { value: '홍대' } });
     fireEvent.click(screen.getByRole('button', { name: '저장' }));
@@ -1380,11 +1396,13 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' })),
+    );
     fireEvent.change(await screen.findByRole('textbox', { name: '장소 이름' }), {
       target: { value: '홍대' },
     });
-    fireEvent.change(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: '오늘의 기분과 한 줄' }), {
       target: { value: '공연을 기다리는 중' },
     });
     fireEvent.click(await screen.findByRole('button', { name: '현재 위치 확인' }));
@@ -1395,7 +1413,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       '서버에서 기록을 저장하지 못했습니다',
     );
     expect(screen.getByRole('textbox', { name: '장소 이름' })).toHaveValue('홍대');
-    expect(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' })).toHaveValue(
+    expect(screen.getByRole('textbox', { name: '오늘의 기분과 한 줄' })).toHaveValue(
       '공연을 기다리는 중',
     );
     expect(screen.getByRole('button', { name: '저장' })).toBeEnabled();
@@ -1454,7 +1472,9 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' })),
+    );
     const place = await screen.findByRole('textbox', { name: '장소 이름' });
     fireEvent.change(place, { target: { value: '홍대' } });
     fireEvent.click(screen.getByRole('button', { name: '저장' }));
@@ -1521,7 +1541,9 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' })),
+    );
     await screen.findByRole('button', { name: '현재 위치 확인' });
     fireEvent.click(screen.getByRole('button', { name: '현재 위치 확인' }));
     await screen.findByDisplayValue('서울특별시 마포구');
@@ -1595,7 +1617,9 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       target: { value: '밤편지' },
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: '이 곡으로 기록하기' })),
+    );
     fireEvent.click(await screen.findByRole('button', { name: '현재 위치 확인' }));
     await screen.findByDisplayValue('서울특별시 마포구');
     fireEvent.click(screen.getByRole('button', { name: '저장' }));
@@ -1622,7 +1646,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
   it('변경된 상세 뒤로가기는 취소와 확인을 구분한다', async () => {
     window.history.replaceState(null, '', '/music-records/1');
     render(<MusicRecordDetailPage recordId={1} />);
-    const memo = await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' });
+    const memo = await screen.findByRole('textbox', { name: '오늘의 기분과 한 줄' });
     fireEvent.change(memo, { target: { value: '새로운 기록' } });
     const back = screen.getByRole('button', { name: '음악 기록 목록으로 돌아가기' });
     fireEvent.click(back);
@@ -1697,7 +1721,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
   it('dirty 상세에서 beforeunload를 취소할 수 있도록 브라우저 확인을 요청한다', async () => {
     window.history.replaceState(null, '', '/music-records/1');
     render(<MusicRecordDetailPage recordId={1} />);
-    const memo = await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' });
+    const memo = await screen.findByRole('textbox', { name: '오늘의 기분과 한 줄' });
     fireEvent.change(memo, { target: { value: '미저장 내용' } });
 
     const event = new Event('beforeunload', { cancelable: true });
@@ -1753,7 +1777,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
   it('수정된 상세에서 음악 변경은 draft를 저장하고 검색으로 바로 이동한다', async () => {
     window.history.replaceState(null, '', '/music-records/1');
     render(<MusicRecordDetailPage recordId={1} />);
-    const memo = await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' });
+    const memo = await screen.findByRole('textbox', { name: '오늘의 기분과 한 줄' });
     fireEvent.change(memo, { target: { value: '새로운 기록' } });
     const changeButton = screen.getByRole('button', { name: '음악 변경' });
 
@@ -1774,7 +1798,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     fireEvent.change(await screen.findByRole('textbox', { name: '장소 이름' }), {
       target: { value: '새 장소' },
     });
-    fireEvent.change(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: '오늘의 기분과 한 줄' }), {
       target: { value: '저장 전 메모' },
     });
     fireEvent.click(screen.getByRole('button', { name: '음악 변경' }));
@@ -1795,7 +1819,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     expect(await screen.findByRole('heading', { name: '음악 기록' })).toBeInTheDocument();
     expect(screen.getByText('다른 노래')).toBeInTheDocument();
     expect(await screen.findByRole('textbox', { name: '장소 이름' })).toHaveValue('새 장소');
-    expect(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' })).toHaveValue(
+    expect(screen.getByRole('textbox', { name: '오늘의 기분과 한 줄' })).toHaveValue(
       '저장 전 메모',
     );
     expect(screen.getByRole('button', { name: '저장' })).toBeEnabled();
@@ -1881,7 +1905,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
         '임시 입력 내용을 복원하지 못했습니다',
       );
       expect(screen.getByRole('textbox', { name: '장소 이름' })).toHaveValue('홍대');
-      expect(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' })).toHaveValue('산책 중');
+      expect(screen.getByRole('textbox', { name: '오늘의 기분과 한 줄' })).toHaveValue('산책 중');
     } finally {
       getItem.mockRestore();
     }
@@ -1902,7 +1926,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
         '입력 내용은 복원했지만 임시 저장을 정리하지 못했습니다',
       );
       expect(screen.getByRole('textbox', { name: '장소 이름' })).toHaveValue('draft 장소');
-      expect(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' })).toHaveValue(
+      expect(screen.getByRole('textbox', { name: '오늘의 기분과 한 줄' })).toHaveValue(
         'draft 메모',
       );
       view.rerender(<MusicRecordDetailPage recordId={2} />);
@@ -2017,7 +2041,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('임시 입력 내용을 읽지 못했습니다');
     expect(screen.getByRole('textbox', { name: '장소 이름' })).toHaveValue('홍대');
-    expect(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' })).toHaveValue('산책 중');
+    expect(screen.getByRole('textbox', { name: '오늘의 기분과 한 줄' })).toHaveValue('산책 중');
     expect(JSON.parse(sessionStorage.getItem(replacementDraftKey) ?? 'null')).toEqual({
       place: '오래된 장소',
       memo: '오래된 메모',
@@ -2319,7 +2343,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
   it('변경 없는 상세 뒤로가기는 경고 없이 목록으로 이동한다', async () => {
     window.history.replaceState(null, '', '/music-records/1');
     render(<MusicRecordDetailPage recordId={1} />);
-    await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' });
+    await screen.findByRole('textbox', { name: '오늘의 기분과 한 줄' });
     fireEvent.click(screen.getByRole('button', { name: '음악 기록 목록으로 돌아가기' }));
     expect(window.location.pathname).toBe('/music-records');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -2337,7 +2361,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     expect(screen.getByRole('button', { name: '음악 변경' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: '변경' })).not.toBeInTheDocument();
     expect(screen.getByDisplayValue('서울특별시 마포구')).toHaveAttribute('readonly');
-    fireEvent.change(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: '오늘의 기분과 한 줄' }), {
       target: { value: '새로운 기분' },
     });
     expect(save).toBeEnabled();
@@ -2371,7 +2395,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     render(<MusicRecordDetailPage recordId={1} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('record unavailable');
     expect(screen.queryByRole('textbox', { name: '장소 이름' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('textbox', { name: '지금 느끼는 것 기록' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: '오늘의 기분과 한 줄' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '저장' })).not.toBeInTheDocument();
   });
 
@@ -2414,7 +2438,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       }),
     );
     render(<MusicRecordDetailPage recordId={1} />);
-    const memo = await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' });
+    const memo = await screen.findByRole('textbox', { name: '오늘의 기분과 한 줄' });
     fireEvent.change(memo, { target: { value: '기록을 보존합니다' } });
     fireEvent.click(screen.getByRole('button', { name: '저장' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -2452,7 +2476,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     expect(save).toBeEnabled();
     expect(screen.getByText('다른 노래')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: '장소 이름' })).toHaveValue('새 장소');
-    expect(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' })).toHaveValue('새 메모');
+    expect(screen.getByRole('textbox', { name: '오늘의 기분과 한 줄' })).toHaveValue('새 메모');
     expect(getPayloads()).toEqual([
       {
         music: { provider: 'ITUNES', external_music_id: '456' },

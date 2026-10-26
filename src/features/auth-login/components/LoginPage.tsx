@@ -118,12 +118,18 @@ export function LoginPage({
                 <img className="login-symbol" src="/icons/auth/Logo.svg" alt="" />
               </span>
             </span>
-            <h1 id="login-title" className="login-wordmark" aria-label="머문음">
-              MEOMUNEUM
-            </h1>
+            <div className="login-brand-copy">
+              <h1 id="login-title" className="login-wordmark">
+                머문음
+              </h1>
+              <p className="brand-tagline">머문 자리에, 음악이 남는다.</p>
+            </div>
           </header>
 
           <div className="login-body">
+            <div className="diary-login-intro">
+              <h2>오늘도, 한 곡 남겨볼까요?</h2>
+            </div>
             {authCapabilityMessage && (
               <p className="login-notice" role="alert">
                 {authCapabilityMessage}

@@ -457,6 +457,11 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
         </header>
 
         <form className="signup-form" onSubmit={handleSubmit} noValidate>
+          <div className="diary-page-intro">
+            <span className="diary-eyebrow">처음 남기는 순간</span>
+            <h2>나만의 음악 기록을 시작해요</h2>
+            <p>머문 순간마다, 다시 듣고 싶은 한 곡.</p>
+          </div>
           <div className="signup-form-fields">
             <div className="signup-field">
               <div

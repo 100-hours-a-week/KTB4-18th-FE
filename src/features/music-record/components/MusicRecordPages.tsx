@@ -262,14 +262,19 @@ export function MusicRecordListPage() {
               const placeName =
                 record.custom_place_name?.trim() ||
                 `${record.region.sido.name} ${record.region.sigungu.name}`;
+              const coverUrl = getHighResolutionArtworkUrl(record.music.album_cover_url);
               const content = (
                 <>
-                  {record.music.album_cover_url ? (
-                    <img
-                      className="record-cover"
-                      src={getHighResolutionArtworkUrl(record.music.album_cover_url) ?? ''}
-                      alt=""
-                    />
+                  {coverUrl ? (
+                    <>
+                      <img
+                        className="record-card-backdrop"
+                        src={coverUrl}
+                        alt=""
+                        aria-hidden="true"
+                      />
+                      <img className="record-cover" src={coverUrl} alt="" />
+                    </>
                   ) : (
                     <span className="record-cover-placeholder" aria-hidden="true" />
                   )}

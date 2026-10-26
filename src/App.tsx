@@ -567,7 +567,7 @@ function App() {
   }
   if (isProtectedRoute && authStatus === 'retryable-error' && !getAccessToken()) {
     return (
-      <main role="alert">
+      <main className="auth-status-page" role="alert">
         <p>
           {authCapability.supported
             ? '인증 서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.'
@@ -584,6 +584,7 @@ function App() {
           다시 시도
         </button>
         <a href={loginHref(routeLocation)}>로그인</a>
+        <a href="/">음악 지도로 돌아가기</a>
       </main>
     );
   }

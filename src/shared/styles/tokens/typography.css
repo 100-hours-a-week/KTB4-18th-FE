@@ -1,5 +1,6 @@
 @theme {
-  --font-sans: 'Pretendard', system-ui, sans-serif;
+  --font-sans:
+    'SUIT Variable', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
 
   --text-title1: 1.75rem;
   --text-title1--line-height: 2.375rem;

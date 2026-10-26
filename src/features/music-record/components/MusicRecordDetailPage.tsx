@@ -355,6 +355,10 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
     }
   };
 
+  const coverUrl = getHighResolutionArtworkUrl(
+    selectedMusic?.album_cover_url ?? record?.music.album_cover_url ?? null,
+  );
+
   return (
     <main className="music-page music-detail-page" aria-busy={!record && isLoading}>
       <header className="music-page-header">
@@ -383,19 +387,16 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
       ) : (
         <section className="music-form" aria-label="음악 기록 상세 및 수정">
           <article className="music-selected-content">
-            {(selectedMusic?.album_cover_url ?? record.music.album_cover_url) ? (
-              <img
-                src={
-                  getHighResolutionArtworkUrl(
-                    selectedMusic?.album_cover_url ?? record.music.album_cover_url ?? null,
-                  ) ?? ''
-                }
-                alt=""
-              />
+            {coverUrl ? (
+              <>
+                <img className="music-hero-backdrop" src={coverUrl} alt="" aria-hidden="true" />
+                <img src={coverUrl} alt="" />
+              </>
             ) : (
               <span className="music-cover-placeholder" aria-hidden="true" />
             )}
             <div>
+              <p className="music-hero-eyebrow">그날의 한 곡</p>
               <strong>{selectedMusic?.title ?? record.music.title}</strong>
               <span>{selectedMusic?.artist_name ?? record.music.artist_name}</span>
             </div>
@@ -431,19 +432,19 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
               disabled={isSaving || isDeleting}
               maxLength={100}
               onChange={(event) => setPlace(event.target.value)}
-              placeholder="장소 이름 (선택)"
+              placeholder="예: 집 앞 작은 공원 (선택)"
             />
           </label>
           <label>
-            지금 느끼는 것 기록
+            오늘의 기분과 한 줄
             <textarea
-              aria-label="지금 느끼는 것 기록"
+              aria-label="오늘의 기분과 한 줄"
               aria-describedby="detail-memo-count"
               value={memo}
               disabled={isSaving || isDeleting}
               maxLength={500}
               onChange={(event) => setMemo(event.target.value.slice(0, 500))}
-              placeholder="지금의 감정을 기록해 주세요"
+              placeholder="그날의 기분이나 기억하고 싶은 순간을 적어 주세요"
             />
             <span id="detail-memo-count" className="music-memo-count" aria-live="polite">
               {memo.length}/500

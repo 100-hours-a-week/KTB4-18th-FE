@@ -71,16 +71,16 @@ type PlaceholderDestination = Exclude<MainDestination, 'map'> | 'recordCreate';
 
 function PlaceholderSection({ destination }: { destination: PlaceholderDestination }) {
   const copy = {
-    records: ['기록', '음악으로 남긴 오늘의 순간을 모아볼까요?'],
+    records: ['음악 기록', '음악으로 남긴 오늘의 순간을 모아볼까요?'],
     recordCreate: ['새 기록', '지금 떠오른 이야기를 음악과 함께 남겨보세요.'],
-    chatRooms: ['채팅', '취향이 닿는 사람들과 이야기를 나눠요.'],
-    my: ['마이', '나의 음악 여정을 한눈에 확인해요.'],
+    chatRooms: ['동네 이야기', '취향이 닿는 사람들과 이야기를 나눠요.'],
+    my: ['내 공간', '나의 음악 여정을 한눈에 확인해요.'],
   } as const;
   const [title, description] = copy[destination];
 
   return (
     <section className="main-content placeholder-section" aria-labelledby={`${destination}-title`}>
-      <p className="eyebrow">MEOMUNEUM</p>
+      <p className="eyebrow">머문음</p>
       <h1 id={`${destination}-title`}>{title}</h1>
       <p>{description}</p>
       <div className="placeholder-section__card" aria-hidden="true">
@@ -106,10 +106,10 @@ type GnbItem = {
 
 export function Gnb({ currentDestination, isHidden, onNavigate }: GnbProps) {
   const items: GnbItem[] = [
-    { destination: 'map', label: '지도', iconPath: '/icons/map.svg' },
-    { destination: 'records', label: '기록', iconPath: '/icons/records.svg' },
-    { destination: 'chatRooms', label: '채팅', iconPath: '/icons/chat.svg' },
-    { destination: 'my', label: '마이', iconPath: '/icons/mypage.svg' },
+    { destination: 'map', label: '음악 지도', iconPath: '/icons/map.svg' },
+    { destination: 'records', label: '음악 기록', iconPath: '/icons/records.svg' },
+    { destination: 'chatRooms', label: '동네 이야기', iconPath: '/icons/chat.svg' },
+    { destination: 'my', label: '내 공간', iconPath: '/icons/mypage.svg' },
   ];
 
   return (
@@ -124,7 +124,11 @@ export function Gnb({ currentDestination, isHidden, onNavigate }: GnbProps) {
             onClick={() => onNavigate(destination)}
             aria-current={currentDestination === destination ? 'page' : undefined}
           >
-            <img src={iconPath} alt="" />
+            <span
+              className="gnb__icon"
+              style={{ maskImage: `url(${iconPath})` }}
+              aria-hidden="true"
+            />
             <span>{label}</span>
           </button>
         ))}
@@ -135,9 +139,12 @@ export function Gnb({ currentDestination, isHidden, onNavigate }: GnbProps) {
           onClick={() => onNavigate('recordCreate')}
           aria-label="새 기록 만들기"
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
+          <span className="gnb__record-disc" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </span>
+          <span className="gnb__create-label">기록하기</span>
         </button>
         {items.slice(2).map(({ destination, label, iconPath }) => (
           <button
@@ -148,7 +155,11 @@ export function Gnb({ currentDestination, isHidden, onNavigate }: GnbProps) {
             onClick={() => onNavigate(destination)}
             aria-current={currentDestination === destination ? 'page' : undefined}
           >
-            <img src={iconPath} alt="" />
+            <span
+              className="gnb__icon"
+              style={{ maskImage: `url(${iconPath})` }}
+              aria-hidden="true"
+            />
             <span>{label}</span>
           </button>
         ))}
@@ -203,8 +214,20 @@ export function MainPage({ onChat }: MainPageProps) {
     >
       <h1 className="sr-only">음악 지도</h1>
       <header className="main-header" aria-hidden={isIntro}>
-        <p className="main-header__brand">MEOMUNEUM</p>
+        <div className="main-header__identity">
+          <span className="brand-mark" aria-hidden="true" />
+          <div className="main-header__copy">
+            <p className="main-header__brand">머문음</p>
+            <span className="brand-wordmark">머문 자리에, 음악이 남는다.</span>
+          </div>
+        </div>
+        <span className="vinyl-disc main-header__record" aria-hidden="true" />
       </header>
+      {route.destination === 'map' && (
+        <div className="map-caption" aria-hidden={isIntro}>
+          <h2>음악으로 채워가는 지도</h2>
+        </div>
+      )}
       {route.destination === 'map' ? (
         <MapSection
           isIntro={isIntro}
@@ -218,11 +241,12 @@ export function MainPage({ onChat }: MainPageProps) {
       <a
         className="chatbot-floating-button"
         href="/chatbot"
-        aria-label="음악 추천 챗봇 열기"
+        aria-label="음악 찾기 열기"
         aria-hidden={isIntro}
         tabIndex={isIntro ? -1 : 0}
       >
-        Chat
+        <span className="vinyl-disc" aria-hidden="true" />
+        <span className="chatbot-floating-button__action">음악 찾기</span>
       </a>
       <Gnb currentDestination={route.destination} isHidden={isIntro} onNavigate={navigate} />
     </main>
