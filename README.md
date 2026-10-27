@@ -246,3 +246,73 @@ BE #152의 `CHAT_PRESENCE` 최초 스냅샷과 최신 변경 순번으로 실제
 현재 방·참여·인증 계정·전송 UUID로 대기를 확인하고 타이머와 원문 대기를 정리한다.
 ACK/broadcast 역순에도 메시지는 한 번 표시한다. FE에 탐지 목록을 복제하지 않는다.
 BE #155를 배포하기 전에 이 FE 호환성 변경을 먼저 배포한다.
+
+## 다중 서버 FE 연결·복구 연동 (P1 9단계)
+
+2026-10-27 기준으로 아래 내용이 앞선 단일 앱/30초 재연결/계정 전체 퇴장 설명보다 우선한다.
+지역 채팅·방당1000계정·탭별 퇴장·sid별 이동/폐기·계정의 유효 참여 구간 합집합 history를 유지한다.
+서버가 다른 Task로 바뀌어도 FE는 Task 주소를 선택하거나 새 membership을 자동 생성하지 않는다.
+
+| 상황           | 동작과 판단 근거                                                                                                                                                                                                                                           |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 공개 연결      | 기존 VITE_API_BASE_URL origin의 /ws(HTTPS→WSS)와 기존 채팅 REST 경로를 사용한다. CloudFront/ALB가 Chat으로 경로 분리하므로 별도 운영 Chat 도메인·Task 주소를 FE에 추가하지 않는다.                                                                         |
+| 일시 중단/1013 | 전송을 막고 기존 목록·membership/view·미확인 UUID를 유지한다. STOMP 재접속은 초기1~2초 분산 후 지수 증가·최대30초이며 서버가 참여와 소유권을 다시 검증한다.                                                                                                |
+| 재접속 성공    | 현재 sub/sid와 같은 인증으로 CONNECT한다. 방/개인queue receipt 두 개·현재 view의 CHAT_READY·고정 snapshot recovery·계정 history를 완료한 뒤 전송한다. 오래된 연결/요청 응답은 세대와 AbortSignal로 버린다.                                                 |
+| 복구 대기 제한 | READY 대기10초, recovery+history 전체30초, live/ACK 대기500개를 넘으면 연결/요청을 취소하고 기존 “복구 다시 시도”를 제공한다. 부분 결과를 성공으로 표시하거나 버퍼를 조용히 유실하지 않는다. 복구 메시지도 기존 캐시와 같은 최근200개만 메모리에 유지한다. |
+| ACK 유실       | 대기 전송은 불확정으로 표시하고 임의 재전송하지 않는다. 서버 history/recovery/ACK에서 현재 계정의 UUID가 확인되면 원문 대기·타이머를 지우고 저장된 마스킹 결과를 표시한다. 미확인 메시지의 명시적 재전송만 같은 UUID/본문을 유지한다.                      |
+| 오류·종료      | 503/토큰 확인의 일시 실패는 로그인과 참여를 보존하고 재시도를 안내한다.401·membership 종료·4100/4101은 연결을 끝내며 자동 새 입장하지 않는다.4103/view 오류는 기존 복구 재시도로 분리한다.                                                                 |
+
+history/recovery는 연결 소유 sub/sid에 고정한 chatSessionFetch로 요청하고 cache:no-store를 사용한다.
+동일 sid의 토큰 갱신은 허용하고 다른 sid/계정으로 바뀐 요청은 재발행하지 않는다.
+현재 view 복구 권한과 과거 계정 history 권한, 부재·24시간 만료 제외는 서버가 결정한다.
+재연결을 새 입장으로 우회하거나 캐시로 조회 권한을 확대하지 않는다.
+연결 유지 중 조용한 누락 자동 탐지/sync는 P2다. Redis 전역 epoch 복구·자동 개방·배포 drain은 BE 후속이며
+이번 FE 연동을 운영 다중Task 활성화·무중단/종료지연 SLO 보장으로 표시하지 않는다.
+
+로컬 분리 앱 실행:
+
+```dotenv
+VITE_API_BASE_URL=
+VITE_API_PROXY_TARGET=http://localhost:8080
+VITE_CHAT_PROXY_TARGET=http://localhost:8081
+```
+
+선택 변수 VITE_CHAT_PROXY_TARGET을 비우면 기존 단일 앱 프록시로 전달한다.
+지정하면 /ws·/api/v1/chat-rooms/_·/api/v1/regions/_/chat-room을 Chat으로,
+인증/refresh·위치 해석 등 나머지 /api는 Core로 전달한다. 이 프록시는 Vite 개발 서버용이며 운영 ALB 설정이 아니다.
+.env.example에는 선택 변수와 용도를 기록하며 내부주소·Redis/서비스Bearer/JWT키는 FE에 넣지 않는다.
+클라우드 팀은 기존 경로의 캐시 비활성·Authorization/X-Chat-View-Session/쿼리 전달·WS upgrade/Origin을
+실환경에서 확인해야 한다. 이번에는 클라우드 설정을 변경하지 않는다.
+
+검증 명령:
+
+```sh
+npm run format:check
+npm run lint
+npm run test -- --maxWorkers=4
+npm run verify:chat:types
+npm run build
+npm run verify:chat:distributed
+```
+
+마지막 명령은 Docker·JDK·Node·Git/tar와 선행8단계를 포함한 로컬 BE가 필요하다.
+CHAT_BACKEND_DIR(기본 ../meomuneum-backend)의 커밋된 HEAD를 임시 폴더로 복사하고 기존 CoreAuthProcessTest에
+테스트 전용 bridge를 넣는다. 원래 BE 파일/브랜치/운영 설정을 바꾸지 않는다. MySQL·Redis·실제 Core·두 Chat JAR와
+합성 세션·격리 TLS를 띄운 뒤 실제 FE ChatParticipation/STOMP/REST 클라이언트를 검증한다.
+테스트의 인증 저장소·GPS 입력만 합성 대역이며 운영 로그인 브라우저 E2E와 구분한다.
+loopback fault proxy가 REST는 Task A, 첫 WS는 Task B로 전달하고 ACK/broadcast 유실·1013 종료·다음 복구503을 주입한다.
+명시적 복구 재시도는 Task A에서 같은 membership/view·입장1회·마스킹된 저장 결과·대기 해제를 확인한다.
+프록시는 오류 주입을 위해 압축 협상을 제외한다. 실제 ALB/CloudFront·물리 모바일·1000연결 부하 검증은 아니다.
+자식 앱/테스트 컨테이너는 하네스 종료 시 정리하며 기존 실행 환경을 유지한다. 합성 토큰 config는 시험 후 삭제한다.
+증빙은 node_modules/.tmp/chat-multiserver-verification/의 JSON, harness-path.txt가 가리키는 임시 BE의
+build/core-auth-integration 및 build/test-results/chatControlEventsTest다.
+기존 Node 실제서버 조건부 시험도 새 소유 세션 고정 요청을 기다릴 수 있도록 fixture를 맞췄다.
+
+2026-10-27 최종 검증: 전체830개 중824통과·6조건부 제외·실패0, 채팅/API/프록시162개 중158통과·4조건부 제외·실패0.
+실제 Core/두 Chat/FE 통합1개 통과, format:check·lint·verify:chat:types·build 통과.
+최초 전체 시험의 로그인 refresh1개5초 timeout은 단독53개 통과·동시 실행4개로 제한한 전체 재실행 통과로 확인했다.
+초기 오류 주입 프록시가 압축된 ACK를 인식하지 못한 문제는 협상 제외로 보완했다.
+중간 하네스 실행의 초기 복구 실패1회는 상세 HTTP 증빙이 없어 원인을 단정하지 않는다.
+최종 시험은 초기 복구 실패가 실제 HTTP503인 경우에만 명시적 재시도를1회 허용하고 그 여부를 결과에 남기며,
+그 외 초기 오류는 실패로 처리한다. 최종 결과와 최초 full 결과 모두 summary.json·각 JSON에 보존한다.
+이 검증은 운영 세션·모바일·부하 승인이나 BE 전역 복구 완료를 뜻하지 않는다.
