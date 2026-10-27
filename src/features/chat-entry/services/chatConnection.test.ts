@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Client } from '@stomp/stompjs';
+import { Client, ReconnectionTimeMode } from '@stomp/stompjs';
 import { connectChatRoom } from './chatConnection';
-import { refreshAccessToken } from '../../auth-login/api/authSession';
+import { AuthRequestError, refreshAccessToken } from '../../auth-login/api/authSession';
 import {
   fetchChatRecovery,
   fetchChatHistory,
@@ -9,7 +9,10 @@ import {
   type ChatRecoveryPage,
 } from './chatRecovery';
 
-vi.mock('@stomp/stompjs', () => ({ Client: vi.fn() }));
+vi.mock('@stomp/stompjs', async (original) => ({
+  ...(await original<typeof import('@stomp/stompjs')>()),
+  Client: vi.fn(),
+}));
 vi.mock('./chatRecovery', async (original) => ({
   ...(await original<typeof import('./chatRecovery')>()),
   fetchChatRecovery: vi.fn(),
@@ -17,6 +20,13 @@ vi.mock('./chatRecovery', async (original) => ({
 }));
 const auth = vi.hoisted(() => ({ token: '', shouldRefresh: false }));
 vi.mock('../../auth-login/api/authSession', () => ({
+  AuthRequestError: class extends Error {
+    status: number | null;
+    constructor(status: number | null) {
+      super();
+      this.status = status;
+    }
+  },
   ACCESS_TOKEN_CHANGED_EVENT: 'test-auth-change',
   getAccessToken: () => auth.token || null,
   shouldRefreshAccessToken: () => auth.shouldRefresh,
@@ -508,5 +518,137 @@ describe('구독 완료와 누락 메시지 복구', () => {
     await vi.advanceTimersByTimeAsync(30_000);
     expect(status).toHaveBeenLastCalledWith('error', expect.any(String));
     expect(client.deactivate).toHaveBeenCalledOnce();
+  });
+});
+
+describe('다중 서버 중단·복구 경계', () => {
+  it.each([401, 503])(
+    'CONNECT 전 토큰 확인 %i는 인증 폐기와 일시 장애를 구분한다',
+    async (statusCode) => {
+      auth.shouldRefresh = true;
+      vi.mocked(refreshAccessToken).mockRejectedValueOnce(new AuthRequestError(statusCode));
+      const status = vi.fn();
+      const connection = connectChatRoom(membership, status);
+      const token = auth.token;
+      await config?.beforeConnect?.(client as unknown as Client);
+      expect(status).toHaveBeenLastCalledWith(
+        statusCode === 401 ? 'error' : 'recovery-failed',
+        expect.any(String),
+      );
+      expect(auth.token).toBe(token);
+      connection.retryRecovery();
+      expect(client.activate).toHaveBeenCalledTimes(statusCode === 401 ? 1 : 2);
+      connection();
+    },
+  );
+  it('WSS 공개 경로와 상한 있는 지수 재연결을 사용한다', () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://chat.example.test');
+    const connection = connectChatRoom(membership, vi.fn());
+    expect(config?.brokerURL).toBe('wss://chat.example.test/ws');
+    expect(config?.reconnectDelay).toBeGreaterThanOrEqual(1000);
+    expect(config?.reconnectDelay).toBeLessThan(2000);
+    expect(config?.reconnectTimeMode).toBe(ReconnectionTimeMode.EXPONENTIAL);
+    expect(config?.maxReconnectDelay).toBe(30_000);
+    connection();
+    vi.unstubAllEnvs();
+  });
+
+  it('1013은 인증과 참여를 유지하고 새 구독·복구·이력 완료 전에는 전송을 막는다', async () => {
+    const status = vi.fn();
+    const connection = connectChatRoom(membership, status);
+    config?.onConnect?.({} as never);
+    await ready();
+    receive()(live(5));
+    const token = auth.token;
+    config?.onWebSocketClose?.({ code: 1013, reason: 'CHAT_SERVICE_UNAVAILABLE' } as CloseEvent);
+    expect(status).toHaveBeenLastCalledWith('reconnecting', expect.stringContaining('일시 중단'));
+    expect(connection.send('id', 'blocked')).toBe(false);
+    await config?.beforeConnect?.(client as unknown as Client);
+    expect(client.connectHeaders).toMatchObject({
+      Authorization: `Bearer ${token}`,
+      membership_id: '900',
+      view_session_id: viewId,
+      last_message_id: '5',
+    });
+    config?.onConnect?.({} as never);
+    expect(connection.send('id', 'blocked')).toBe(false);
+    await ready();
+    expect(connection.send('id', 'restored')).toBe(true);
+    expect(auth.token).toBe(token);
+    connection();
+  });
+
+  it('복구 503은 로그인과 view를 보존하고 명시적 재시도로 복원한다', async () => {
+    vi.mocked(fetchChatRecovery).mockRejectedValueOnce(new ChatRecoveryError(503));
+    const status = vi.fn();
+    const connection = connectChatRoom(membership, status);
+    const token = auth.token;
+    config?.onConnect?.({} as never);
+    await ready();
+    expect(status).toHaveBeenLastCalledWith(
+      'recovery-failed',
+      expect.stringContaining('일시적으로'),
+    );
+    expect(auth.token).toBe(token);
+    expect(connection.send('id', 'blocked')).toBe(false);
+    connection.retryRecovery();
+    await config?.beforeConnect?.(client as unknown as Client);
+    expect(client.connectHeaders).toMatchObject({ membership_id: '900', view_session_id: viewId });
+    config?.onConnect?.({} as never);
+    await ready();
+    expect(status).toHaveBeenLastCalledWith('ready', expect.any(String));
+    connection();
+  });
+
+  it('종료된 membership의 HTTP 거절은 복구 재시도로 되살리지 않는다', async () => {
+    vi.mocked(fetchChatRecovery).mockRejectedValueOnce(
+      new ChatRecoveryError(403, 'CHAT_ROOM_403_MEMBERSHIP'),
+    );
+    const status = vi.fn();
+    const connection = connectChatRoom(membership, status);
+    config?.onConnect?.({} as never);
+    await ready();
+    expect(status).toHaveBeenLastCalledWith('left', expect.any(String));
+    connection.retryRecovery();
+    expect(client.activate).toHaveBeenCalledOnce();
+    connection();
+  });
+
+  it('응답 없는 복구는 30초 후 취소하고 늦은 결과를 버린다', async () => {
+    let finish!: (page: ChatRecoveryPage) => void;
+    vi.mocked(fetchChatRecovery).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const status = vi.fn();
+    const event = vi.fn();
+    const connection = connectChatRoom(membership, status, event);
+    config?.onConnect?.({} as never);
+    await ready();
+    const signal = vi.mocked(fetchChatRecovery).mock.calls[0][3];
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(signal.aborted).toBe(true);
+    expect(status).toHaveBeenLastCalledWith('recovery-failed', expect.any(String));
+    finish(empty);
+    await Promise.resolve();
+    expect(event).not.toHaveBeenCalled();
+    expect(connection.send('id', 'blocked')).toBe(false);
+    connection();
+  });
+
+  it('복구 중 500개 대기 상한을 넘으면 부분 결과를 적용하지 않는다', async () => {
+    vi.mocked(fetchChatRecovery).mockImplementationOnce(() => new Promise(() => {}));
+    const status = vi.fn();
+    const event = vi.fn();
+    const connection = connectChatRoom(membership, status, event);
+    config?.onConnect?.({} as never);
+    await ready();
+    for (let id = 1; id <= 501; id += 1) receive()(live(id));
+    expect(status).toHaveBeenLastCalledWith('recovery-failed', expect.any(String));
+    expect(event).not.toHaveBeenCalled();
+    expect(connection.send('id', 'blocked')).toBe(false);
+    connection();
   });
 });
