@@ -1,14 +1,24 @@
 import { Component, Suspense } from 'react';
 import type { ReactNode } from 'react';
 
+import { useDelayedPending } from '../hooks/useDelayedPending';
+import { RouteLoadSkeleton } from './RouteLoadSkeleton';
+import type { RouteSkeletonVariant } from './RouteLoadSkeleton';
+
 type RouteLoadBoundaryProps = {
   children: ReactNode;
   onReload?: () => void;
+  variant: RouteSkeletonVariant;
 };
 
 type RouteLoadBoundaryState = {
   hasError: boolean;
 };
+
+function DelayedRouteFallback({ variant }: { variant: RouteSkeletonVariant }) {
+  const shouldShowSkeleton = useDelayedPending(true, variant);
+  return shouldShowSkeleton ? <RouteLoadSkeleton variant={variant} /> : null;
+}
 
 export class RouteLoadBoundary extends Component<RouteLoadBoundaryProps, RouteLoadBoundaryState> {
   state: RouteLoadBoundaryState = { hasError: false };
@@ -30,13 +40,7 @@ export class RouteLoadBoundary extends Component<RouteLoadBoundaryProps, RouteLo
     }
 
     return (
-      <Suspense
-        fallback={
-          <div className="route-load-feedback" role="status" aria-live="polite">
-            화면을 불러오고 있어요.
-          </div>
-        }
-      >
+      <Suspense fallback={<DelayedRouteFallback variant={this.props.variant} />}>
         {this.props.children}
       </Suspense>
     );

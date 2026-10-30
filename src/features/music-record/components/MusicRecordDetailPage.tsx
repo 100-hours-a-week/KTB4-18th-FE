@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
+import { MusicRecordDetailSkeleton } from '../../../components/RouteLoadSkeleton';
 import { navigate } from '../../../shared/navigation';
 import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
 import {
@@ -16,6 +17,7 @@ import { musicRecordFilterPath, readMusicRecordSidoCode } from '../model/musicRe
 import { invalidateMapDotsCache } from '../../mainMap/mapApi';
 import { MusicRecordDeleteDialog } from './MusicRecordDeleteDialog';
 import { UnsavedChangesDialog } from './UnsavedChangesDialog';
+import { useDelayedPending } from '../../../hooks/useDelayedPending';
 
 type MusicRecordDetailPageProps = { recordId: number };
 
@@ -65,6 +67,8 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
   const selectedSidoCode = readMusicRecordSidoCode();
   const listPath = musicRecordFilterPath('/music-records', selectedSidoCode);
   const [record, setRecord] = useState<MusicRecordDetail | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadRequestId, setLoadRequestId] = useState(0);
   const [selectedMusic, setSelectedMusic] = useState<Music | null>(null);
   const [place, setPlace] = useState('');
   const [memo, setMemo] = useState('');
@@ -81,13 +85,20 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
   });
   const isMutationPending = useRef(false);
   const activeRecordId = useRef<number | null>(recordId);
+  const loadGeneration = useRef(0);
+  const isSkeletonVisible = useDelayedPending(isLoading, loadRequestId);
 
   useEffect(() => {
+    const current = ++loadGeneration.current;
+    setLoadRequestId(current);
+    setIsLoading(true);
+    setRecord(null);
+    setError('');
     activeRecordId.current = recordId;
     let active = true;
     void getMusicRecord(recordId)
       .then((detail) => {
-        if (!active) return;
+        if (!active || current !== loadGeneration.current) return;
         setRecord(detail);
         setPlace(detail.custom_place_name ?? '');
         setMemo(detail.emotion_memo ?? '');
@@ -133,12 +144,16 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
         }
       })
       .catch((caught: unknown) => {
-        if (active)
+        if (active && current === loadGeneration.current)
           setError(caught instanceof Error ? caught.message : '기록을 불러오지 못했습니다.');
+      })
+      .finally(() => {
+        if (active && current === loadGeneration.current) setIsLoading(false);
       });
     return () => {
       active = false;
       activeRecordId.current = null;
+      loadGeneration.current += 1;
     };
   }, [recordId]);
 
@@ -345,7 +360,7 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
   );
 
   return (
-    <main className="music-page music-detail-page">
+    <main className="music-page music-detail-page" aria-busy={!record && isLoading}>
       <header className="music-page-header">
         <button
           ref={backButton}
@@ -368,11 +383,7 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
         </p>
       )}
       {!record ? (
-        !error && (
-          <p role="status" className="music-empty">
-            기록을 불러오는 중…
-          </p>
-        )
+        !error && isSkeletonVisible && <MusicRecordDetailSkeleton />
       ) : (
         <section className="music-form" aria-label="음악 기록 상세 및 수정">
           <article className="music-selected-content">

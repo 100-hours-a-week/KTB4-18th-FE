@@ -122,6 +122,32 @@
   border-radius: 8px;
 }
 
+.login-submit.is-pending:disabled {
+  background: #171717;
+  color: #ffffff;
+  cursor: progress;
+}
+
+.login-submit-spinner {
+  display: block;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  animation: login-submit-spinner-rotation 0.8s linear infinite;
+}
+
+@keyframes login-submit-spinner-rotation {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-submit-spinner {
+    animation: none;
+  }
+}
+
 .login-submit:not(:disabled) {
   background: var(--color-bg-interactive-inverse);
   color: var(--color-text-interactive-inverse);

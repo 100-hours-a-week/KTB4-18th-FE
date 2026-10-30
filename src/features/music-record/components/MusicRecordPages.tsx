@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import {
+  MusicRecordListSkeleton,
+  MusicSearchResultsSkeleton,
+} from '../../../components/RouteLoadSkeleton';
+import { useDelayedPending } from '../../../hooks/useDelayedPending';
 import { navigate } from '../../../shared/navigation';
 import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
 import {
@@ -28,7 +33,8 @@ export function MusicRecordListPage() {
   const [items, setItems] = useState<MusicRecord[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasNext, setHasNext] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadingRequestId, setLoadingRequestId] = useState(0);
   const [error, setError] = useState('');
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -41,6 +47,7 @@ export function MusicRecordListPage() {
   const isFilterDisabled = isSelecting || isDeleting || isLoading || regionFilter.isSnapshotLoading;
   const mutationPending = useRef(false);
   const requestGeneration = useRef(0);
+  const isListSkeletonVisible = useDelayedPending(isLoading, loadingRequestId);
   const active = useRef(true);
   const [completionFlags] = useState(() => ({
     updated: sessionStorage.getItem('music_record_updated') === '1',
@@ -82,6 +89,7 @@ export function MusicRecordListPage() {
   const load = useCallback(async (next?: string | null) => {
     const generation = ++requestGeneration.current;
     setIsLoading(true);
+    setLoadingRequestId(generation);
     setError('');
     try {
       const page = await getMusicRecords(next);
@@ -199,11 +207,6 @@ export function MusicRecordListPage() {
         </button>
       </header>
       <div className="music-list-content">
-        <div className="diary-page-intro">
-          <span className="diary-eyebrow">나의 음악 기록</span>
-          <h2>노래로 남겨둔 하루들</h2>
-          <p>그날의 장소와 기분을 한 곡씩 모았어요.</p>
-        </div>
         {missingNotice && (
           <p role="status" className="music-success">
             {missingNotice}
@@ -237,7 +240,7 @@ export function MusicRecordListPage() {
           regions={regionFilter.regions}
           selectedSidoCode={regionFilter.selectedSidoCode}
           isDisabled={isFilterDisabled}
-          isLoading={regionFilter.isSnapshotLoading}
+          isSkeletonVisible={regionFilter.isSnapshotSkeletonVisible}
           error={regionFilter.snapshotError}
           onSelect={(code) => {
             if (!isFilterDisabled) regionFilter.setSelectedSidoCode(code);
@@ -246,89 +249,98 @@ export function MusicRecordListPage() {
         {!isSelecting && !isLoading && visibleItems.length > 0 && (
           <div className="record-list-count">검색 결과 {visibleItems.length}곡</div>
         )}
-        {isLoading && !items.length && <p role="status">기록을 불러오는 중…</p>}
         <section
           className={`record-list${isSelecting ? ' selecting' : ''}`}
           aria-label="음악 기록 목록"
+          aria-busy={isLoading}
         >
-          {visibleItems.map((record) => {
-            const selected = selectedIds.includes(record.record_id);
-            const placeName =
-              record.custom_place_name?.trim() ||
-              `${record.region.sido.name} ${record.region.sigungu.name}`;
-            const coverUrl = getHighResolutionArtworkUrl(record.music.album_cover_url);
-            const content = (
-              <>
-                {coverUrl ? (
-                  <>
-                    <img
-                      className="record-card-backdrop"
-                      src={coverUrl}
-                      alt=""
-                      aria-hidden="true"
-                    />
-                    <img className="record-cover" src={coverUrl} alt="" />
-                  </>
-                ) : (
-                  <span className="record-cover-placeholder" aria-hidden="true" />
-                )}
-                <div className="record-card-copy">
-                  <h2>{record.music.title}</h2>
-                  <p className="record-artist">{record.music.artist_name}</p>
-                  <p className="record-location">{placeName}</p>
-                  <div className="record-card-meta-row">
-                    <time dateTime={record.created_at}>
-                      {formatMusicRecordTime(record.created_at)}
-                    </time>
-                    {isSelecting && <span className="record-select-indicator" aria-hidden="true" />}
+          {isListSkeletonVisible && !items.length && !error ? (
+            <MusicRecordListSkeleton />
+          ) : (
+            visibleItems.map((record) => {
+              const selected = selectedIds.includes(record.record_id);
+              const placeName =
+                record.custom_place_name?.trim() ||
+                `${record.region.sido.name} ${record.region.sigungu.name}`;
+              const coverUrl = getHighResolutionArtworkUrl(record.music.album_cover_url);
+              const content = (
+                <>
+                  {coverUrl ? (
+                    <>
+                      <img
+                        className="record-card-backdrop"
+                        src={coverUrl}
+                        alt=""
+                        aria-hidden="true"
+                      />
+                      <img className="record-cover" src={coverUrl} alt="" />
+                    </>
+                  ) : (
+                    <span className="record-cover-placeholder" aria-hidden="true" />
+                  )}
+                  <div className="record-card-copy">
+                    <h2>{record.music.title}</h2>
+                    <p className="record-artist">{record.music.artist_name}</p>
+                    <p className="record-location">{placeName}</p>
+                    <div className="record-card-meta-row">
+                      <time dateTime={record.created_at}>
+                        {formatMusicRecordTime(record.created_at)}
+                      </time>
+                      {isSelecting && (
+                        <span className="record-select-indicator" aria-hidden="true" />
+                      )}
+                    </div>
                   </div>
-                </div>
-              </>
-            );
-            if (isSelecting) {
+                </>
+              );
+              if (isSelecting) {
+                return (
+                  <button
+                    type="button"
+                    key={record.record_id}
+                    className={`record-card${selected ? ' selected' : ''}`}
+                    aria-pressed={selected}
+                    aria-label={`${record.music.title} 기록 선택`}
+                    disabled={isDeleting || (!selected && selectedIds.length >= 100)}
+                    onClick={() =>
+                      setSelectedIds((ids) =>
+                        ids.includes(record.record_id)
+                          ? ids.filter((id) => id !== record.record_id)
+                          : [...ids, record.record_id],
+                      )
+                    }
+                  >
+                    {content}
+                  </button>
+                );
+              }
               return (
-                <button
-                  type="button"
+                <a
+                  className="record-card"
                   key={record.record_id}
-                  className={`record-card${selected ? ' selected' : ''}`}
-                  aria-pressed={selected}
-                  aria-label={`${record.music.title} 기록 선택`}
-                  disabled={isDeleting || (!selected && selectedIds.length >= 100)}
-                  onClick={() =>
-                    setSelectedIds((ids) =>
-                      ids.includes(record.record_id)
-                        ? ids.filter((id) => id !== record.record_id)
-                        : [...ids, record.record_id],
-                    )
-                  }
+                  href={musicRecordFilterPath(
+                    `/music-records/${record.record_id}`,
+                    regionFilter.selectedSidoCode,
+                  )}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    navigate(
+                      musicRecordFilterPath(
+                        `/music-records/${record.record_id}`,
+                        regionFilter.selectedSidoCode,
+                      ),
+                    );
+                  }}
+                  aria-label={`${record.music.title} 기록 상세 보기`}
                 >
                   {content}
-                </button>
+                </a>
               );
-            }
-            return (
-              <a
-                className="record-card"
-                key={record.record_id}
-                href={musicRecordFilterPath(
-                  `/music-records/${record.record_id}`,
-                  regionFilter.selectedSidoCode,
-                )}
-                onClick={(event) => {
-                  event.preventDefault();
-                  navigate(
-                    musicRecordFilterPath(
-                      `/music-records/${record.record_id}`,
-                      regionFilter.selectedSidoCode,
-                    ),
-                  );
-                }}
-                aria-label={`${record.music.title} 기록 상세 보기`}
-              >
-                {content}
-              </a>
-            );
-          })}
+            })
+          )}
+          {isListSkeletonVisible && items.length > 0 && !error && (
+            <MusicRecordListSkeleton count={2} />
+          )}
         </section>
         {isDeleteOpen && (
           <MusicRecordDeleteDialog
@@ -349,13 +361,7 @@ export function MusicRecordListPage() {
           </button>
         )}
         {!items.length && !error && !isLoading && (
-          <div className="music-empty">
-            <p>아직 비어 있는 음악 기록이에요.</p>
-            <p>오늘 머문 곳에 첫 곡을 남겨보세요.</p>
-            <a className="diary-empty-action" href="/music-records/new">
-              첫 음악 기록 남기기
-            </a>
-          </div>
+          <p className="music-empty">아직 기록한 음악이 없어요.</p>
         )}
       </div>
       <div
@@ -400,6 +406,8 @@ export function MusicRecordCreatePage() {
   const [lastPageSize, setLastPageSize] = useState(0);
   const [hasSearched, setHasSearched] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [pendingSearchId, setPendingSearchId] = useState(0);
+  const pendingSearchSequence = useRef(0);
   const searchRequestId = useRef(0);
   const confirmationPending = useRef(false);
   const confirmationGeneration = useRef(0);
@@ -418,6 +426,16 @@ export function MusicRecordCreatePage() {
   const placeInput = useRef<HTMLInputElement>(null);
   const backButton = useRef<HTMLButtonElement>(null);
   const location = useLocation();
+  const isSearchSkeletonVisible = useDelayedPending(
+    isSearching && query.trim().length >= 2 && !hasInvalidReplacementParam,
+    pendingSearchId,
+  );
+
+  const startSearchRequest = useCallback(() => {
+    const requestId = ++pendingSearchSequence.current;
+    setPendingSearchId(requestId);
+    setIsSearching(true);
+  }, []);
 
   const cancelConfirmation = useCallback(() => {
     confirmationGeneration.current += 1;
@@ -446,7 +464,7 @@ export function MusicRecordCreatePage() {
     const requestId = ++searchRequestId.current;
     if (normalized.length < 2 || hasInvalidReplacementParam) return;
     const timer = window.setTimeout(() => {
-      setIsSearching(true);
+      startSearchRequest();
       void searchMusic(normalized)
         .then((page) => {
           if (requestId !== searchRequestId.current) return;
@@ -472,7 +490,7 @@ export function MusicRecordCreatePage() {
         });
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [query, hasInvalidReplacementParam]);
+  }, [query, hasInvalidReplacementParam, startSearchRequest]);
 
   const handleQueryChange = (value: string) => {
     cancelConfirmation();
@@ -511,7 +529,7 @@ export function MusicRecordCreatePage() {
     hasSentinelLeft.current = false;
     hasScrolledSinceLoad.current = false;
     const requestId = searchRequestId.current;
-    setIsSearching(true);
+    startSearchRequest();
     try {
       const page = await searchMusic(query.trim(), cursor);
       if (requestId !== searchRequestId.current) return;
@@ -535,6 +553,7 @@ export function MusicRecordCreatePage() {
         setHasNext(false);
         setLastPageSize(0);
         try {
+          startSearchRequest();
           const page = await searchMusic(query.trim());
           if (requestId !== searchRequestId.current) return;
           setItems(page.items);
@@ -552,7 +571,7 @@ export function MusicRecordCreatePage() {
         setIsSearching(false);
       }
     }
-  }, [cursor, hasNext, query, stopPreview]);
+  }, [cursor, hasNext, query, startSearchRequest, stopPreview]);
 
   useEffect(() => {
     if (
@@ -833,7 +852,7 @@ export function MusicRecordCreatePage() {
               autoComplete="off"
               value={query}
               onChange={(event) => handleQueryChange(event.target.value)}
-              placeholder="노래 제목이나 아티스트를 찾아보세요"
+              placeholder="곡 제목, 아티스트 검색"
             />
           </form>
           {query.trim().length === 1 && (
@@ -845,7 +864,7 @@ export function MusicRecordCreatePage() {
               {error}
             </p>
           )}
-          <section className="search-results" aria-label="음악 검색 결과">
+          <section className="search-results" aria-label="음악 검색 결과" aria-busy={isSearching}>
             {items.map((music, index) => (
               <div key={`${music.provider}-${music.external_music_id}`}>
                 <div className="music-result-row">
@@ -924,6 +943,7 @@ export function MusicRecordCreatePage() {
                 )}
               </div>
             ))}
+            {isSearchSkeletonVisible && <MusicSearchResultsSkeleton count={items.length ? 2 : 3} />}
           </section>
           {preview.error && (
             <p role="alert" className="music-error">
@@ -931,11 +951,6 @@ export function MusicRecordCreatePage() {
             </p>
           )}
           {preview.isLoading && <p role="status">미리 듣기 음원을 불러오는 중…</p>}
-          {isSearching && (
-            <p role="status" className="music-search-count">
-              검색 중…
-            </p>
-          )}
           {isConfirming && <p role="status">선택한 곡을 확인하는 중…</p>}
           <div className="music-search-footer">
             <button
@@ -950,7 +965,7 @@ export function MusicRecordCreatePage() {
                   : '선택 중…'
                 : replacementRecordId !== null
                   ? '이 곡으로 변경'
-                  : '이 곡으로 기록하기'}
+                  : '선택하기'}
             </button>
           </div>
         </>
@@ -1001,18 +1016,18 @@ export function MusicRecordCreatePage() {
               value={place}
               maxLength={100}
               onChange={(event) => setPlace(event.target.value)}
-              placeholder="예: 집 앞 작은 공원 (선택)"
+              placeholder="장소 이름 (선택)"
             />
           </label>
           <label>
-            오늘의 기분과 한 줄
+            지금 느끼는 것 기록
             <textarea
-              aria-label="오늘의 기분과 한 줄"
+              aria-label="지금 느끼는 것 기록"
               aria-describedby="create-memo-count"
               value={memo}
               maxLength={500}
               onChange={(event) => setMemo(event.target.value.slice(0, 500))}
-              placeholder="이 노래를 들으며 기억하고 싶은 순간은?"
+              placeholder="내용을 입력해 주세요."
             />
             <span className="music-memo-count" id="create-memo-count" aria-live="polite">
               {memo.length}/500

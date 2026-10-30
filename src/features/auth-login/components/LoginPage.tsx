@@ -2,7 +2,6 @@ import { ActionButton } from '@seed-design/react';
 import { useCallback, useRef, useState } from 'react';
 
 import type { LoginSuccessResponse } from '../api/loginTypes';
-import { LoginQueueDialog } from './LoginQueueDialog';
 import { useLoginQueueFlow } from '../hooks/useLoginQueueFlow';
 import { validate } from '../hooks/loginQueueFlowUtils';
 import { EMAIL_NOT_REGISTERED_ERROR } from '../hooks/loginQueueFlowUtils';
@@ -79,12 +78,9 @@ export function LoginPage({
   });
   const {
     queueTicket,
-    isQueueOpen,
     capacityWait,
-    queueMessage,
     ambiguousLogin,
     isCanceling,
-    queueDialogRef,
     emailInputRef,
     isAuthSupported,
     updateEmail,
@@ -94,6 +90,10 @@ export function LoginPage({
     reconcileExhaustedQueue,
     handleCancelQueue,
   } = flow;
+  const isQueuePending = queueTicket?.status === 'WAITING' || queueTicket?.status === 'VERIFYING';
+  const isLoginPending =
+    isSubmitting || capacityWait?.mode === 'waiting' || (!capacityWait && isQueuePending);
+  const isLoginLocked = isSubmitting || Boolean(capacityWait) || isQueuePending;
 
   return (
     <main className="login-screen">
@@ -111,7 +111,7 @@ export function LoginPage({
             </button>
           </div>
         )}
-        <div className="login-layout" inert={isQueueOpen}>
+        <div className="login-layout">
           <header className="login-brand">
             <span className="login-symbol-grid" aria-hidden="true">
               <span className="login-symbol-frame">
@@ -193,12 +193,7 @@ export function LoginPage({
                     spellCheck={false}
                     aria-invalid={Boolean(fieldErrors.email)}
                     aria-describedby={fieldErrors.email ? 'email-error' : undefined}
-                    disabled={
-                      isSubmitting ||
-                      Boolean(capacityWait) ||
-                      !isAuthSupported ||
-                      logoutCleanupPending
-                    }
+                    disabled={isLoginLocked || !isAuthSupported || logoutCleanupPending}
                   />
                 </div>
                 {fieldErrors.email && (
@@ -233,19 +228,14 @@ export function LoginPage({
                     onChange={(event) => updatePassword(event.target.value)}
                     aria-invalid={Boolean(fieldErrors.password)}
                     aria-describedby={fieldErrors.password ? 'password-error' : undefined}
-                    disabled={
-                      isSubmitting ||
-                      Boolean(capacityWait) ||
-                      !isAuthSupported ||
-                      logoutCleanupPending
-                    }
+                    disabled={isLoginLocked || !isAuthSupported || logoutCleanupPending}
                   />
                   <button
                     className="password-toggle"
                     type="button"
                     onClick={() => setIsPasswordVisible((visible) => !visible)}
                     aria-label={isPasswordVisible ? '비밀번호 숨기기' : '비밀번호 표시'}
-                    disabled={isSubmitting || !isAuthSupported || logoutCleanupPending}
+                    disabled={isLoginLocked || !isAuthSupported || logoutCleanupPending}
                   >
                     <img
                       src={
@@ -267,20 +257,18 @@ export function LoginPage({
                   {requestError}
                 </p>
               )}
-              {capacityWait && (
+              {capacityWait?.mode === 'paused' && (
                 <section className="login-capacity-wait" aria-labelledby="login-capacity-title">
-                  <h2 id="login-capacity-title">
-                    {capacityWait.mode === 'paused'
-                      ? '대기 요청을 확인해 주세요'
-                      : '접속 대기 중이에요'}
-                  </h2>
+                  <h2 id="login-capacity-title">로그인 요청을 확인해 주세요</h2>
                   <p role="status" aria-live="polite" aria-atomic="true">
-                    {capacityWait.message}
-                    {capacityWait.mode === 'waiting' &&
-                      ' 다음 시도 시간에 같은 요청으로 다시 확인할게요.'}
+                    {capacityWait.reason === 'EXHAUSTED'
+                      ? '로그인 결과를 확인할 수 없어요. 상태를 다시 확인하거나 요청을 취소해 주세요.'
+                      : capacityWait.reason === 'TRANSPORT'
+                        ? '로그인 요청 결과를 확인하지 못했어요. 같은 요청 상태를 다시 확인해 주세요.'
+                        : capacityWait.message}
                   </p>
                   <div className="login-capacity-actions">
-                    {capacityWait.mode === 'paused' && capacityWait.reason !== 'EXHAUSTED' && (
+                    {capacityWait.reason !== 'EXHAUSTED' && (
                       <button
                         type="button"
                         onClick={() =>
@@ -309,7 +297,7 @@ export function LoginPage({
                       onClick={() => void handleCancelQueue()}
                       disabled={isCanceling}
                     >
-                      {isCanceling ? '취소 중…' : '대기 취소'}
+                      {isCanceling ? '취소 중…' : '로그인 취소'}
                     </button>
                   </div>
                 </section>
@@ -327,21 +315,24 @@ export function LoginPage({
               )}
 
               <ActionButton
-                className="login-submit"
+                className={isLoginPending ? 'login-submit is-pending' : 'login-submit'}
                 type="submit"
                 variant="brandSolid"
                 size="large"
-                disabled={
-                  !isFormValid ||
-                  isSubmitting ||
-                  Boolean(capacityWait) ||
-                  !isAuthSupported ||
-                  logoutCleanupPending
-                }
-                loading={isSubmitting}
-                aria-label="로그인"
+                disabled={!isFormValid || isLoginLocked || !isAuthSupported || logoutCleanupPending}
+                loading={false}
+                aria-label={isLoginPending ? '로그인 진행 중' : '로그인'}
+                aria-busy={isLoginPending}
               >
-                로그인
+                {isLoginPending ? (
+                  <img
+                    className="login-submit-spinner"
+                    src="/icons/auth/login-loading.svg"
+                    alt=""
+                  />
+                ) : (
+                  '로그인'
+                )}
               </ActionButton>
             </form>
 
@@ -351,15 +342,6 @@ export function LoginPage({
           </div>
         </div>
       </section>
-      {isQueueOpen && queueTicket && !logoutCleanupPending && (
-        <LoginQueueDialog
-          ticket={queueTicket}
-          message={queueMessage}
-          isCanceling={isCanceling}
-          dialogRef={queueDialogRef}
-          onCancel={() => void handleCancelQueue()}
-        />
-      )}
     </main>
   );
 }

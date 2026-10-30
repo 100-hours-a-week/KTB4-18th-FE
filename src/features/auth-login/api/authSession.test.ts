@@ -17,6 +17,7 @@ import {
   shouldRefreshAccessToken,
 } from './authSession';
 import { beginLogoutCleanupGate } from './logoutCleanupGate';
+import { forgetAuthFlowForTests, primeAuthFlowForTests } from './authFlow';
 
 function accessTokenWithExpiration(expiresAt: number): string {
   const payload = btoa(JSON.stringify({ exp: Math.floor(expiresAt / 1000) }))
@@ -29,6 +30,15 @@ function accessTokenWithExpiration(expiresAt: number): string {
 describe('refresh 쿠키와 계정 전환 요청 순서', () => {
   beforeEach(() => {
     resetAuthSessionForTests();
+    forgetAuthFlowForTests();
+    primeAuthFlowForTests({
+      flowId: '123e4567-e89b-42d3-a456-426614174000',
+      flowEpoch: 1,
+      revision: 1,
+      lifecycle: 'AUTHENTICATED',
+      authenticated: true,
+      refreshGeneration: 1,
+    });
     sessionStorage.clear();
   });
   afterEach(() => {
@@ -36,6 +46,7 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     resetAuthSessionForTests();
+    forgetAuthFlowForTests();
     sessionStorage.clear();
   });
 
@@ -57,6 +68,93 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     expect(getAuthRestoreState()).toBe('signed-out');
     await expect(refreshAccessToken()).rejects.toMatchObject({ status: null });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('recovers a refresh committed before the response was lost using the DB receipt', async () => {
+    const operationIds: string[] = [];
+    const fetchMock = vi.fn((input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/token/csrf'))
+        return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+      if (url.endsWith('/token/refresh')) {
+        const operationId = new Headers(init?.headers).get('X-Refresh-Operation-Id') ?? '';
+        operationIds.push(operationId);
+        return operationIds.length === 1
+          ? Promise.reject(new TypeError('response lost after commit'))
+          : Promise.resolve(Response.json({ data: { access_token: 'recovered-access-token' } }));
+      }
+      if (url.endsWith('/api/v1/auth/flow'))
+        return Promise.resolve(Response.json({ data: {
+          flowId: '123e4567-e89b-42d3-a456-426614174000', flowEpoch: 1, revision: 2,
+          lifecycle: 'AUTHENTICATED', authenticated: true, refreshGeneration: 2,
+          lastRefreshReceipt: {
+            operationId: operationIds[0], committed: true, flowEpoch: 1, revision: 2, resultGeneration: 2,
+          },
+        } }));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(refreshAccessToken()).resolves.toBe('recovered-access-token');
+
+    expect(operationIds).toHaveLength(2);
+    expect(operationIds[1]).not.toBe(operationIds[0]);
+    expect(localStorage.getItem('meomuneum:pending-refresh-operation')).toBeNull();
+  });
+
+  it('repairs the shared refresh cookie after AUTH_REFRESH_STALE from a concurrent tab', async () => {
+    const operationIds: string[] = [];
+    let flowReads = 0;
+    const fetchMock = vi.fn((input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/token/csrf'))
+        return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+      if (url.endsWith('/token/refresh')) {
+        const operationId = new Headers(init?.headers).get('X-Refresh-Operation-Id') ?? '';
+        operationIds.push(operationId);
+        if (operationIds.length === 1) {
+          return Promise.resolve(
+            Response.json({ code: 'AUTH_REFRESH_STALE', message: 'AUTH_REFRESH_STALE' }, { status: 409 }),
+          );
+        }
+        expect(document.cookie).toContain('refresh_token=canonical-refresh');
+        return Promise.resolve(Response.json({ data: { access_token: 'recovered-after-stale' } }));
+      }
+      if (url.endsWith('/api/v1/auth/flow')) {
+        flowReads += 1;
+        document.cookie = 'refresh_token=canonical-refresh; Path=/';
+        return Promise.resolve(
+          Response.json(
+            {
+              data: {
+                flowId: '123e4567-e89b-42d3-a456-426614174000',
+                flowEpoch: 1,
+                revision: 2,
+                lifecycle: 'AUTHENTICATED',
+                authenticated: true,
+                refreshGeneration: 2,
+                lastRefreshReceipt: {
+                  operationId: '123e4567-e89b-42d3-a456-426614174099',
+                  committed: true,
+                  flowEpoch: 1,
+                  revision: 2,
+                  resultGeneration: 2,
+                },
+              },
+            },
+            { headers: { 'X-Auth-Flow-Id': '123e4567-e89b-42d3-a456-426614174000', 'X-Auth-Flow-Epoch': '1' } },
+          ),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(refreshAccessToken()).resolves.toBe('recovered-after-stale');
+
+    expect(flowReads).toBe(1);
+    expect(operationIds).toHaveLength(2);
+    expect(operationIds[1]).not.toBe(operationIds[0]);
   });
 
   it('logout cleanup pending blocks refresh and marker storage failures fail closed', async () => {
@@ -175,6 +273,8 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     });
     const order: string[] = [];
     const logoutHeaders: Headers[] = [];
+    const flowId = '123e4567-e89b-42d3-a456-426614174000';
+    let flowReads = 0;
     setAccessToken('existing-token');
     vi.stubGlobal(
       'fetch',
@@ -186,10 +286,49 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
           order.push('refresh');
           return refreshResponse;
         }
+        if (url.endsWith('/auth/flow')) {
+          flowReads += 1;
+          const flowEpoch = flowReads === 1 ? 1 : 2;
+          return Promise.resolve(
+            Response.json({
+              data: {
+                flowId,
+                flowEpoch,
+                revision: flowEpoch,
+                lifecycle: flowReads === 1 ? 'AUTHENTICATED' : 'ANONYMOUS',
+                authenticated: flowReads === 1,
+                refreshGeneration: 1,
+                lastLogoutReceipt: flowReads === 1 ? null : {
+                  operationId: JSON.parse(
+                    window.localStorage.getItem('meomuneum:pending-logout-operation') ?? 'null',
+                  )?.operationId,
+                  committed: true,
+                  flowEpoch: 2,
+                  revision: 2,
+                },
+              },
+            }),
+          );
+        }
         if (url.endsWith('/auth/logout')) {
           order.push('logout');
-          logoutHeaders.push(new Headers(init?.headers));
-          return Promise.resolve(new Response(null, { status: 204 }));
+          const headers = new Headers(init?.headers);
+          logoutHeaders.push(headers);
+          return Promise.resolve(
+            Response.json(
+              {
+                data: {
+                  logoutReceipt: {
+                    operationId: headers.get('Idempotency-Key'),
+                    committed: true,
+                    flowEpoch: 2,
+                    revision: 2,
+                  },
+                },
+              },
+              { headers: { 'X-Auth-Flow-Id': flowId, 'X-Auth-Flow-Epoch': '2' } },
+            ),
+          );
         }
         throw new Error(`Unexpected request: ${url}`);
       }),
@@ -400,7 +539,21 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     const protectedResponse = new Promise<Response>((resolve) => {
       completeProtected = resolve;
     });
-    const fetchMock = vi.fn().mockReturnValue(protectedResponse);
+    const fetchMock = vi.fn((input: string | URL) =>
+      String(input).endsWith('/auth/flow')
+        ? Promise.resolve(
+            Response.json({
+              data: {
+                flowId: '123e4567-e89b-42d3-a456-426614174000',
+                flowEpoch: 1,
+                revision: 1,
+                lifecycle: 'AUTHENTICATED',
+                authenticated: true,
+              },
+            }),
+          )
+        : protectedResponse,
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     const pending = authenticatedFetch('/api/protected');
@@ -410,7 +563,9 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     completeProtected(Response.json({ message: 'unauthorized' }, { status: 401 }));
 
     await expect(pending).rejects.toMatchObject({ status: null });
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/protected')),
+    ).toHaveLength(1);
     expect(getAccessToken()).toBeNull();
   });
 
@@ -625,6 +780,13 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
       if (String(input).endsWith('/token/csrf')) {
         return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
       }
+      if (String(input).endsWith('/api/v1/auth/flow')) {
+        return Promise.resolve(Response.json({ data: {
+          flowId: '123e4567-e89b-42d3-a456-426614174000', flowEpoch: 1, revision: 1,
+          lifecycle: 'AUTHENTICATED', authenticated: true, refreshGeneration: 1,
+          lastRefreshReceipt: null,
+        } }));
+      }
       requestSignal = init!.signal!;
       refreshStarted();
       const stream = new ReadableStream<Uint8Array>({ start() {} });
@@ -671,6 +833,13 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     const fetchMock = vi.fn((input: string | URL, init?: RequestInit) => {
       if (String(input).endsWith('/token/csrf')) {
         return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+      }
+      if (String(input).endsWith('/api/v1/auth/flow')) {
+        return Promise.resolve(Response.json({ data: {
+          flowId: '123e4567-e89b-42d3-a456-426614174000', flowEpoch: 1, revision: 1,
+          lifecycle: 'AUTHENTICATED', authenticated: true, refreshGeneration: 1,
+          lastRefreshReceipt: null,
+        } }));
       }
       operationIds.push(new Headers(init?.headers).get('X-Refresh-Operation-Id') ?? '');
       return Promise.resolve(
@@ -750,11 +919,18 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
   });
 
   it('does not mark a protected mutation sent when its prerequisite refresh fails ambiguously', async () => {
-    const fetchMock = vi.fn((input: string | URL) =>
-      String(input).endsWith('/token/csrf')
-        ? Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }))
-        : Promise.reject(new TypeError('offline')),
-    );
+    const fetchMock = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/token/csrf'))
+        return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+      if (url.endsWith('/api/v1/auth/flow'))
+        return Promise.resolve(Response.json({ data: {
+          flowId: '123e4567-e89b-42d3-a456-426614174000', flowEpoch: 1, revision: 1,
+          lifecycle: 'AUTHENTICATED', authenticated: true, refreshGeneration: 1,
+          lastRefreshReceipt: null,
+        } }));
+      return Promise.reject(new TypeError('offline'));
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
@@ -764,8 +940,9 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
       }),
     ).rejects.toMatchObject({ status: null, requestWasSent: false });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(String(fetchMock.mock.calls[1][0])).toMatch(/token\/refresh$/);
+    expect(String(fetchMock.mock.calls[2][0])).toMatch(/auth\/flow$/);
   });
 
   it('CSRF GET 403은 refresh나 보호 API를 호출하지 않는다', async () => {
@@ -785,15 +962,23 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     'refresh %s는 보호 API를 진행하지 않고 재시도 가능한 오류로 남긴다',
     async (_label, refreshResult, status) => {
       const fetchMock = vi.fn((input: string | URL) => {
-        if (String(input).endsWith('/api/v1/auth/token/csrf')) {
+        const url = String(input);
+        if (url.endsWith('/api/v1/auth/token/csrf')) {
           return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+        }
+        if (url.endsWith('/api/v1/auth/flow')) {
+          return Promise.resolve(Response.json({ data: {
+            flowId: '123e4567-e89b-42d3-a456-426614174000', flowEpoch: 1, revision: 1,
+            lifecycle: 'AUTHENTICATED', authenticated: true, refreshGeneration: 1,
+            lastRefreshReceipt: null,
+          } }));
         }
         return refreshResult();
       });
       vi.stubGlobal('fetch', fetchMock);
 
       await expect(authenticatedFetch('/api/protected')).rejects.toMatchObject({ status });
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenCalledTimes(status === null ? 3 : 2);
       expect(getAccessToken()).toBeNull();
     },
   );

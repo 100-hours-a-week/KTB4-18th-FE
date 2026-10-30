@@ -122,7 +122,9 @@ describe('LoginPage email input', () => {
     fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password' } });
     fireEvent.submit(screen.getByLabelText('이메일').closest('form')!);
     await act(async () => Promise.resolve());
-    expect(screen.getByRole('heading', { name: '접속 대기 중이에요' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('region', { name: /접속 대기 중이에요|대기 요청을 확인해 주세요/ }),
+    ).not.toBeInTheDocument();
 
     await act(async () => vi.advanceTimersByTimeAsync(1_000));
     await act(async () => Promise.resolve());
@@ -135,8 +137,10 @@ describe('LoginPage email input', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       '로그인 대기 상태가 변경되었어요. 다시 시도해 주세요.',
     );
-    expect(screen.getByRole('heading', { name: '접속 대기 중이에요' })).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('대기열이 가득 찼어요');
+    expect(
+      screen.queryByRole('region', { name: /접속 대기 중이에요|대기 요청을 확인해 주세요/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '로그인 진행 중' })).toBeDisabled();
     expect(submitQueuedLogin).not.toHaveBeenCalled();
   });
 
@@ -1002,8 +1006,10 @@ describe('LoginPage email input', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       '로그인 대기 상태가 변경되었어요. 다시 시도해 주세요.',
     );
-    expect(screen.getByRole('heading', { name: '접속 대기 중이에요' })).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('대기열이 가득 찼어요');
+    expect(
+      screen.queryByRole('region', { name: /접속 대기 중이에요|대기 요청을 확인해 주세요/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '로그인 진행 중' })).toBeDisabled();
     expect(submitQueuedLogin).not.toHaveBeenCalled();
   });
 
@@ -1025,7 +1031,9 @@ describe('LoginPage email input', () => {
     fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password' } });
     fireEvent.submit(screen.getByLabelText('이메일').closest('form')!);
     await act(async () => Promise.resolve());
-    expect(screen.getByRole('heading', { name: '접속 대기 중이에요' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('region', { name: /접속 대기 중이에요|대기 요청을 확인해 주세요/ }),
+    ).not.toBeInTheDocument();
 
     await act(async () => vi.advanceTimersByTimeAsync(5_000));
 
@@ -1278,14 +1286,9 @@ describe('LoginPage email input', () => {
     expect(screen.queryByText(/비밀번호를 다시 입력해/)).not.toBeInTheDocument();
   });
 
-  it.each([
-    { usersAhead: null, shouldOpen: false },
-    { usersAhead: 0, shouldOpen: false },
-    { usersAhead: 150, shouldOpen: false },
-    { usersAhead: 151, shouldOpen: true },
-  ])(
-    'shows the waiting dialog only when more than 150 people are ahead',
-    async ({ usersAhead, shouldOpen }) => {
+  it.each([null, 0, 150, 151])(
+    'keeps the waiting ticket in the login button without showing queue details (%s ahead)',
+    async (usersAhead) => {
       let resolveStatus!: (ticket: LoginQueueTicket) => void;
       const statusPromise = new Promise<LoginQueueTicket>((resolve) => {
         resolveStatus = resolve;
@@ -1303,11 +1306,12 @@ describe('LoginPage email input', () => {
         });
         await statusPromise;
       });
-      if (shouldOpen) {
-        expect(await screen.findByRole('dialog')).toBeInTheDocument();
-      } else {
-        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-      }
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '로그인 진행 중' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: '로그인 진행 중' })).toHaveAttribute(
+        'aria-busy',
+        'true',
+      );
     },
   );
 
@@ -1900,11 +1904,14 @@ describe('LoginPage email input', () => {
     await user.type(emailInput, 'abc@Example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'password');
     await user.click(screen.getByRole('button', { name: '로그인' }));
-    expect(screen.getByRole('button', { name: '로그인' })).toBeDisabled();
+    const pendingButton = screen.getByRole('button', { name: '로그인 진행 중' });
+    expect(pendingButton).toBeDisabled();
+    expect(pendingButton).toHaveAttribute('aria-busy', 'true');
+    expect(pendingButton.querySelector('.login-submit-spinner')).toBeInTheDocument();
     fireEvent.submit(emailInput.closest('form')!);
     expect(submitQueuedLogin).toHaveBeenCalledTimes(1);
     await act(async () => finishLogin(successResponse));
-    expect(screen.getByRole('button', { name: '로그인' })).toBeDisabled();
+    expect(await screen.findByRole('status')).toHaveTextContent('로그인에 성공했어요.');
   });
 
   it('ignores an old login rejection after logout reset and keeps the newer submit pending', async () => {
@@ -2484,7 +2491,7 @@ describe('LoginPage email input', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('keeps QUEUE_FULL on the login page with an accessible cancel action', async () => {
+  it('shows the login progress indicator without a queue panel when capacity is full', async () => {
     vi.mocked(startOrResumeLoginQueue).mockRejectedValueOnce(
       new QueueRequestError(503, 'QUEUE_FULL', 4),
     );
@@ -2494,11 +2501,12 @@ describe('LoginPage email input', () => {
     await user.type(screen.getByLabelText('비밀번호'), 'password');
     await user.click(screen.getByRole('button', { name: '로그인' }));
 
-    expect(await screen.findByRole('heading', { name: '접속 대기 중이에요' })).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('대기열이 가득 찼어요');
+    expect(await screen.findByRole('button', { name: '로그인 진행 중' })).toBeDisabled();
+    expect(
+      screen.queryByRole('region', { name: /접속 대기 중이에요|대기 요청을 확인해 주세요/ }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(submitQueuedLogin).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: '대기 취소' })).toBeEnabled();
   });
 
   it('keeps checking a VERIFYING ticket without opening the long-wait dialog', async () => {
@@ -2591,7 +2599,7 @@ describe('LoginPage email input', () => {
     expect(screen.getByLabelText('비밀번호')).toHaveValue('');
   });
 
-  it('keeps Escape cancellation pending until confirmed, then focuses email', async () => {
+  it('keeps the form locked while a login ticket is waiting without showing queue details', async () => {
     vi.mocked(startOrResumeLoginQueue).mockResolvedValueOnce(
       queueStartResult({
         status: 'WAITING',
@@ -2608,27 +2616,19 @@ describe('LoginPage email input', () => {
         usersAhead: 151,
         nextPollSeconds: 10,
       });
-    let confirmCancel!: () => void;
-    vi.mocked(cancelLoginQueue).mockImplementationOnce(
-      () => new Promise<void>((resolve) => (confirmCancel = resolve)),
-    );
     const user = userEvent.setup();
     render(<LoginPage />);
     await user.type(screen.getByLabelText('이메일'), 'user@example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'password');
     await user.click(screen.getByRole('button', { name: '로그인' }));
-    const dialog = await screen.findByRole('dialog');
-
-    fireEvent.keyDown(dialog, { key: 'Escape' });
-    expect(await screen.findByRole('button', { name: '취소 중…' })).toBeDisabled();
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-
-    await act(async () => confirmCancel());
-    await vi.waitFor(() => expect(screen.getByLabelText('이메일')).toHaveFocus());
+    const loginButton = await screen.findByRole('button', { name: '로그인 진행 중' });
+    expect(loginButton).toBeDisabled();
+    expect(screen.getByLabelText('이메일')).toBeDisabled();
+    expect(screen.getByLabelText('비밀번호')).toBeDisabled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('clears sibling canceling state after an unconfirmed result and allows retry', async () => {
+  it('does not expose queue details after a sibling cancellation is unconfirmed', async () => {
     vi.mocked(getLoginQueueStatus).mockResolvedValueOnce({
       status: 'WAITING',
       loginOutcome: null,
@@ -2636,7 +2636,7 @@ describe('LoginPage email input', () => {
       nextPollSeconds: 10,
     });
     render(<LoginPage />);
-    const dialog = await screen.findByRole('dialog');
+    const loginButton = await screen.findByRole('button', { name: '로그인 진행 중' });
 
     await act(async () => {
       queueSignals.listener?.({
@@ -2644,31 +2644,23 @@ describe('LoginPage email input', () => {
         queueGeneration: 'live-generation',
       });
     });
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '취소 중…' })).toBeDisabled();
-    expect(dialog).toHaveTextContent('다른 탭에서 취소를 요청했어요');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(loginButton).toBeDisabled();
 
-    // Cancellation failure keeps the queue visible while re-enabling the retry action.
     await act(async () => {
       queueSignals.listener?.({
         type: 'queue-cancel-unconfirmed',
         queueGeneration: 'live-generation',
       });
     });
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '대기 취소' })).toBeEnabled();
-    expect(screen.getByRole('status')).toHaveTextContent('취소 결과를 확인하지 못했어요');
-
-    vi.mocked(cancelLoginQueue).mockResolvedValueOnce(undefined);
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: '대기 취소' }));
-    await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(cancelLoginQueue).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(loginButton).toBeDisabled();
+    expect(cancelLoginQueue).not.toHaveBeenCalled();
   });
 
-  it('keeps inline capacity cancellation pending, then focuses email after confirmation', async () => {
+  it('keeps manual login-request cancellation pending, then focuses email after confirmation', async () => {
     vi.mocked(startOrResumeLoginQueue).mockRejectedValueOnce(
-      new QueueRequestError(503, 'QUEUE_FULL', 120),
+      new QueueRequestError(503, 'CREATE_RETRIES_EXHAUSTED'),
     );
     let confirmCancel!: () => void;
     vi.mocked(cancelLoginQueue).mockImplementationOnce(
@@ -2679,15 +2671,19 @@ describe('LoginPage email input', () => {
     await user.type(screen.getByLabelText('이메일'), 'user@example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'password');
     await user.click(screen.getByRole('button', { name: '로그인' }));
-    await screen.findByRole('heading', { name: '접속 대기 중이에요' });
+    await screen.findByRole('heading', { name: '로그인 요청을 확인해 주세요' });
 
-    await user.click(screen.getByRole('button', { name: '대기 취소' }));
+    await user.click(screen.getByRole('button', { name: '로그인 취소' }));
     expect(await screen.findByRole('button', { name: '취소 중…' })).toBeDisabled();
-    expect(screen.getByRole('heading', { name: '접속 대기 중이에요' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: '로그인 요청을 확인해 주세요' }),
+    ).toBeInTheDocument();
 
     await act(async () => confirmCancel());
     await vi.waitFor(() => expect(screen.getByLabelText('이메일')).toHaveFocus());
-    expect(screen.queryByRole('heading', { name: '접속 대기 중이에요' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: '로그인 요청을 확인해 주세요' }),
+    ).not.toBeInTheDocument();
   });
 
   it('resumes a shared READY ticket without another tab credentials and asks for local re-entry', async () => {
@@ -2706,7 +2702,7 @@ describe('LoginPage email input', () => {
     expect(submitQueuedLogin).not.toHaveBeenCalled();
   });
 
-  it('ignores an old queue signal and keeps keyboard focus inside the waiting dialog', async () => {
+  it('ignores an old queue signal without opening a queue dialog', async () => {
     vi.mocked(startOrResumeLoginQueue).mockResolvedValueOnce(
       queueStartResult({
         status: 'WAITING',
@@ -2729,18 +2725,15 @@ describe('LoginPage email input', () => {
     await user.type(screen.getByLabelText('비밀번호'), 'password');
     await user.click(screen.getByRole('button', { name: '로그인' }));
 
-    const dialog = await screen.findByRole('dialog');
-    const cancelButton = screen.getByRole('button', { name: '대기 취소' });
-    await vi.waitFor(() => expect(cancelButton).toHaveFocus());
-    expect(screen.getByLabelText('이메일').closest('.login-layout')).toHaveAttribute('inert');
-    fireEvent.keyDown(dialog, { key: 'Tab' });
-    await vi.waitFor(() => expect(cancelButton).toHaveFocus());
+    const loginButton = await screen.findByRole('button', { name: '로그인 진행 중' });
+    expect(loginButton).toBeDisabled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
     expect(queueSignals.listener).not.toBeNull();
     await act(async () => {
       queueSignals.listener?.({ type: 'queue-login-complete', queueGeneration: 'old-generation' });
     });
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
     await act(async () => {
       queueSignals.listener?.({ type: 'queue-login-complete', queueGeneration: 'live-generation' });

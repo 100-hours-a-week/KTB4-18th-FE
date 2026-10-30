@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { clearAccessToken, setAccessToken } from '../auth-login/api/authSession';
+import { forgetAuthFlowForTests, primeAuthFlowForTests } from '../auth-login/api/authFlow';
 import { fetchMapDots, invalidateMapDotsCache } from '../mainMap/mapApi';
 import { deleteMusicRecord, MusicApiError, type MusicRecordDetail } from './api/musicRecordsApi';
 import { MusicRecordDetailPage } from './components/MusicRecordDetailPage';
@@ -30,6 +31,13 @@ describe('음악 기록 삭제', () => {
 
   beforeEach(() => {
     sessionStorage.clear();
+    primeAuthFlowForTests({
+      flowId: '123e4567-e89b-42d3-a456-426614174000',
+      flowEpoch: 1,
+      revision: 1,
+      lifecycle: 'AUTHENTICATED',
+      authenticated: true,
+    });
     setAccessToken('test-access-token');
     window.history.replaceState(null, '', '/music-records/7');
     invalidateMapDotsCache();
@@ -70,6 +78,7 @@ describe('음악 기록 삭제', () => {
     vi.unstubAllGlobals();
     sessionStorage.clear();
     clearAccessToken();
+    forgetAuthFlowForTests();
   });
 
   const deleteCalls = () =>

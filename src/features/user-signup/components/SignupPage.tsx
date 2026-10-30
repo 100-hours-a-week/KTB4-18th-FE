@@ -1,6 +1,8 @@
 import { ActionButton, BottomSheet } from '@seed-design/react';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import { SignupTermsSkeleton } from '../../../components/RouteLoadSkeleton';
+import { useDelayedPending } from '../../../hooks/useDelayedPending';
 import { convertHangulToKeyboardInput } from '../../../shared/convertHangulToKeyboardInput';
 import { signup } from '../api/signupApi';
 import { checkUserAvailability } from '../api/userAvailabilityApi';
@@ -95,6 +97,9 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
   const [currentTerms, setCurrentTerms] = useState<CurrentTerm[]>([]);
   const [termsError, setTermsError] = useState('');
   const [isTermsLoading, setIsTermsLoading] = useState(true);
+  const [termsRequestId, setTermsRequestId] = useState(0);
+  const termsRequestGeneration = useRef(0);
+  const isTermsSkeletonVisible = useDelayedPending(isTermsLoading, termsRequestId);
   const selectAllTermsRef = useRef<HTMLInputElement>(null);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<InputField, string>>>({});
   const [duplicateValues, setDuplicateValues] = useState<Partial<Record<DuplicateField, string>>>(
@@ -117,26 +122,36 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
   const [success, setSuccess] = useState('');
 
   useEffect(() => {
+    const requestId = ++termsRequestGeneration.current;
+    setTermsRequestId(requestId);
     const controller = new AbortController();
     getCurrentTerms(controller.signal)
       .then((items) => {
+        if (requestId !== termsRequestGeneration.current) return;
         setCurrentTerms(items);
         setTermsError('');
       })
       .catch(() => {
-        if (!controller.signal.aborted)
+        if (!controller.signal.aborted && requestId === termsRequestGeneration.current)
           setTermsError('약관을 불러오지 못했어요. 다시 시도해 주세요.');
       })
       .finally(() => {
-        if (!controller.signal.aborted) setIsTermsLoading(false);
+        if (!controller.signal.aborted && requestId === termsRequestGeneration.current)
+          setIsTermsLoading(false);
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      termsRequestGeneration.current += 1;
+    };
   }, []);
 
   async function reloadTerms() {
+    const requestId = ++termsRequestGeneration.current;
+    setTermsRequestId(requestId);
     setIsTermsLoading(true);
     try {
       const items = await getCurrentTerms();
+      if (requestId !== termsRequestGeneration.current) return null;
       setCurrentTerms(items);
       setAgreedTermIds((previous) =>
         previous.filter((id) => items.some((item) => item.terms_id === id)),
@@ -144,12 +159,13 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
       setTermsError('');
       return items;
     } catch {
+      if (requestId !== termsRequestGeneration.current) return null;
       setCurrentTerms([]);
       setAgreedTermIds([]);
       setTermsError('약관을 불러오지 못했어요. 다시 시도해 주세요.');
       return null;
     } finally {
-      setIsTermsLoading(false);
+      if (requestId === termsRequestGeneration.current) setIsTermsLoading(false);
     }
   }
 
@@ -703,7 +719,11 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
               출생연도와 성별 정보는 AI 음악 추천 개인화에만 활용됩니다.
             </p>
 
-            <section className="signup-input-wrap signup-terms" aria-labelledby="terms-title">
+            <section
+              className="signup-input-wrap signup-terms"
+              aria-labelledby="terms-title"
+              aria-busy={isTermsLoading}
+            >
               <h2 id="terms-title">
                 약관 동의 <span className="visually-hidden">(필수)</span>
               </h2>
@@ -721,11 +741,7 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
                 <span>전체선택</span>
               </label>
               <div className="signup-check-list">
-                {isTermsLoading && (
-                  <p className="signup-terms-status" role="status">
-                    약관을 불러오는 중이에요.
-                  </p>
-                )}
+                {isTermsSkeletonVisible && !termsError && <SignupTermsSkeleton />}
                 {!isTermsLoading &&
                   !termsError &&
                   currentTerms.map((term) => {

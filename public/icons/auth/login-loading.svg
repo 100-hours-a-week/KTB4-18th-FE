@@ -1,0 +1,20 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Loding">
+<mask id="mask0_0_53" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="-1" y="-1" width="26" height="26">
+<path id="Vector 40" d="M24 0V12H12V24H0V0H24Z" fill="#D9D9D9" stroke="url(#paint0_linear_0_53)"/>
+</mask>
+<g mask="url(#mask0_0_53)">
+<path id="Ellipse 441" d="M23 12C23 18.0751 18.0751 23 12 23C5.92487 23 1 18.0751 1 12C1 5.92487 5.92487 1 12 1C18.0751 1 23 5.92487 23 12Z" stroke-width="2" stroke="url(#paint1_linear_0_53)"/>
+</g>
+</g>
+<defs>
+<linearGradient id="paint0_linear_0_53" x1="12" y1="12" x2="12" y2="24" gradientUnits="userSpaceOnUse">
+<stop stop-color="white"/>
+<stop offset="1" stop-color="white" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="paint1_linear_0_53" x1="12" y1="12" x2="12" y2="24" gradientUnits="userSpaceOnUse">
+<stop stop-color="white"/>
+<stop offset="1" stop-color="white" stop-opacity="0"/>
+</linearGradient>
+</defs>
+</svg>

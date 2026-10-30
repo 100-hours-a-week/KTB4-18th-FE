@@ -8,6 +8,7 @@ import {
   runAuthTransition,
   setAccessToken,
 } from './authSession';
+import { forgetAuthFlowForTests, primeAuthFlowForTests } from './authFlow';
 
 const EPOCH_KEY = 'meomuneum:auth-epoch';
 const OPERATION_KEY = 'meomuneum:pending-refresh-operation';
@@ -17,20 +18,42 @@ function peer(value: string) {
   window.dispatchEvent(new StorageEvent('storage', { key: EPOCH_KEY, newValue: value }));
 }
 function installRefresh(result: () => Promise<Response>) {
-  const fetcher = vi.fn((input: string | URL) =>
-    String(input).endsWith('/token/csrf')
-      ? Promise.resolve(Response.json({ data: { csrf_token: 'test-csrf' } }))
-      : result(),
-  );
+  const fetcher = vi.fn((input: string | URL) => {
+    const url = String(input);
+    if (url.endsWith('/token/csrf'))
+      return Promise.resolve(Response.json({ data: { csrf_token: 'test-csrf' } }));
+    if (url.endsWith('/auth/flow'))
+      return Promise.resolve(
+        Response.json({
+          data: {
+            flowId: '123e4567-e89b-42d3-a456-426614174000',
+            flowEpoch: 2,
+            revision: 2,
+            lifecycle: 'AUTHENTICATED',
+            authenticated: true,
+          },
+        }),
+      );
+    return result();
+  });
   vi.stubGlobal('fetch', fetcher);
   return fetcher;
 }
 beforeEach(() => {
   resetAuthSessionForTests();
+  forgetAuthFlowForTests();
+  primeAuthFlowForTests({
+    flowId: '123e4567-e89b-42d3-a456-426614174000',
+    flowEpoch: 1,
+    revision: 1,
+    lifecycle: 'AUTHENTICATED',
+    authenticated: true,
+  });
   sessionStorage.clear();
 });
 afterEach(() => {
   resetAuthSessionForTests();
+  forgetAuthFlowForTests();
   sessionStorage.clear();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();

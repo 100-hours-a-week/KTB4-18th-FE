@@ -18,6 +18,7 @@ import {
 import { MusicRecordCreatePage, MusicRecordListPage } from './components/MusicRecordPages';
 import { MusicRecordDetailPage } from './components/MusicRecordDetailPage';
 import { clearAccessToken, setAccessToken } from '../auth-login/api/authSession';
+import { forgetAuthFlowForTests, primeAuthFlowForTests } from '../auth-login/api/authFlow';
 import { invalidateMapDotsCache } from '../mainMap/mapApi';
 
 const region = {
@@ -99,6 +100,13 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       created_at: '2026-09-22T06:30:00Z',
       updated_at: null,
     };
+    primeAuthFlowForTests({
+      flowId: '123e4567-e89b-42d3-a456-426614174000',
+      flowEpoch: 1,
+      revision: 1,
+      lifecycle: 'AUTHENTICATED',
+      authenticated: true,
+    });
     setAccessToken('test-access-token');
     vi.stubGlobal(
       'IntersectionObserver',
@@ -229,6 +237,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     sessionStorage.clear();
+    forgetAuthFlowForTests();
     window.history.replaceState(null, '', '/');
     if (originalGeolocation) Object.defineProperty(navigator, 'geolocation', originalGeolocation);
     else Reflect.deleteProperty(navigator, 'geolocation');
@@ -1111,9 +1120,9 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     render(<MusicRecordCreatePage />);
     const input = screen.getByRole('textbox', { name: '음악 검색' });
     fireEvent.change(input, { target: { value: '음악' } });
-    expect(await screen.findByRole('status')).toHaveTextContent('검색 중');
+    expect(await screen.findByRole('status')).toHaveTextContent('음악 검색 결과를 불러오는 중');
     fireEvent.change(input, { target: { value: '음' } });
-    expect(screen.queryByText('검색 중…')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     completeSearch(Response.json({ data: { items: [music], next_cursor: null, has_next: false } }));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(screen.queryByRole('button', { name: /^밤편지아이유$/ })).not.toBeInTheDocument();
