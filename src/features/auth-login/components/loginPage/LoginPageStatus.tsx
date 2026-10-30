@@ -1,5 +1,3 @@
-import type { LoginPageProps } from '../LoginPage';
-
 type LoginPageToastProps = {
   requestToast: { message: string; sequence: number } | null;
   clearRequestToast: () => void;
@@ -25,18 +23,17 @@ export function LoginPageToast({ requestToast, clearRequestToast }: LoginPageToa
   );
 }
 
-type LoginPageNoticesProps = Pick<
-  LoginPageProps,
-  | 'authCapabilityMessage'
-  | 'authRestoreError'
-  | 'onRetryAuthRestore'
-  | 'logoutCleanupPending'
-  | 'logoutCleanupError'
-  | 'logoutCleanupRetrying'
-  | 'onRetryLogoutCleanup'
-  | 'passwordChangedNotice'
-  | 'onPasswordChangedNoticeDismiss'
->;
+type LoginPageNoticesProps = {
+  authCapabilityMessage?: string;
+  authRestoreError?: string;
+  onRetryAuthRestore?: () => void;
+  logoutCleanupPending?: boolean;
+  logoutCleanupError?: string;
+  logoutCleanupRetrying?: boolean;
+  onRetryLogoutCleanup?: () => void;
+  passwordChangedNotice?: boolean;
+  onPasswordChangedNoticeDismiss?: () => void;
+};
 
 export function LoginPageNotices({
   authCapabilityMessage,
