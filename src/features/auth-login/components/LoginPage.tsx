@@ -4,8 +4,10 @@ import { useCallback, useRef, useState } from 'react';
 import type { LoginSuccessResponse } from '../api/loginTypes';
 import { useLoginQueueFlow } from '../hooks/useLoginQueueFlow';
 import { validate } from '../hooks/loginQueueFlowUtils';
-import { EMAIL_NOT_REGISTERED_ERROR } from '../hooks/loginQueueFlowUtils';
 import type { FieldErrors } from '../hooks/loginQueueFlowUtils';
+import { LoginPageBrand } from './loginPage/LoginPageBrand';
+import { LoginCredentialsForm } from './loginPage/LoginCredentialsForm';
+import { LoginPageNotices, LoginPageToast } from './loginPage/LoginPageStatus';
 import './LoginPage.css';
 
 type RequestToast = { message: string; sequence: number };
@@ -98,159 +100,44 @@ export function LoginPage({
   return (
     <main className="login-screen">
       <section className="login-content" aria-labelledby="login-title">
-        {requestToast && (
-          <div
-            key={requestToast.sequence}
-            className="login-request-toast"
-            role="alert"
-            aria-atomic="true"
-          >
-            <span>{requestToast.message}</span>
-            <button type="button" aria-label="알림 닫기" onClick={clearRequestToast}>
-              닫기
-            </button>
-          </div>
-        )}
+        <LoginPageToast requestToast={requestToast} clearRequestToast={clearRequestToast} />
+
         <div className="login-layout">
-          <header className="login-brand">
-            <span className="login-symbol-grid" aria-hidden="true">
-              <span className="login-symbol-frame">
-                <img className="login-symbol" src="/icons/auth/Logo.svg" alt="" />
-              </span>
-            </span>
-            <div className="login-brand-copy">
-              <h1 id="login-title" className="login-wordmark">
-                머문음
-              </h1>
-              <p className="brand-tagline">머문 자리에, 음악이 남는다.</p>
-            </div>
-          </header>
+          <LoginPageBrand />
 
           <div className="login-body">
             <div className="diary-login-intro">
               <h2>오늘도, 한 곡 남겨볼까요?</h2>
             </div>
-            {authCapabilityMessage && (
-              <p className="login-notice" role="alert">
-                {authCapabilityMessage}
-              </p>
-            )}
-            {authRestoreError && (
-              <p className="login-notice" role="alert">
-                {authRestoreError}{' '}
-                <button type="button" onClick={onRetryAuthRestore}>
-                  다시 시도
-                </button>
-              </p>
-            )}
-            {logoutCleanupPending && (
-              <section className="login-notice" aria-label="로그아웃 정리 대기" role="alert">
-                <p>로그인 준비를 마무리하고 있어요. 완료될 때까지 다시 로그인할 수 없어요.</p>
-                {logoutCleanupError && <p>{logoutCleanupError}</p>}
-                <button
-                  type="button"
-                  onClick={onRetryLogoutCleanup}
-                  disabled={logoutCleanupRetrying}
-                >
-                  {logoutCleanupRetrying ? '로그인 준비 중…' : '로그인 준비 다시 시도'}
-                </button>
-              </section>
-            )}
-            {passwordChangedNotice && (
-              <p role="status">
-                비밀번호가 변경되었어요. 새 비밀번호로 다시 로그인해 주세요.{' '}
-                <button type="button" onClick={onPasswordChangedNoticeDismiss}>
-                  확인
-                </button>
-              </p>
-            )}
+            <LoginPageNotices
+              authCapabilityMessage={authCapabilityMessage}
+              authRestoreError={authRestoreError}
+              onRetryAuthRestore={onRetryAuthRestore}
+              logoutCleanupPending={logoutCleanupPending}
+              logoutCleanupError={logoutCleanupError}
+              logoutCleanupRetrying={logoutCleanupRetrying}
+              onRetryLogoutCleanup={onRetryLogoutCleanup}
+              passwordChangedNotice={passwordChangedNotice}
+              onPasswordChangedNoticeDismiss={onPasswordChangedNoticeDismiss}
+            />
             <div className="login-divider" aria-hidden="true">
               <span>로그인/회원가입</span>
             </div>
 
             <form className="login-form" onSubmit={handleSubmit} noValidate>
-              <div className="login-field">
-                <label className="login-label" htmlFor="email">
-                  이메일
-                </label>
-                <div className={'login-input-wrap' + (fieldErrors.email ? ' has-error' : '')}>
-                  <input
-                    id="email"
-                    ref={emailInputRef}
-                    className="login-input"
-                    type="email"
-                    inputMode="email"
-                    autoComplete="email"
-                    placeholder="이메일을 입력해주세요"
-                    value={email}
-                    onInput={(event) => updateEmail(event.currentTarget.value)}
-                    onChange={(event) => updateEmail(event.currentTarget.value)}
-                    onCompositionUpdate={(event) => updateEmail(event.currentTarget.value)}
-                    onCompositionEnd={(event) => updateEmail(event.currentTarget.value)}
-                    onBlur={(event) => updateEmail(event.currentTarget.value)}
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    aria-invalid={Boolean(fieldErrors.email)}
-                    aria-describedby={fieldErrors.email ? 'email-error' : undefined}
-                    disabled={isLoginLocked || !isAuthSupported || logoutCleanupPending}
-                  />
-                </div>
-                {fieldErrors.email && (
-                  <p id="email-error" className="login-error" role="alert">
-                    {fieldErrors.emailNeedsSignup ? (
-                      <>
-                        {EMAIL_NOT_REGISTERED_ERROR}{' '}
-                        <a className="login-inline-signup-link" href="/signup">
-                          회원가입
-                        </a>
-                        을 진행해 주세요.
-                      </>
-                    ) : (
-                      fieldErrors.email
-                    )}
-                  </p>
-                )}
-              </div>
-
-              <div className="login-field">
-                <label className="login-label" htmlFor="password">
-                  비밀번호
-                </label>
-                <div className={'login-input-wrap' + (fieldErrors.password ? ' has-error' : '')}>
-                  <input
-                    id="password"
-                    className="login-input"
-                    type={isPasswordVisible ? 'text' : 'password'}
-                    autoComplete="current-password"
-                    placeholder="비밀번호를 입력해주세요"
-                    value={password}
-                    onChange={(event) => updatePassword(event.target.value)}
-                    aria-invalid={Boolean(fieldErrors.password)}
-                    aria-describedby={fieldErrors.password ? 'password-error' : undefined}
-                    disabled={isLoginLocked || !isAuthSupported || logoutCleanupPending}
-                  />
-                  <button
-                    className="password-toggle"
-                    type="button"
-                    onClick={() => setIsPasswordVisible((visible) => !visible)}
-                    aria-label={isPasswordVisible ? '비밀번호 숨기기' : '비밀번호 표시'}
-                    disabled={isLoginLocked || !isAuthSupported || logoutCleanupPending}
-                  >
-                    <img
-                      src={
-                        isPasswordVisible ? '/icons/auth/View-on.svg' : '/icons/auth/View-off.svg'
-                      }
-                      alt=""
-                    />
-                  </button>
-                </div>
-                {fieldErrors.password && (
-                  <p id="password-error" className="login-error" role="alert">
-                    {fieldErrors.password}
-                  </p>
-                )}
-              </div>
+              <LoginCredentialsForm
+                email={email}
+                password={password}
+                fieldErrors={fieldErrors}
+                emailInputRef={emailInputRef}
+                updateEmail={updateEmail}
+                updatePassword={updatePassword}
+                isPasswordVisible={isPasswordVisible}
+                setIsPasswordVisible={setIsPasswordVisible}
+                isLoginLocked={isLoginLocked}
+                isAuthSupported={isAuthSupported}
+                logoutCleanupPending={logoutCleanupPending}
+              />
 
               {requestError && (
                 <p className="login-notice" role="alert">
