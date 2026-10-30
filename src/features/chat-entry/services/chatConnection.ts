@@ -1,4 +1,4 @@
-import { Client } from '@stomp/stompjs';
+import { Client, ReconnectionTimeMode } from '@stomp/stompjs';
 
 import type { ChatRoomMembership } from '../../../api/chatRooms';
 import {
@@ -6,6 +6,7 @@ import {
   refreshAccessToken,
   shouldRefreshAccessToken,
   ACCESS_TOKEN_CHANGED_EVENT,
+  AuthRequestError,
 } from '../../auth-login/api/authSession';
 import { CHAT_CACHE_LIMIT } from './chatConversationCache';
 import { chatAuthContext, sameChatAuthContext } from './chatAuthContext';
@@ -24,6 +25,8 @@ export type ChatConnectionStatus =
   | 'error';
 
 type Ready = Extract<ChatEvent, { type: 'CHAT_READY' }>;
+const RECOVERY_TIMEOUT_MS = 30_000;
+const MAX_BUFFERED_EVENTS = 500;
 
 export function connectChatRoom(
   membership: ChatRoomMembership,
@@ -71,7 +74,9 @@ export function connectChatRoom(
     stop();
     onStatus(status, message);
   };
-  const recoveryFailed = () => {
+  const recoveryFailed = (
+    message = '이전 메시지를 복구하지 못했어요. 복구를 다시 시도해 주세요.',
+  ) => {
     if (isStopped) return;
     isPaused = true;
     isReady = false;
@@ -79,7 +84,7 @@ export function connectChatRoom(
     cancelRecovery();
     window.clearTimeout(initialDeadline);
     void client.deactivate({ force: true });
-    onStatus('recovery-failed', '이전 메시지를 복구하지 못했어요. 복구를 다시 시도해 주세요.');
+    onStatus('recovery-failed', message);
   };
   const deliver = (event: ChatEvent) => {
     if (isStopped || !ownsCurrentAuth()) return;
@@ -93,19 +98,24 @@ export function connectChatRoom(
     window.clearTimeout(initialDeadline);
     recovery = new AbortController();
     const controller = recovery;
+    readyTimer = window.setTimeout(() => recoveryFailed(), RECOVERY_TIMEOUT_MS);
     onStatus('recovering', '놓친 메시지를 복구하고 있어요.');
     const recovered = new Map<number, Extract<ChatEvent, { type: 'CHAT_MESSAGE' }>>();
     const visited = new Set<string>();
     let cursor: string | null = ready.recoveryCursor;
+    let newest = 0;
     try {
       while (cursor) {
         if (visited.has(cursor)) throw new ChatRecoveryError(502);
         visited.add(cursor);
+        const token = getAccessToken();
+        if (!token || !ownsCurrentAuth()) return;
         const page = await fetchChatRecovery(
           membership,
           ready.viewSessionId,
           cursor,
           controller.signal,
+          token,
         );
         if (
           isStopped ||
@@ -115,9 +125,17 @@ export function connectChatRoom(
           !ownsCurrentAuth()
         )
           return;
-        if (page.snapshotMessageId !== ready.snapshotMessageId) throw new ChatRecoveryError(502);
-        for (const message of page.items)
+        if (
+          page.snapshotMessageId !== ready.snapshotMessageId ||
+          (page.hasNext && !page.items.length)
+        )
+          throw new ChatRecoveryError(502);
+        for (const message of page.items) {
+          if (message.messageId <= newest) throw new ChatRecoveryError(502);
+          newest = message.messageId;
           recovered.set(message.messageId, { type: 'CHAT_MESSAGE', message });
+          if (recovered.size > CHAT_CACHE_LIMIT) recovered.delete(recovered.keys().next().value!);
+        }
         cursor = page.nextCursor;
       }
       if (
@@ -182,6 +200,8 @@ export function connectChatRoom(
       live.forEach(deliver);
       if (isStopped || !ownsCurrentAuth()) return;
       recovery = undefined;
+      window.clearTimeout(readyTimer);
+      readyTimer = undefined;
       isReady = true;
       onStatus('ready', '이야기방에 입장했어요.');
     } catch (error) {
@@ -197,12 +217,22 @@ export function connectChatRoom(
         terminal('banned', chatBanNotice(error.bannedUntil));
       } else if (error instanceof ChatRecoveryError && error.status === 401) {
         terminal('error', '다시 로그인한 후 동네 이야기에 입장해 주세요.');
+      } else if (
+        error instanceof ChatRecoveryError &&
+        ['CHAT_ROOM_403_MEMBERSHIP', 'CHAT_ROOM_403_USER_NOT_FOUND'].includes(error.code)
+      ) {
+        terminal('left', '현재 대화 참여가 종료됐어요. 동네 이야기에 다시 입장해 주세요.');
+      } else if (error instanceof ChatRecoveryError && error.status === 503) {
+        recoveryFailed('채팅 서비스에 일시적으로 연결할 수 없어요. 복구를 다시 시도해 주세요.');
       } else recoveryFailed();
     }
   };
   const client = new Client({
     brokerURL: url.href,
-    reconnectDelay: 1_000,
+    // Spread clients after a shared outage, then back off to at most 30 seconds.
+    reconnectDelay: 1_000 + Math.floor(Math.random() * 1_000),
+    reconnectTimeMode: ReconnectionTimeMode.EXPONENTIAL,
+    maxReconnectDelay: 30_000,
     connectionTimeout: 10_000,
     heartbeatIncoming: 10_000,
     heartbeatOutgoing: 10_000,
@@ -223,8 +253,11 @@ export function connectChatRoom(
             ? { view_session_id: viewSessionId, last_message_id: String(lastMessageId) }
             : {}),
         };
-      } catch {
-        terminal('error', '로그인 상태를 확인하지 못했습니다. 다시 입장해 주세요.');
+      } catch (error) {
+        if (isStopped || isPaused) return;
+        if (error instanceof AuthRequestError && error.status === 401)
+          terminal('error', '다시 로그인한 후 동네 이야기에 입장해 주세요.');
+        else recoveryFailed('로그인 상태를 확인하지 못했어요. 복구를 다시 시도해 주세요.');
       }
     },
     onConnect: () => {
@@ -275,10 +308,11 @@ export function connectChatRoom(
           )
             return;
           if (isReady) deliver(event);
+          else if (buffered.length >= MAX_BUFFERED_EVENTS) recoveryFailed();
           else buffered.push(event);
         } else deliver(event);
       };
-      readyTimer = window.setTimeout(recoveryFailed, 10_000);
+      readyTimer = window.setTimeout(() => recoveryFailed(), 10_000);
       for (const destination of [
         `/topic/chat-rooms/${membership.roomId}`,
         '/user/queue/chat-events',
@@ -316,7 +350,12 @@ export function connectChatRoom(
       else if (event.code === 4101) terminal('banned', chatBanNotice(event.reason?.split('|')[1]));
       else if (event.code === 4103) recoveryFailed();
       else {
-        onStatus('reconnecting', '연결이 끊겼어요. 이야기방에 다시 연결하고 있습니다.');
+        onStatus(
+          'reconnecting',
+          event.code === 1013
+            ? '채팅 서비스가 일시 중단됐어요. 다시 연결한 후 대화를 복구하고 있습니다.'
+            : '연결이 끊겼어요. 이야기방에 다시 연결하고 있습니다.',
+        );
         // Established views can reconnect beyond grace; only the server decides recoverable intervals.
         if (!hasReceivedReady)
           initialDeadline ??= window.setTimeout(

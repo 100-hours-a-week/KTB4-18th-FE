@@ -81,6 +81,8 @@ function errorMessage(status: number, serverMessage?: string) {
       return '현재 지역의 이야기방을 찾지 못했습니다.';
     case 409:
       return '현재 지역 이야기방의 정원이 가득 찼습니다. 잠시 후 다시 시도해 주세요.';
+    case 503:
+      return '채팅 서비스가 일시 중단됐어요. 잠시 후 다시 시도해 주세요.';
     default:
       return serverMessage ?? '이야기방에 입장하지 못했습니다. 다시 시도해 주세요.';
   }

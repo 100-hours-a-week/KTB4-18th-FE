@@ -323,6 +323,30 @@ describe('지역 채팅 메시지 처리', () => {
     expect(states.at(-1)?.gaps).toHaveLength(1);
   });
 
+  it('복구 실패로 대기 전송을 불확정 처리하고 서버 이력의 내 UUID만 확정한다', async () => {
+    const { event, status } = await ready();
+    participation.send('씨발');
+    const id = states.at(-1)!.pendingMessages![0].clientMessageId;
+    status('recovery-failed', '일시 장애');
+    expect(states.at(-1)?.pendingMessages?.[0].status).toBe('uncertain');
+    expect(participation.retryMessage(id)).toBe(false);
+    expect(leaveChatRoom).not.toHaveBeenCalled();
+    event({
+      type: 'CHAT_HISTORY',
+      messages: [{ ...saved, clientMessageId: id, userId: 8 }],
+      gaps: [],
+    });
+    expect(states.at(-1)?.pendingMessages).toHaveLength(1);
+    const message = { ...saved, clientMessageId: id, content: '**' };
+    event({ type: 'CHAT_HISTORY', messages: [message], gaps: [] });
+    event({ type: 'CHAT_ACK', membershipId: 900, message });
+    status('ready', '복원');
+    expect(states.at(-1)?.pendingMessages).toEqual([]);
+    expect(states.at(-1)?.messages).toEqual([message]);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(states.at(-1)?.pendingMessages).toEqual([]);
+  });
+
   it('퇴장 후 지연된 메시지를 무시하고 메시지와 전송 상태를 비운다', async () => {
     const { event, status } = await ready();
     event({ type: 'CHAT_MESSAGE', message: saved });

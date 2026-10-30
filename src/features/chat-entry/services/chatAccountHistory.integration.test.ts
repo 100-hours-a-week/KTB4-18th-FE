@@ -23,7 +23,15 @@ vi.mock('../../auth-login/api/authSession', async (original) => ({
   ) => {
     const headers = new Headers(init.headers);
     headers.set('Authorization', `Bearer ${token}`);
-    return fetch(url, { ...init, headers });
+    const response = await fetch(url, { ...init, headers });
+    if (bridge.hold) {
+      bridge.hold = false;
+      await new Promise<void>((resolve) => {
+        bridge.release = resolve;
+        bridge.onHeld?.();
+      });
+    }
+    return response;
   },
   authenticatedFetch: async (url: string, init: RequestInit) => {
     const headers = new Headers(init.headers);

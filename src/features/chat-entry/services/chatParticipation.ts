@@ -200,7 +200,9 @@ export class ChatParticipation {
               this.update(this.status, this.statusMessage);
             }, 10_000);
           }
-          if (status === 'reconnecting') {
+          if (status === 'reconnecting' || status === 'recovery-failed') {
+            this.pendingTimers.forEach((timer) => window.clearTimeout(timer));
+            this.pendingTimers.clear();
             this.pending.forEach((item) => {
               if (item.status === 'sending') {
                 item.status = 'uncertain';
@@ -289,6 +291,7 @@ export class ChatParticipation {
     if (event.type === 'CHAT_READY') return;
     if (event.type === 'CHAT_HISTORY') {
       this.messages = retainChatMessages(event.messages);
+      this.messages.forEach((message) => this.confirmPending(message));
       this.gaps = [...event.gaps];
       this.restoredThroughMessageId = this.messages.at(-1)?.messageId;
       this.rememberMessages();
@@ -349,13 +352,7 @@ export class ChatParticipation {
             event.message.userId !== this.currentUserId))
       )
         return;
-      const pending = this.pending.get(event.message.clientMessageId);
-      // ACK content is the stored server result and can differ after masking.
-      if (pending && event.message.userId === this.currentUserId) {
-        this.pending.delete(event.message.clientMessageId);
-        window.clearTimeout(this.pendingTimers.get(event.message.clientMessageId));
-        this.pendingTimers.delete(event.message.clientMessageId);
-      }
+      this.confirmPending(event.message);
       if (!this.messages.some((item) => item.messageId === event.message.messageId)) {
         this.messages.push(event.message);
         this.messages.sort((a, b) => a.messageId - b.messageId);
@@ -381,6 +378,14 @@ export class ChatParticipation {
     const id = crypto.randomUUID();
     this.pending.set(id, { clientMessageId: id, content: text, status: 'sending', notice: '' });
     return this.transmit(id);
+  }
+
+  private confirmPending(message: ChatMessage) {
+    // Only a stored result for this account can confirm an uncertain UUID, including after masking.
+    if (message.userId !== this.currentUserId || !this.pending.has(message.clientMessageId)) return;
+    this.pending.delete(message.clientMessageId);
+    window.clearTimeout(this.pendingTimers.get(message.clientMessageId));
+    this.pendingTimers.delete(message.clientMessageId);
   }
 
   retryMessage(id: string) {
