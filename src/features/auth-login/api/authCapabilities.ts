@@ -48,3 +48,24 @@ export function getAuthCapabilityMessage(reason: AuthCapabilityFailureReason): s
       return '브라우저 저장소를 사용할 수 없어 로그인 상태를 안전하게 공유할 수 없어요. 브라우저 설정을 확인해 주세요.';
   }
 }
+export type DirectAuthCapabilities = {
+  secureContext: boolean;
+  randomUuid: boolean;
+  fetch: boolean;
+  cookies: boolean;
+  ready: boolean;
+};
+
+export function getDirectAuthCapabilities(): DirectAuthCapabilities {
+  const secureContext = typeof window !== 'undefined' && window.isSecureContext === true;
+  const randomUuid = typeof globalThis.crypto?.randomUUID === 'function';
+  const fetchAvailable = typeof globalThis.fetch === 'function';
+  const cookies = typeof navigator !== 'undefined' && navigator.cookieEnabled === true;
+  return {
+    secureContext,
+    randomUuid,
+    fetch: fetchAvailable,
+    cookies,
+    ready: secureContext && randomUuid && fetchAvailable && cookies,
+  };
+}
