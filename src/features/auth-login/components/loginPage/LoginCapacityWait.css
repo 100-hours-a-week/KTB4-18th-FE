@@ -1,0 +1,95 @@
+@media (max-height: 520px) {
+  .login-queue-backdrop {
+    place-items: start center;
+  }
+}
+
+.login-notice,
+.login-success {
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+.login-notice {
+  background: var(--color-bg-error);
+}
+
+.login-success {
+  background: var(--color-bg-success);
+}
+
+.login-capacity-wait {
+  box-sizing: border-box;
+  width: min(100%, 480px);
+  margin: 12px auto 0;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+.login-capacity-wait h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.login-capacity-wait p {
+  margin: 8px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  line-height: 21px;
+  overflow-wrap: anywhere;
+}
+
+.login-capacity-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.login-capacity-actions button {
+  min-height: 44px;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 8px;
+  padding: 8px 14px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+}
+
+.login-capacity-actions button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.login-capacity-actions button:focus-visible {
+  outline: 2px solid var(--color-border-interactive-primary);
+  outline-offset: 2px;
+}
+
+.login-signup-link {
+  display: grid;
+  width: min(100%, 480px);
+  min-height: 44px;
+  place-items: center;
+  margin: 8px auto 0;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  letter-spacing: 0.145px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+@media (max-height: 600px) {
+  .login-content {
+    min-height: 600px;
+  }
+}
