@@ -1,3 +1,4 @@
+.login-form {
   display: grid;
   width: min(100%, 480px);
   gap: 8px;
