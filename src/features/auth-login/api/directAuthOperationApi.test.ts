@@ -32,6 +32,8 @@ describe('operation read APIs', () => {
   it('reads exact recovery and current discovery without mutation', async () => {
     const data = {
       ...tuple,
+      clientExpiresAt: null,
+      effectiveExpiresAt: null,
       status: 'NOT_RECEIVED',
       leaseExpiresAt: null,
       resultEpoch: null,

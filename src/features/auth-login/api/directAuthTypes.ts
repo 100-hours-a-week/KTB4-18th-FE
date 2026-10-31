@@ -1,3 +1,4 @@
+import type { ExpiryFields } from './directAuthExpiry';
 export type Decimal64 = string;
 
 export type DirectAuthOperationKind =
@@ -49,7 +50,7 @@ export type CurrentOperationLookup = {
   flow: CurrentOperationFlow;
   operation: null | CurrentOperationSummary;
 };
-export type CurrentOperationSummary = {
+export type CurrentOperationSummary = ExpiryFields & {
   flowId: string;
   startingEpoch: string;
   operationId: string;
@@ -137,7 +138,7 @@ export type RefreshReceipt = {
   revision: string;
   resultGeneration: string;
 };
-export type RefreshRecoveryCurrentData = {
+export type RefreshRecoveryCurrentData = ExpiryFields & {
   flowId: string;
   operationId: string;
   startingEpoch: string;
@@ -163,7 +164,7 @@ export type RefreshRecoveryInProgressEnvelope = EnvelopeBase & {
   message: 'RECOVERY_IN_PROGRESS';
   data: RefreshRecoveryInProgressData;
 };
-export type RefreshRecoveryStatusData = {
+export type RefreshRecoveryStatusData = ExpiryFields & {
   flowId: string;
   operationId: string;
   recoveryOperationId: string;
@@ -207,43 +208,7 @@ export type TerminalStatusEnvelope = EnvelopeBase & {
 export type TokenData = { access_token: string; expires_in: string };
 export type TokenEnvelope = EnvelopeBase & { message?: 'login success'; data?: TokenData };
 
-export function matchesDirectAuthTuple(
-  value: unknown,
-  tuple:
-    | { flowId: string; startingEpoch: string; operationId?: string; recoveryOperationId?: string }
-    | undefined,
-  route: string,
-): boolean {
-  if (!tuple || !value || typeof value !== 'object') return true;
-  const data = value as Record<string, unknown>;
-  for (const key of ['flowId', 'startingEpoch', 'operationId', 'recoveryOperationId'] as const) {
-    if (
-      data[key] !== undefined &&
-      data[key] !== null &&
-      tuple[key] !== undefined &&
-      data[key] !== tuple[key]
-    )
-      return false;
-  }
-  if (
-    route === 'rebootstrap' &&
-    data.flow &&
-    typeof data.flow === 'object' &&
-    (data.flow as { flowId?: unknown }).flowId !== tuple.flowId
-  )
-    return false;
-  if (
-    route === 'logout' &&
-    data.logoutReceipt &&
-    typeof data.logoutReceipt === 'object' &&
-    tuple.operationId &&
-    (data.logoutReceipt as { operationId?: unknown }).operationId !== tuple.operationId
-  )
-    return false;
-  return true;
-}
-
-export type RefreshRecoveryLeaseExpiredData = {
+export type RefreshRecoveryLeaseExpiredData = ExpiryFields & {
   flowId: string;
   operationId: string;
   recoveryOperationId: string;

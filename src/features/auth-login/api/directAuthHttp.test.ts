@@ -11,6 +11,8 @@ const recoveryOperationId = '123e4567-e89b-42d3-a456-426614174002';
 const tuple = { flowId, operationId, recoveryOperationId, startingEpoch: '9223372036854775807' };
 const lease = {
   ...tuple,
+  clientExpiresAt: null,
+  effectiveExpiresAt: null,
   status: 'LEASE_EXPIRED',
   leaseExpiresAt: '2026-01-01T00:00:00Z',
   resultEpoch: null,

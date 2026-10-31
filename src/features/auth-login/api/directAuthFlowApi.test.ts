@@ -72,3 +72,47 @@ describe('direct flow API', () => {
     ).toBe(operationId);
   });
 });
+
+describe('current discovery identity', () => {
+  const otherId = '123e4567-e89b-42d3-a456-426614174002';
+  const operation = {
+    flowId,
+    startingEpoch: '1',
+    operationId,
+    kind: 'REFRESH',
+    status: 'IN_PROGRESS',
+    resultEpoch: null,
+    resultRevision: null,
+    reasonCode: null,
+    leaseExpiresAt: '2026-12-01T00:00:00Z',
+    receiptExpiresAt: null,
+    clientExpiresAt: null,
+    effectiveExpiresAt: null,
+  };
+  const tuple = { flowId, startingEpoch: '1', operationId };
+  const read = (flowValue: typeof currentFlow, op: typeof operation | null, expected = tuple) =>
+    readCurrentDirectOperation(
+      expected,
+      response('current auth operation', { flow: flowValue, operation: op }),
+    );
+  it('checks canonical flow and the epoch of the same operation', async () => {
+    await expect(read({ ...currentFlow, flowId: otherId }, null)).rejects.toThrow();
+    await expect(read(currentFlow, { ...operation, flowId: otherId })).rejects.toThrow();
+    await expect(read(currentFlow, { ...operation, startingEpoch: '2' })).rejects.toThrow();
+    await expect(read(currentFlow, operation)).resolves.toBeTruthy();
+  });
+  it('allows a different current operation and checks flow even without a tuple', async () => {
+    await expect(
+      read(currentFlow, { ...operation, operationId: otherId, startingEpoch: '2' }),
+    ).resolves.toBeTruthy();
+    await expect(
+      readCurrentDirectOperation(
+        undefined,
+        response('current auth operation', {
+          flow: currentFlow,
+          operation: { ...operation, flowId: otherId },
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+});
