@@ -1,0 +1,161 @@
+.login-queue-backdrop {
+  position: fixed;
+  z-index: 10;
+  inset: 0;
+  display: grid;
+  overflow-y: auto;
+  place-items: center;
+  padding: 20px;
+  background: rgb(0 0 0 / 45%);
+}
+
+.login-queue-dialog {
+  box-sizing: border-box;
+  display: flex;
+  width: min(100%, 375px);
+  height: 430px;
+  flex-direction: column;
+  align-items: center;
+  border-radius: 20px;
+  padding: 40px 20px 20px;
+  background: var(--color-bg-primary);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 18%);
+  color: var(--color-text-primary);
+  text-align: center;
+}
+
+.login-queue-icon {
+  position: relative;
+  display: block;
+  width: 100px;
+  height: 100px;
+  flex: none;
+  margin-bottom: 32px;
+}
+
+.login-queue-icon img {
+  position: absolute;
+  display: block;
+}
+
+.login-queue-ring {
+  top: 5.2px;
+  left: 5.2px;
+  width: 89.5833px;
+  height: 89.5833px;
+}
+
+.login-queue-stem {
+  top: 37.5px;
+  left: 45.8333px;
+  width: 8.33333px;
+  height: 25px;
+}
+
+.login-queue-dot {
+  top: 20.8333px;
+  left: 45.8333px;
+  width: 8.33333px;
+  height: 8.33375px;
+}
+
+.login-queue-dialog h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.09px;
+  line-height: 26px;
+}
+
+.login-queue-dialog > p:not(.login-queue-live) {
+  max-width: 335px;
+  margin: 8px 0 32px;
+  color: var(--color-text-tertiary);
+  font-size: 14px;
+  letter-spacing: 0.145px;
+  line-height: 20px;
+}
+
+.login-queue-count {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--color-border-interactive-primary);
+  border-radius: 8px;
+  padding: 14px 16px;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-primary);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.login-queue-count strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.login-queue-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.login-queue-message {
+  display: block;
+  margin-top: 4px;
+}
+
+.login-queue-footer {
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+.login-queue-cancel {
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.login-queue-cancel:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.login-queue-cancel:focus-visible,
+.login-ambiguity button:focus-visible {
+  outline: 2px solid var(--color-border-interactive-primary);
+  outline-offset: 2px;
+}
+
+.login-ambiguity {
+  display: grid;
+  gap: 8px;
+}
+
+.login-ambiguity button {
+  min-height: 38px;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--color-bg-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
