@@ -27,7 +27,8 @@ export function validExpiryState(route: string, status: number, data: unknown): 
   const item = value as Record<string, unknown>;
   const bothNull = item.clientExpiresAt === null && item.effectiveExpiresAt === null;
   const bothValid = isSafeExpiry(item.clientExpiresAt) && isSafeExpiry(item.effectiveExpiresAt);
-  if (route === 'currentOperation' && item.kind !== 'REFRESH') return bothNull;
+  if (route === 'currentOperation' && !['LOGIN', 'REFRESH'].includes(String(item.kind)))
+    return bothNull;
   if (['NONE', 'NOT_RECEIVED', 'EXPIRED'].includes(String(item.status))) return bothNull;
   return bothNull || (bothValid && Number(item.effectiveExpiresAt) <= Number(item.clientExpiresAt));
 }

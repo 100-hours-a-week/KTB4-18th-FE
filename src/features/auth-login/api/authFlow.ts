@@ -1,3 +1,4 @@
+import { isDirectAuthEnabled } from './authProtocolMode';
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 const FLOW_CHANNEL_NAME = 'meomuneum:auth-flow-hint';
 const FLOW_REQUEST_TIMEOUT_MS = 15_000;
@@ -47,7 +48,7 @@ let currentFlow: AuthFlow | null = null;
 let pendingRead: Promise<AuthFlow> | null = null;
 let flowChannel: BroadcastChannel | null = null;
 
-if (typeof window !== 'undefined') {
+if (!isDirectAuthEnabled() && typeof window !== 'undefined') {
   const reconcileFresh = () => void reconcileAuthFlow(undefined, true).catch(() => undefined);
   window.addEventListener('storage', (event: StorageEvent) => {
     if (event.key === 'meomuneum:auth-epoch') reconcileFresh();
@@ -60,6 +61,7 @@ if (typeof window !== 'undefined') {
 }
 
 function channel(): BroadcastChannel | null {
+  if (isDirectAuthEnabled()) return null;
   if (flowChannel) return flowChannel;
   try {
     if (typeof window === 'undefined' || typeof window.BroadcastChannel !== 'function') return null;
@@ -121,6 +123,7 @@ export async function reconcileAuthFlow(
   signal?: AbortSignal,
   forceFresh = false,
 ): Promise<AuthFlow> {
+  if (isDirectAuthEnabled()) throw new AuthFlowError(null);
   if (pendingRead && !forceFresh) return pendingRead;
   const request = (async () => {
     const controller = new AbortController();
@@ -141,7 +144,8 @@ export async function reconcileAuthFlow(
         message?: string;
       } | null;
       if (controller.signal.aborted) throw new AuthFlowError(null, 'AUTH_STATE_UNAVAILABLE');
-      if (!response.ok) throw new AuthFlowError(response.status, body?.code ?? body?.message ?? null);
+      if (!response.ok)
+        throw new AuthFlowError(response.status, body?.code ?? body?.message ?? null);
       const flow = applyFlow(parseFlow(body?.data));
       return flow;
     } catch (error) {
@@ -161,6 +165,7 @@ export async function reconcileAuthFlow(
 }
 
 export async function getAuthFlow(): Promise<AuthFlow> {
+  if (isDirectAuthEnabled()) throw new AuthFlowError(null);
   return pendingRead ?? currentFlow ?? reconcileAuthFlow();
 }
 

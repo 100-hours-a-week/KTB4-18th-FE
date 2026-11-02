@@ -92,8 +92,10 @@ export function persistDirectAuthOperation(
   } catch {
     if (didWrite) {
       try {
-        if (previous === null) storage.removeItem(key);
-        else storage.setItem(key, previous);
+        if (storage.getItem(key) === serialized) {
+          if (previous === null) storage.removeItem(key);
+          else storage.setItem(key, previous);
+        }
       } catch {
         throw new DirectAuthStorageError();
       }
@@ -102,17 +104,26 @@ export function persistDirectAuthOperation(
   }
 }
 
+export function sameDirectAuthOperation(a: DirectAuthOperation, b: DirectAuthOperation): boolean {
+  return (
+    a.flowId === b.flowId &&
+    a.startingEpoch === b.startingEpoch &&
+    a.operationId === b.operationId &&
+    a.expiresAt === b.expiresAt
+  );
+}
+
 export function clearDirectAuthOperation(
   kind: DirectAuthOperationKind,
-  flowId: string | null,
-  operationId: string,
+  expected: DirectAuthOperation,
   storage: Storage = sessionStorage,
 ): boolean {
   try {
     const current = readDirectAuthOperation(kind, storage);
-    if (!current || current.flowId !== flowId || current.operationId !== operationId) return false;
+    if (!current || !sameDirectAuthOperation(current, expected)) return false;
     storage.removeItem(PREFIX + kind);
-    return storage.getItem(PREFIX + kind) === null;
+    if (storage.getItem(PREFIX + kind) !== null) throw new DirectAuthStorageError();
+    return true;
   } catch {
     throw new DirectAuthStorageError();
   }

@@ -1,3 +1,6 @@
+import { DIRECT_AUTH_RECHECK_EVENT } from './features/auth-login/api/directAuthSessionState';
+import { isDirectAuthEnabled } from './features/auth-login/api/authProtocolMode';
+import { useAppAuthSession } from './app/auth/useAppAuthSession';
 import { lazy, useCallback, useEffect, useRef, useState } from 'react';
 
 import { RouteLoadBoundary } from './components/RouteLoadBoundary';
@@ -94,7 +97,9 @@ function App() {
   const pathname = routeLocation.pathname;
   const [initialAuthRestoreState] = useState(() => getAuthRestoreState());
   const [authStatus, setAuthStatus] = useState<AuthStatus>('restoring');
-  const [authCapability] = useState(() => probeAuthCapabilities());
+  const [authCapability] = useState(() =>
+    isDirectAuthEnabled() ? ({ supported: true } as const) : probeAuthCapabilities(),
+  );
   const [passwordChangedNotice, setPasswordChangedNotice] = useState(false);
   const [skipQueueRestoreAfterLogout, setSkipQueueRestoreAfterLogout] = useState(
     () => initialAuthRestoreState !== 'ready',
@@ -164,7 +169,13 @@ function App() {
       window.removeEventListener(LOGOUT_CLEANUP_STATE_CHANGED_EVENT, onLogoutCleanupStateChanged);
   }, []);
 
+  useAppAuthSession(authStatus, setAuthStatus, setLoginFormVersion);
+
   const restore = useCallback(async () => {
+    if (isDirectAuthEnabled()) {
+      window.dispatchEvent(new Event(DIRECT_AUTH_RECHECK_EVENT));
+      return;
+    }
     const currentIntent = authIntent.current;
     if (!authCapability.supported) {
       setAuthStatus('retryable-error');
@@ -218,7 +229,7 @@ function App() {
   }, [authCapability]);
 
   useEffect(() => {
-    if (!authCapability.supported) return;
+    if (isDirectAuthEnabled() || !authCapability.supported) return;
     queueMicrotask(() => void restore());
   }, [authCapability, restore]);
 
@@ -262,7 +273,7 @@ function App() {
   }, [authIntentVersion, authStatus, isProtectedRoute, routeLocation]);
 
   useEffect(() => {
-    if (authStatus !== 'authenticated') return;
+    if (isDirectAuthEnabled() || authStatus !== 'authenticated') return;
     let timer: number | undefined;
     let refreshing = false;
     let terminalRefreshFailure = false;
@@ -399,6 +410,7 @@ function App() {
     let serverLogoutSucceeded = false;
     try {
       await logout(() => {
+        if (isDirectAuthEnabled()) return;
         serverLogoutSucceeded = true;
         beginLogoutCleanupGate();
         abortActiveCreate();
@@ -406,7 +418,7 @@ function App() {
         setLoginFormVersion((version) => version + 1);
       });
       serverLogoutSucceeded = true;
-      await resetLoginQueueAfterLogout();
+      if (!isDirectAuthEnabled()) await resetLoginQueueAfterLogout();
       setLogoutCleanupPending(false);
       setSkipQueueRestoreAfterLogout(true);
       clearAccessToken();
@@ -449,6 +461,7 @@ function App() {
     let serverLogoutSucceeded = false;
     try {
       await logout(() => {
+        if (isDirectAuthEnabled()) return;
         serverLogoutSucceeded = true;
         beginLogoutCleanupGate();
         abortActiveCreate();
@@ -456,7 +469,7 @@ function App() {
         setLoginFormVersion((version) => version + 1);
       });
       serverLogoutSucceeded = true;
-      await resetLoginQueueAfterLogout();
+      if (!isDirectAuthEnabled()) await resetLoginQueueAfterLogout();
       setLogoutCleanupPending(false);
       setSkipQueueRestoreAfterLogout(true);
       clearAccessToken();
@@ -493,7 +506,7 @@ function App() {
     setIsLogoutCleanupRetrying(true);
     setLogoutCleanupError('');
     try {
-      await resetLoginQueueAfterLogout();
+      if (!isDirectAuthEnabled()) await resetLoginQueueAfterLogout();
       setLogoutCleanupPending(false);
       setSkipQueueRestoreAfterLogout(true);
       clearAccessToken();
@@ -510,11 +523,14 @@ function App() {
     }
   };
 
+  if (isDirectAuthEnabled() && authStatus === 'restoring') return null;
+
   if (
     pathname === LOGIN_PATH &&
     authCapability.supported &&
     (authStatus === 'restoring' || authStatus === 'authenticated')
   ) {
+    if (isDirectAuthEnabled()) return null;
     return (
       <main role="status" aria-live="polite">
         로그인 상태를 확인하고 있어요.
@@ -559,6 +575,7 @@ function App() {
     );
   }
   if (isProtectedRoute && authStatus === 'restoring') {
+    if (isDirectAuthEnabled()) return null;
     return (
       <main role="status" aria-live="polite">
         로그인 상태를 확인하고 있어요.
