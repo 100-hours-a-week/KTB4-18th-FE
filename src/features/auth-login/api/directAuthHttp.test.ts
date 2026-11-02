@@ -91,6 +91,14 @@ describe('direct route response validation', () => {
       }),
     ).toBeTruthy();
   });
+  it('accepts the documented refresh internal-error envelope', () => {
+    expect(() =>
+      parseDirectAuthResponse('refresh', 500, { message: 'internal server error', data: null }),
+    ).toThrow(DirectAuthApiError);
+    expect(() =>
+      parseDirectAuthResponse('refresh', 500, { message: 'unexpected', data: null }),
+    ).toThrow(DirectAuthProtocolError);
+  });
   it('requires Retry-After on accepted throttling errors', () => {
     const error = { message: 'AUTH_OPERATION_RECEIPT_LIMIT', data: null };
     expect(() => parseDirectAuthResponse('login', 429, error)).toThrow(DirectAuthProtocolError);
@@ -195,6 +203,6 @@ describe('mutation storage gate', () => {
       }),
     ).rejects.toThrow();
     expect(fetcher).not.toHaveBeenCalled();
-    expect(target).toBeNull();
+    expect(target).toBe(JSON.stringify(operation));
   });
 });

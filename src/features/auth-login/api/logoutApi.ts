@@ -1,3 +1,5 @@
+import { isDirectAuthEnabled } from './authProtocolMode';
+import { performDirectLogout } from './directAuthLogoutFlow';
 import { clearAccessToken, getAccessToken, getCsrfToken, runAuthTransition } from './authSession';
 import { reconcileAuthFlow, type AuthFlow } from './authFlow';
 
@@ -22,6 +24,11 @@ export class LogoutFinalizationError extends Error {
 type PendingLogout = { flowId: string; flowEpoch: number; operationId: string };
 
 export async function logout(onServerSuccess?: () => void): Promise<void> {
+  if (isDirectAuthEnabled()) {
+    await performDirectLogout();
+    onServerSuccess?.();
+    return;
+  }
   let serverSucceeded = false;
   try {
     await runAuthTransition(() =>
@@ -122,11 +129,7 @@ async function submitLogout(onServerSuccess: () => void): Promise<void> {
   }
 
   if (!response.ok) {
-    if (
-      response.status >= 500 &&
-      intent &&
-      (await committedLogoutStillCurrent(intent))
-    ) {
+    if (response.status >= 500 && intent && (await committedLogoutStillCurrent(intent))) {
       await finalizeLogout(intent, onServerSuccess);
       return;
     }

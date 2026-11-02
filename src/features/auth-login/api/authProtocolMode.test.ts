@@ -1,0 +1,80 @@
+import { afterEach, expect, it, vi } from 'vitest';
+import {
+  isDirectAuthEnabled,
+  isDirectRefreshVerified,
+  isDirectSourceRecoveryVerified,
+  isDirectRebootstrapVerified,
+} from './authProtocolMode';
+
+const FLAGS = [
+  'VITE_AUTH_DIRECT_V2_ENABLED',
+  'VITE_AUTH_DIRECT_V2_REFRESH_VERIFIED',
+  'VITE_AUTH_DIRECT_V2_SOURCE_RECOVERY_VERIFIED',
+  'VITE_AUTH_DIRECT_V2_REBOOTSTRAP_VERIFIED',
+] as const;
+const INVALID_VALUES = [undefined, 'false', 'TRUE', ' true', 'true '];
+const VERIFIED_GATES = [
+  ['VITE_AUTH_DIRECT_V2_REFRESH_VERIFIED', isDirectRefreshVerified],
+  ['VITE_AUTH_DIRECT_V2_SOURCE_RECOVERY_VERIFIED', isDirectSourceRecoveryVerified],
+  ['VITE_AUTH_DIRECT_V2_REBOOTSTRAP_VERIFIED', isDirectRebootstrapVerified],
+] as const;
+
+afterEach(() => vi.unstubAllEnvs());
+
+it('preserves DEV enabled-only selection and exact true semantics', () => {
+  vi.stubEnv('DEV', true);
+  vi.stubEnv('PROD', false);
+  for (const key of FLAGS) vi.stubEnv(key, undefined);
+  for (const value of INVALID_VALUES) {
+    vi.stubEnv(FLAGS[0], value);
+    expect(isDirectAuthEnabled()).toBe(false);
+  }
+  vi.stubEnv(FLAGS[0], 'true');
+  expect(isDirectAuthEnabled()).toBe(true);
+  for (const [, enabled] of VERIFIED_GATES) expect(enabled()).toBe(false);
+});
+
+it.each(Array.from({ length: 16 }, (_, value) => value))(
+  'requires all four exact true values in production combination %i',
+  (combination) => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('PROD', true);
+    FLAGS.forEach((key, bit) => vi.stubEnv(key, combination & (1 << bit) ? 'true' : 'false'));
+    expect(isDirectAuthEnabled()).toBe(combination === 15);
+    for (const [, enabled] of VERIFIED_GATES) expect(enabled()).toBe(combination === 15);
+  },
+);
+
+it.each(FLAGS)('rejects missing or malformed production %s', (key) => {
+  vi.stubEnv('DEV', false);
+  vi.stubEnv('PROD', true);
+  for (const flag of FLAGS) vi.stubEnv(flag, 'true');
+  for (const value of INVALID_VALUES) {
+    vi.stubEnv(key, value);
+    expect(isDirectAuthEnabled()).toBe(false);
+    for (const [, enabled] of VERIFIED_GATES) expect(enabled()).toBe(false);
+  }
+});
+
+it.each(VERIFIED_GATES)('preserves independent DEV opt-in for %s', (key, enabled) => {
+  vi.stubEnv('DEV', true);
+  vi.stubEnv('PROD', false);
+  for (const flag of FLAGS) vi.stubEnv(flag, undefined);
+  vi.stubEnv(FLAGS[0], 'true');
+  for (const value of INVALID_VALUES) {
+    vi.stubEnv(key, value);
+    expect(enabled()).toBe(false);
+    expect(isDirectAuthEnabled()).toBe(true);
+  }
+  vi.stubEnv(key, 'true');
+  expect(enabled()).toBe(true);
+  vi.stubEnv(FLAGS[0], 'false');
+  expect(enabled()).toBe(false);
+});
+
+it('fails closed without a recognized Vite build environment', () => {
+  vi.stubEnv('DEV', false);
+  vi.stubEnv('PROD', false);
+  for (const flag of FLAGS) vi.stubEnv(flag, 'true');
+  expect(isDirectAuthEnabled()).toBe(false);
+});

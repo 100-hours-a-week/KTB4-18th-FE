@@ -1,3 +1,5 @@
+import { isDirectAuthEnabled } from '../api/authProtocolMode';
+import { DirectLoginPage } from './DirectLoginPage';
 import { ActionButton } from '@seed-design/react';
 import { useCallback, useRef, useState } from 'react';
 
@@ -28,7 +30,11 @@ type LoginPageProps = {
   onPasswordChangedNoticeDismiss?: () => void;
 };
 
-export function LoginPage({
+export function LoginPage(props: LoginPageProps) {
+  return isDirectAuthEnabled() ? <DirectLoginPage {...props} /> : <LegacyLoginPage {...props} />;
+}
+
+function LegacyLoginPage({
   authCapabilityMessage,
   authRestoreError,
   onRetryAuthRestore,

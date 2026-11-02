@@ -84,13 +84,25 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
           : Promise.resolve(Response.json({ data: { access_token: 'recovered-access-token' } }));
       }
       if (url.endsWith('/api/v1/auth/flow'))
-        return Promise.resolve(Response.json({ data: {
-          flowId: '123e4567-e89b-42d3-a456-426614174000', flowEpoch: 1, revision: 2,
-          lifecycle: 'AUTHENTICATED', authenticated: true, refreshGeneration: 2,
-          lastRefreshReceipt: {
-            operationId: operationIds[0], committed: true, flowEpoch: 1, revision: 2, resultGeneration: 2,
-          },
-        } }));
+        return Promise.resolve(
+          Response.json({
+            data: {
+              flowId: '123e4567-e89b-42d3-a456-426614174000',
+              flowEpoch: 1,
+              revision: 2,
+              lifecycle: 'AUTHENTICATED',
+              authenticated: true,
+              refreshGeneration: 2,
+              lastRefreshReceipt: {
+                operationId: operationIds[0],
+                committed: true,
+                flowEpoch: 1,
+                revision: 2,
+                resultGeneration: 2,
+              },
+            },
+          }),
+        );
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -114,7 +126,10 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
         operationIds.push(operationId);
         if (operationIds.length === 1) {
           return Promise.resolve(
-            Response.json({ code: 'AUTH_REFRESH_STALE', message: 'AUTH_REFRESH_STALE' }, { status: 409 }),
+            Response.json(
+              { code: 'AUTH_REFRESH_STALE', message: 'AUTH_REFRESH_STALE' },
+              { status: 409 },
+            ),
           );
         }
         expect(document.cookie).toContain('refresh_token=canonical-refresh');
@@ -142,7 +157,12 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
                 },
               },
             },
-            { headers: { 'X-Auth-Flow-Id': '123e4567-e89b-42d3-a456-426614174000', 'X-Auth-Flow-Epoch': '1' } },
+            {
+              headers: {
+                'X-Auth-Flow-Id': '123e4567-e89b-42d3-a456-426614174000',
+                'X-Auth-Flow-Epoch': '1',
+              },
+            },
           ),
         );
       }
@@ -298,14 +318,18 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
                 lifecycle: flowReads === 1 ? 'AUTHENTICATED' : 'ANONYMOUS',
                 authenticated: flowReads === 1,
                 refreshGeneration: 1,
-                lastLogoutReceipt: flowReads === 1 ? null : {
-                  operationId: JSON.parse(
-                    window.localStorage.getItem('meomuneum:pending-logout-operation') ?? 'null',
-                  )?.operationId,
-                  committed: true,
-                  flowEpoch: 2,
-                  revision: 2,
-                },
+                lastLogoutReceipt:
+                  flowReads === 1
+                    ? null
+                    : {
+                        operationId: JSON.parse(
+                          window.localStorage.getItem('meomuneum:pending-logout-operation') ??
+                            'null',
+                        )?.operationId,
+                        committed: true,
+                        flowEpoch: 2,
+                        revision: 2,
+                      },
               },
             }),
           );
@@ -781,11 +805,19 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
         return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
       }
       if (String(input).endsWith('/api/v1/auth/flow')) {
-        return Promise.resolve(Response.json({ data: {
-          flowId: '123e4567-e89b-42d3-a456-426614174000', flowEpoch: 1, revision: 1,
-          lifecycle: 'AUTHENTICATED', authenticated: true, refreshGeneration: 1,
-          lastRefreshReceipt: null,
-        } }));
+        return Promise.resolve(
+          Response.json({
+            data: {
+              flowId: '123e4567-e89b-42d3-a456-426614174000',
+              flowEpoch: 1,
+              revision: 1,
+              lifecycle: 'AUTHENTICATED',
+              authenticated: true,
+              refreshGeneration: 1,
+              lastRefreshReceipt: null,
+            },
+          }),
+        );
       }
       requestSignal = init!.signal!;
       refreshStarted();
@@ -835,11 +867,19 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
         return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
       }
       if (String(input).endsWith('/api/v1/auth/flow')) {
-        return Promise.resolve(Response.json({ data: {
-          flowId: '123e4567-e89b-42d3-a456-426614174000', flowEpoch: 1, revision: 1,
-          lifecycle: 'AUTHENTICATED', authenticated: true, refreshGeneration: 1,
-          lastRefreshReceipt: null,
-        } }));
+        return Promise.resolve(
+          Response.json({
+            data: {
+              flowId: '123e4567-e89b-42d3-a456-426614174000',
+              flowEpoch: 1,
+              revision: 1,
+              lifecycle: 'AUTHENTICATED',
+              authenticated: true,
+              refreshGeneration: 1,
+              lastRefreshReceipt: null,
+            },
+          }),
+        );
       }
       operationIds.push(new Headers(init?.headers).get('X-Refresh-Operation-Id') ?? '');
       return Promise.resolve(
@@ -924,11 +964,19 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
       if (url.endsWith('/token/csrf'))
         return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
       if (url.endsWith('/api/v1/auth/flow'))
-        return Promise.resolve(Response.json({ data: {
-          flowId: '123e4567-e89b-42d3-a456-426614174000', flowEpoch: 1, revision: 1,
-          lifecycle: 'AUTHENTICATED', authenticated: true, refreshGeneration: 1,
-          lastRefreshReceipt: null,
-        } }));
+        return Promise.resolve(
+          Response.json({
+            data: {
+              flowId: '123e4567-e89b-42d3-a456-426614174000',
+              flowEpoch: 1,
+              revision: 1,
+              lifecycle: 'AUTHENTICATED',
+              authenticated: true,
+              refreshGeneration: 1,
+              lastRefreshReceipt: null,
+            },
+          }),
+        );
       return Promise.reject(new TypeError('offline'));
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -967,11 +1015,19 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
           return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
         }
         if (url.endsWith('/api/v1/auth/flow')) {
-          return Promise.resolve(Response.json({ data: {
-            flowId: '123e4567-e89b-42d3-a456-426614174000', flowEpoch: 1, revision: 1,
-            lifecycle: 'AUTHENTICATED', authenticated: true, refreshGeneration: 1,
-            lastRefreshReceipt: null,
-          } }));
+          return Promise.resolve(
+            Response.json({
+              data: {
+                flowId: '123e4567-e89b-42d3-a456-426614174000',
+                flowEpoch: 1,
+                revision: 1,
+                lifecycle: 'AUTHENTICATED',
+                authenticated: true,
+                refreshGeneration: 1,
+                lastRefreshReceipt: null,
+              },
+            }),
+          );
         }
         return refreshResult();
       });
@@ -1198,4 +1254,92 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     await expect(authenticatedFetch('/api/protected')).rejects.toMatchObject({ status: null });
     expect(fetchMock).not.toHaveBeenCalled();
   });
+});
+
+describe('direct mode authentication adapter', () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it('executes password/account transitions without legacy refresh or persisted tokens', async () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('VITE_AUTH_DIRECT_V2_ENABLED', 'true');
+    const direct = await import('./directAuthSessionState');
+    const profile = await import('../../mypage/api/mypageApi');
+    const flow = {
+      flowId: 'f',
+      flowEpoch: '1',
+      revision: '2',
+      authenticated: true,
+      proofState: 'ACTIVE',
+      lifecycle: 'AUTHENTICATED',
+    } as const;
+    const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetcher);
+    direct.installDirectSession(direct.beginDirectAuthIntent(), 'memory', '60', flow);
+    await profile.changeMyPassword('old-example', 'new-example');
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls[0][1].method).toBe('PATCH');
+    expect(new Headers(fetcher.mock.calls[0][1].headers).get('Authorization')).toBe(
+      'Bearer memory',
+    );
+    expect(getAccessToken()).toBeNull();
+    fetcher.mockClear();
+    direct.installDirectSession(direct.beginDirectAuthIntent(), 'memory', '60', flow);
+    await profile.withdrawMyAccount('example');
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls[0][1].method).toBe('DELETE');
+    expect(sessionStorage.getItem('access_token')).toBeNull();
+  });
+  it('does not touch legacy storage or issue refresh when direct token is absent', async () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('VITE_AUTH_DIRECT_V2_ENABLED', 'true');
+    const direct = await import('./directAuthSessionState');
+    direct.clearDirectSession();
+    const fetcher = vi.fn();
+    vi.stubGlobal('fetch', fetcher);
+    await expect(refreshAccessToken()).rejects.toThrow();
+    await expect(authenticatedFetch('/api/v1/users/me')).rejects.toThrow();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+});
+
+it('preserves existing cache cleanup for direct logout intent and explicit token clearing', async () => {
+  vi.stubEnv('DEV', true);
+  vi.stubEnv('VITE_AUTH_DIRECT_V2_ENABLED', 'true');
+  const direct = await import('./directAuthSessionState');
+  const cache = await import('../../chat-entry/services/chatConversationCache');
+  const flow = {
+    flowId: '123e4567-e89b-42d3-a456-426614174000',
+    flowEpoch: '1',
+    revision: '2',
+    lifecycle: 'AUTHENTICATED',
+    authenticated: true,
+    proofState: 'ACTIVE',
+  } as const;
+  const token = `header.${btoa(JSON.stringify({ sub: '7', exp: Math.floor(Date.now() / 1000) + 60 }))}.signature`;
+  const saved = {
+    messageId: 1,
+    roomId: 700,
+    userId: 7,
+    clientMessageId: 'saved',
+    nickname: '작성자',
+    content: 'stored',
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    direct.installDirectSession(direct.beginDirectAuthIntent(), token, '60', flow);
+    const old = cache.openChatConversation(7, 25, 700).context;
+    cache.storeChatConversation(old, 25, 700, [saved]);
+    expect(sessionStorage.getItem(cache.CHAT_CACHE_KEY)).not.toBeNull();
+    clearAccessToken();
+    expect(sessionStorage.getItem(cache.CHAT_CACHE_KEY)).toBeNull();
+    cache.storeChatConversation(old, 25, 700, [saved]);
+    expect(sessionStorage.getItem(cache.CHAT_CACHE_KEY)).toBeNull();
+    direct.installDirectSession(direct.beginDirectAuthIntent(), token, '60', flow);
+    const next = cache.openChatConversation(7, 25, 700).context;
+    cache.storeChatConversation(next, 25, 700, [saved]);
+    direct.beginDirectAuthIntent();
+    expect(sessionStorage.getItem(cache.CHAT_CACHE_KEY)).toBeNull();
+  } finally {
+    direct.clearDirectSession();
+    vi.unstubAllEnvs();
+  }
 });

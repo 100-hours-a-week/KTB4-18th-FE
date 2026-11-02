@@ -110,7 +110,7 @@ describe('expiry response contract', () => {
     }
   });
   it('enforces null fields for non-refresh and absent or expired recovery', () => {
-    for (const kind of ['LOGIN', 'LOGOUT']) {
+    for (const kind of ['LOGOUT']) {
       expect(() =>
         parseDirectAuthResponse('currentOperation', 200, {
           message: 'current auth operation',
@@ -144,7 +144,7 @@ describe('expiry response contract', () => {
   });
   it('restricts INVALID_CLIENT_EXPIRY to the two POST routes and status 400', () => {
     const body = { message: 'INVALID_CLIENT_EXPIRY', data: null };
-    for (const route of ['refresh', 'refreshRecovery'] as const) {
+    for (const route of ['login', 'refresh', 'refreshRecovery'] as const) {
       expect(() => parseDirectAuthResponse(route, 400, body)).toThrow(DirectAuthApiError);
       expect(() => parseDirectAuthResponse(route, 409, body)).toThrow(DirectAuthProtocolError);
     }
@@ -152,4 +152,14 @@ describe('expiry response contract', () => {
       expect(() => parseDirectAuthResponse(route, 400, body)).toThrow(DirectAuthProtocolError);
     }
   });
+});
+
+it('accepts live LOGIN expiry pairs while rejecting mismatched nullable pairs', () => {
+  const check = (pair: unknown) =>
+    parseDirectAuthResponse('currentOperation', 200, {
+      message: 'current auth operation',
+      data: { flow, operation: { ...operation, kind: 'LOGIN', ...(pair as object) } },
+    });
+  expect(() => check(fields)).not.toThrow();
+  expect(() => check({ clientExpiresAt: '1', effectiveExpiresAt: null })).toThrow();
 });

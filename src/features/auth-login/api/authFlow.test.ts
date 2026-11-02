@@ -89,7 +89,10 @@ describe('authoritative auth flow reconciliation', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const pending = reconcileAuthFlow(undefined, true);
-    const failure = expect(pending).rejects.toMatchObject({ status: null, code: 'AUTH_STATE_UNAVAILABLE' });
+    const failure = expect(pending).rejects.toMatchObject({
+      status: null,
+      code: 'AUTH_STATE_UNAVAILABLE',
+    });
     await vi.advanceTimersByTimeAsync(15_000);
     await failure;
 
@@ -108,4 +111,22 @@ describe('authoritative auth flow reconciliation', () => {
       expect(await getAuthFlow()).toMatchObject({ lifecycle: 'AUTHENTICATED', flowEpoch: 2 }),
     );
   });
+});
+
+it('keeps legacy flow network disabled in direct mode, including cached reads', async () => {
+  vi.stubEnv('DEV', true);
+  vi.stubEnv('VITE_AUTH_DIRECT_V2_ENABLED', 'true');
+  const fetcher = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
+  try {
+    await expect(reconcileAuthFlow()).rejects.toThrow();
+    const auth = await import('./authFlow');
+    await expect(auth.getAuthFlow()).rejects.toThrow();
+    window.dispatchEvent(new Event('pageshow'));
+    window.dispatchEvent(new Event('focus'));
+    await Promise.resolve();
+    expect(fetcher).not.toHaveBeenCalled();
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });

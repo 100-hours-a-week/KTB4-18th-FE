@@ -33,7 +33,7 @@ describe('direct operation metadata', () => {
     expect(isDecimal64('9223372036854775807')).toBe(true);
   });
 
-  it('blocks when storage readback differs and removes the provisional record', () => {
+  it('blocks when storage readback differs and preserves the unknown record', () => {
     const operation = createDirectAuthOperation('BOOTSTRAP', null, null, ID);
     const storage = {
       getItem: vi.fn().mockReturnValueOnce(null).mockReturnValueOnce('wrong'),
@@ -41,12 +41,14 @@ describe('direct operation metadata', () => {
       removeItem: vi.fn(),
     } as unknown as Storage;
     expect(() => persistDirectAuthOperation('BOOTSTRAP', operation, storage)).toThrow();
-    expect(storage.removeItem).toHaveBeenCalledOnce();
+    expect(storage.removeItem).not.toHaveBeenCalled();
   });
 
   it('does not clear a different flow', () => {
     persistDirectAuthOperation('LOGIN', createDirectAuthOperation('LOGIN', FLOW, '1', ID));
-    expect(clearDirectAuthOperation('LOGIN', ID, ID)).toBe(false);
+    expect(
+      clearDirectAuthOperation('LOGIN', { ...readDirectAuthOperation('LOGIN')!, flowId: ID }),
+    ).toBe(false);
     expect(readDirectAuthOperation('LOGIN')).not.toBeNull();
   });
 
@@ -90,4 +92,16 @@ describe('operation persistence failures', () => {
     expect(() => persistDirectAuthOperation('LOGIN', replacement)).toThrow();
     expect(readDirectAuthOperation('LOGIN')).toEqual(original);
   });
+});
+
+it('clears only the exact four fields and verifies empty readback', () => {
+  sessionStorage.clear();
+  const operation = createDirectAuthOperation('LOGIN', FLOW, '1', ID);
+  persistDirectAuthOperation('LOGIN', operation);
+  expect(clearDirectAuthOperation('LOGIN', { ...operation, startingEpoch: '2' })).toBe(false);
+  expect(
+    clearDirectAuthOperation('LOGIN', { ...operation, expiresAt: operation.expiresAt - 1 }),
+  ).toBe(false);
+  expect(clearDirectAuthOperation('LOGIN', operation)).toBe(true);
+  expect(readDirectAuthOperation('LOGIN')).toBeNull();
 });

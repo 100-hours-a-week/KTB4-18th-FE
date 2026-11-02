@@ -1,3 +1,14 @@
+import { directCsrf } from './directAuthSessionFlow';
+import { isDirectAuthEnabled } from './authProtocolMode';
+import {
+  clearDirectSession,
+  directAuthenticatedFetch,
+  getDirectAccessToken,
+  DIRECT_AUTH_CHANGED_EVENT,
+  directFetchWithinTransition,
+  isDirectTransitionToken,
+  runDirectAuthTransition,
+} from './directAuthSessionState';
 import {
   chatAccountId,
   clearChatConversationCache,
@@ -5,7 +16,13 @@ import {
 } from '../../chat-entry/services/chatConversationCache';
 import { probeAuthCapabilities } from './authCapabilities';
 import { isLogoutCleanupPending, resetLogoutCleanupGateForTests } from './logoutCleanupGate';
-import { authFlowHeaders, getAuthFlow, primeAuthFlowForTests, reconcileAuthFlow, updateAuthFlowFromResponse } from './authFlow';
+import {
+  authFlowHeaders,
+  getAuthFlow,
+  primeAuthFlowForTests,
+  reconcileAuthFlow,
+  updateAuthFlowFromResponse,
+} from './authFlow';
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 const ACCESS_TOKEN_KEY = 'access_token';
@@ -97,6 +114,7 @@ function sharedAuthEpoch(): string {
 }
 
 export function getAuthRestoreState(): AuthRestoreState {
+  if (isDirectAuthEnabled()) return 'ready';
   if (isLogoutCleanupPending()) return 'cleanup-pending';
   try {
     return epochState(sharedAuthEpoch()) === 'signed-out' ? 'signed-out' : 'ready';
@@ -110,6 +128,7 @@ function assertLogoutCleanupComplete(): void {
 }
 
 export function assertAuthEpochReadable(): void {
+  if (isDirectAuthEnabled()) return;
   void sharedAuthEpoch();
 }
 
@@ -143,7 +162,11 @@ function invalidateForPeerAuthChange(force = false): void {
 
 let authChannel: BroadcastChannel | null = null;
 try {
-  if (typeof window !== 'undefined' && typeof window.BroadcastChannel === 'function') {
+  if (
+    !isDirectAuthEnabled() &&
+    typeof window !== 'undefined' &&
+    typeof window.BroadcastChannel === 'function'
+  ) {
     authChannel = new window.BroadcastChannel(AUTH_CHANNEL_NAME);
   }
 } catch {
@@ -158,7 +181,7 @@ authChannel?.addEventListener('message', (event: MessageEvent<AuthBroadcastMessa
 
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event: StorageEvent) => {
-    if (event.key === AUTH_EPOCH_KEY) {
+    if (!isDirectAuthEnabled() && event.key === AUTH_EPOCH_KEY) {
       invalidateForPeerAuthChange();
     }
   });
@@ -174,6 +197,7 @@ function sessionTokenStorage(): Storage | null {
 }
 
 export function getAccessToken(): string | null {
+  if (isDirectAuthEnabled()) return getDirectAccessToken();
   const storage = sessionTokenStorage();
   if (!storage) {
     accessTokenInMemory = null;
@@ -241,6 +265,7 @@ export function getAccessTokenExpiresAt(): number | null {
 }
 
 export function shouldRefreshAccessToken(now = Date.now()): boolean {
+  if (isDirectAuthEnabled()) return false;
   const expiresAt = getAccessTokenExpiresAt();
   return expiresAt === null || expiresAt - now <= ACCESS_TOKEN_REFRESH_EARLY_MS;
 }
@@ -279,6 +304,10 @@ function persistAccessToken(token: string, invalidateRequests: boolean, refreshe
 }
 
 export function setAccessToken(token: string): void {
+  if (isDirectAuthEnabled()) {
+    if (isDirectTransitionToken(token)) return;
+    throw new AuthRequestError(null);
+  }
   if (!token) throw new AuthRequestError(null);
   lastAccessTokenRefreshAt = 0;
   persistAccessToken(token, true);
@@ -286,6 +315,10 @@ export function setAccessToken(token: string): void {
 
 export function clearAccessToken(): void {
   clearChatConversationCache();
+  if (isDirectAuthEnabled()) {
+    clearDirectSession();
+    return;
+  }
   const storage = sessionTokenStorage();
   let previousToken = accessTokenInMemory;
   if (storage) {
@@ -314,6 +347,7 @@ export function clearAccessToken(): void {
 }
 
 export function announceAuthChange(): void {
+  if (isDirectAuthEnabled()) return;
   try {
     authChannel?.postMessage({
       type: 'auth-changed',
@@ -441,6 +475,7 @@ function readLifecycleChunk(
 }
 
 export async function getCsrfToken(signal?: AbortSignal): Promise<string> {
+  if (isDirectAuthEnabled()) return directCsrf();
   assertAuthCapabilities();
   const response = await fetchAuthLifecycle(
     `${baseUrl}/api/v1/auth/token/csrf`,
@@ -459,6 +494,7 @@ async function refreshOnce(
   requestEpoch: string,
   retryRotation = true,
 ): Promise<string> {
+  if (isDirectAuthEnabled()) throw new AuthRequestError(null);
   assertLogoutCleanupComplete();
   const refreshOperation = readRefreshOperation();
   const csrf = await getCsrfToken();
@@ -589,6 +625,7 @@ export async function refreshAccessToken(
   expectedTransitionGeneration?: number,
   expectedSharedAuthEpoch?: string,
 ): Promise<string> {
+  if (isDirectAuthEnabled()) throw new AuthRequestError(null);
   assertLogoutCleanupComplete();
   assertAuthCapabilities();
   await waitForAuthTransition();
@@ -728,6 +765,7 @@ export async function authenticatedFetch(
   init: RequestInit = {},
   options: AuthenticatedFetchOptions = {},
 ): Promise<Response> {
+  if (isDirectAuthEnabled()) return directAuthenticatedFetch(input, init);
   assertAuthCapabilities();
   if (typeof Request !== 'undefined' && input instanceof Request) {
     throw new AuthRequestError(null);
@@ -861,6 +899,7 @@ export async function authenticatedFetchWithCurrentToken(
   init: RequestInit,
   expectedToken: string,
 ): Promise<Response> {
+  if (isDirectAuthEnabled()) return directAuthenticatedFetch(input, init, expectedToken);
   assertAuthCapabilities();
   if (!expectedToken || (typeof Request !== 'undefined' && input instanceof Request)) {
     throw new AuthRequestError(null);
@@ -902,6 +941,7 @@ export async function authenticatedFetchWithinAuthTransition(
   init: RequestInit,
   accessToken: string,
 ): Promise<Response> {
+  if (isDirectAuthEnabled()) return directFetchWithinTransition(input, init, accessToken);
   assertAuthCapabilities();
   if (authTransitionActionDepth === 0 || !accessToken) throw new AuthRequestError(null);
   if (typeof Request !== 'undefined' && input instanceof Request) throw new AuthRequestError(null);
@@ -912,6 +952,7 @@ export async function authenticatedFetchWithinAuthTransition(
 
 // Login, logout, and account changes hold a cross-tab lock while the refresh cookie changes.
 export function runAuthTransition<T>(action: () => Promise<T>): Promise<T> {
+  if (isDirectAuthEnabled()) return runDirectAuthTransition(action);
   assertLogoutCleanupComplete();
   assertAuthEpochReadable();
   clearChatConversationCache();
@@ -973,5 +1014,17 @@ export function resetAuthSessionForTests(): void {
     revision: 1,
     lifecycle: 'AUTHENTICATED',
     authenticated: true,
+  });
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener(DIRECT_AUTH_CHANGED_EVENT, (event) => {
+    if (!isDirectAuthEnabled()) return;
+    const reason = (event as CustomEvent<{ reason?: string }>).detail?.reason;
+    if (reason === 'installed') {
+      const token = getDirectAccessToken();
+      if (token) syncChatCacheAccount(chatAccountId(token));
+    } else if (reason === 'intent' || reason === 'cleared' || reason === 'expired')
+      clearChatConversationCache();
   });
 }

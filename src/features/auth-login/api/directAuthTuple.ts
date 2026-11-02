@@ -1,3 +1,5 @@
+import { DirectAuthProtocolError, type DirectAuthOperation } from './directAuthTypes';
+
 export function matchesDirectAuthTuple(
   value: unknown,
   tuple:
@@ -51,4 +53,13 @@ export function matchesDirectAuthTuple(
   )
     return false;
   return true;
+}
+
+export function operationTuple(operation: DirectAuthOperation) {
+  if (!operation.flowId || !operation.startingEpoch) throw new DirectAuthProtocolError();
+  return {
+    flowId: operation.flowId,
+    startingEpoch: operation.startingEpoch,
+    operationId: operation.operationId,
+  };
 }
