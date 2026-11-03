@@ -6,6 +6,7 @@ import { MapMorphCanvas } from './MapMorphCanvas';
 import { useMapIntro } from './useMapIntro';
 import { ZoneMapCanvas } from './ZoneMapCanvas';
 import { useMapZones } from './useMapZones';
+import { useLocationRecommendationMapEligibility } from '../location-recommendation/locationRecommendationCoordinator';
 
 type MainDestination = 'map' | 'records' | 'chatRooms' | 'my';
 
@@ -39,6 +40,7 @@ function MapSection({ isIntro, isMorphReady, onMorphComplete, state }: MapSectio
   if (state.status === 'loading' && !isIntro && isSkeletonVisible) {
     return (
       <section className="main-content main-content--map" aria-label="대한민국 음악 지도">
+        <div className="location-recommendation-portal-root" />
         <MapContentSkeleton />
       </section>
     );
@@ -49,6 +51,7 @@ function MapSection({ isIntro, isMorphReady, onMorphComplete, state }: MapSectio
 
   return (
     <section className="main-content main-content--map" aria-label="대한민국 음악 지도">
+      <div className="location-recommendation-portal-root" />
       <ZoneMapCanvas
         gridDots={gridDots}
         items={items}
@@ -181,6 +184,10 @@ export function MainPage({ onChat }: MainPageProps) {
     route.destination === 'map' && !isCompleted && !prefersReducedMotion && !hasSettledWithoutGrid;
   const isMapReady = mapState.status !== 'loading' && mapState.gridDots.length > 0;
   const isMorphReady = isIntro && isMapReady;
+  useLocationRecommendationMapEligibility(
+    route.destination === 'map',
+    route.destination === 'map' && isCompleted && isMapReady,
+  );
 
   useEffect(() => {
     if (

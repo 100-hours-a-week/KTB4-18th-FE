@@ -5,6 +5,8 @@ import { lazy, useCallback, useEffect, useRef, useState } from 'react';
 
 import { RouteLoadBoundary } from './components/RouteLoadBoundary';
 import { MainPage } from './features/mainMap/MainPage';
+import { LocationRecommendationProvider } from './features/location-recommendation/components/LocationRecommendationRuntime';
+import { useLocationRecommendationAuthState } from './features/location-recommendation/locationRecommendationCoordinator';
 import {
   logout,
   LogoutFinalizationError,
@@ -85,11 +87,12 @@ const MusicRecordDetailPage = lazy(() =>
 );
 const ChatbotPage = lazy(() => import('./features/chatbot/components/ChatbotPage'));
 
-function App() {
+function AppContent() {
   const [routeLocation, setRouteLocation] = useState(() => readRouteLocation());
   const pathname = routeLocation.pathname;
   const [initialAuthRestoreState] = useState(() => getAuthRestoreState());
   const [authStatus, setAuthStatus] = useState<AuthStatus>('restoring');
+  useLocationRecommendationAuthState(authStatus === 'authenticated');
   const [authCapability] = useState(() =>
     isDirectAuthEnabled() ? ({ supported: true } as const) : probeAuthCapabilities(),
   );
@@ -602,4 +605,10 @@ function loginHref(location: { pathname: string; search: string; hash: string })
   return `${LOGIN_PATH}?returnTo=${encodeURIComponent(returnTo)}`;
 }
 
-export default App;
+export default function App() {
+  return (
+    <LocationRecommendationProvider>
+      <AppContent />
+    </LocationRecommendationProvider>
+  );
+}
