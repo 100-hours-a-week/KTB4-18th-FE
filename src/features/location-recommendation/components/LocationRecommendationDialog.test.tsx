@@ -128,6 +128,106 @@ describe('LocationRecommendationDialog', () => {
     );
   });
 
+  it('changes tracks with horizontal drags and ignores vertical or cancelled gestures', () => {
+    renderDialog({ ...candidate, tracks: [1, 2, 3, 4, 5].map(makeTrack) });
+    const carousel = screen.getByRole('group', { name: /지역 추천 음악/ });
+    const currentSlide = carousel.querySelector<HTMLElement>(
+      '.location-recommendation-carousel__slide--current',
+    );
+    const nextSlide = carousel.querySelector<HTMLElement>(
+      '.location-recommendation-carousel__slide--next',
+    );
+    if (!currentSlide || !nextSlide) throw new Error('carousel side cards were not rendered');
+    const initialNextLeft = Number.parseFloat(nextSlide.style.left);
+    Object.defineProperty(carousel, 'setPointerCapture', {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    fireEvent.pointerDown(carousel, {
+      pointerId: 1,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 300,
+      clientY: 100,
+    });
+    fireEvent.pointerMove(carousel, {
+      pointerId: 1,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 180,
+      clientY: 100,
+    });
+    const currentScale = Number(currentSlide.style.transform.match(/scale\(([^)]+)\)/)?.[1]);
+    const nextScale = Number(nextSlide.style.transform.match(/scale\(([^)]+)\)/)?.[1]);
+    expect(Number.parseFloat(nextSlide.style.left)).toBeLessThan(initialNextLeft);
+    expect(nextScale).toBeGreaterThan(0.5);
+    expect(currentScale).toBeLessThan(1);
+    fireEvent.pointerUp(carousel, {
+      pointerId: 1,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 180,
+      clientY: 100,
+    });
+    expect(screen.getByText('2 / 5')).toBeInTheDocument();
+
+    fireEvent.pointerDown(carousel, {
+      pointerId: 2,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 180,
+      clientY: 100,
+    });
+    fireEvent.pointerUp(carousel, {
+      pointerId: 2,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 300,
+      clientY: 100,
+    });
+    expect(screen.getByText('1 / 5')).toBeInTheDocument();
+
+    fireEvent.pointerDown(carousel, {
+      pointerId: 3,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 200,
+      clientY: 100,
+    });
+    fireEvent.pointerMove(carousel, {
+      pointerId: 3,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 120,
+      clientY: 220,
+    });
+    fireEvent.pointerUp(carousel, {
+      pointerId: 3,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 120,
+      clientY: 220,
+    });
+    expect(screen.getByText('1 / 5')).toBeInTheDocument();
+
+    fireEvent.pointerDown(carousel, {
+      pointerId: 4,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 300,
+      clientY: 100,
+    });
+    fireEvent.pointerCancel(carousel, {
+      pointerId: 4,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 180,
+      clientY: 100,
+    });
+    expect(screen.getByText('1 / 5')).toBeInTheDocument();
+  });
+
   it('disables unavailable previews and uses artwork fallback for missing art', () => {
     const noMediaTrack = { ...makeTrack(1), previewUrl: null };
     renderDialog({ ...candidate, tracks: [noMediaTrack] });

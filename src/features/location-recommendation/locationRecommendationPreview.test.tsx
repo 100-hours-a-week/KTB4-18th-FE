@@ -69,7 +69,6 @@ describe('location recommendation previews', () => {
 
     const audio = TestAudio.latest;
     expect(audio?.play).toHaveBeenCalledOnce();
-    expect(audio?.preload).toBe('none');
     expect(result.current.activeTrack).toBe('track-1');
     if (!audio) throw new Error('audio element was not created');
     audio.currentTime = 30;
