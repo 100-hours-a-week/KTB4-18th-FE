@@ -137,8 +137,13 @@ describe('LocationRecommendationDialog', () => {
     const nextSlide = carousel.querySelector<HTMLElement>(
       '.location-recommendation-carousel__slide--next',
     );
-    if (!currentSlide || !nextSlide) throw new Error('carousel side cards were not rendered');
+    const stage = carousel.querySelector<HTMLElement>('.location-recommendation-carousel__stage');
+    if (!currentSlide || !nextSlide || !stage) {
+      throw new Error('carousel side cards were not rendered');
+    }
+    Object.defineProperty(stage, 'clientWidth', { configurable: true, value: 400 });
     const initialNextLeft = Number.parseFloat(nextSlide.style.left);
+    const initialNextScale = Number(nextSlide.style.transform.match(/scale\(([^)]+)\)/)?.[1]);
     Object.defineProperty(carousel, 'setPointerCapture', {
       configurable: true,
       value: vi.fn(),
@@ -161,7 +166,7 @@ describe('LocationRecommendationDialog', () => {
     const currentScale = Number(currentSlide.style.transform.match(/scale\(([^)]+)\)/)?.[1]);
     const nextScale = Number(nextSlide.style.transform.match(/scale\(([^)]+)\)/)?.[1]);
     expect(Number.parseFloat(nextSlide.style.left)).toBeLessThan(initialNextLeft);
-    expect(nextScale).toBeGreaterThan(0.5);
+    expect(nextScale).toBeGreaterThan(initialNextScale);
     expect(currentScale).toBeLessThan(1);
     fireEvent.pointerUp(carousel, {
       pointerId: 1,
