@@ -4,7 +4,6 @@ import { useAppAuthSession } from './app/auth/useAppAuthSession';
 import { lazy, useCallback, useEffect, useRef, useState } from 'react';
 
 import { RouteLoadBoundary } from './components/RouteLoadBoundary';
-import { resetLoginQueueAfterLogout } from './features/auth-login/api/loginQueueApi';
 import { MainPage } from './features/mainMap/MainPage';
 import {
   logout,
@@ -26,12 +25,6 @@ import {
   shouldRefreshAccessToken,
   type AuthStatus,
 } from './features/auth-login/api/authSession';
-import {
-  beginLogoutCleanupGate,
-  isLogoutCleanupPending,
-  LOGOUT_CLEANUP_STATE_CHANGED_EVENT,
-} from './features/auth-login/api/logoutCleanupGate';
-import { abortActiveCreate } from './features/auth-login/api/loginQueueCoordination';
 import {
   getAuthCapabilityMessage,
   probeAuthCapabilities,
@@ -101,15 +94,6 @@ function App() {
     isDirectAuthEnabled() ? ({ supported: true } as const) : probeAuthCapabilities(),
   );
   const [passwordChangedNotice, setPasswordChangedNotice] = useState(false);
-  const [skipQueueRestoreAfterLogout, setSkipQueueRestoreAfterLogout] = useState(
-    () => initialAuthRestoreState !== 'ready',
-  );
-  const [logoutCleanupPending, setLogoutCleanupPending] = useState(
-    () => initialAuthRestoreState === 'cleanup-pending',
-  );
-  const [isLogoutCleanupRetrying, setIsLogoutCleanupRetrying] = useState(false);
-  const logoutCleanupRetryRef = useRef(false);
-  const [logoutCleanupError, setLogoutCleanupError] = useState('');
   const [authRestoreBlocked, setAuthRestoreBlocked] = useState(
     () => initialAuthRestoreState === 'unavailable',
   );
@@ -148,27 +132,6 @@ function App() {
     };
   }, []);
 
-  useEffect(() => {
-    const onLogoutCleanupStateChanged = (event: Event) => {
-      const pending = Boolean((event as CustomEvent<{ pending?: boolean }>).detail?.pending);
-      setLogoutCleanupPending(pending);
-      setLoginFormVersion((version) => version + 1);
-      if (pending) {
-        advanceAuthIntent();
-        setSkipQueueRestoreAfterLogout(true);
-        setLogoutCleanupError('');
-        abortActiveCreate();
-        clearAccessToken();
-        setAuthStatus('guest');
-      } else {
-        setLogoutCleanupError('');
-      }
-    };
-    window.addEventListener(LOGOUT_CLEANUP_STATE_CHANGED_EVENT, onLogoutCleanupStateChanged);
-    return () =>
-      window.removeEventListener(LOGOUT_CLEANUP_STATE_CHANGED_EVENT, onLogoutCleanupStateChanged);
-  }, []);
-
   useAppAuthSession(authStatus, setAuthStatus, setLoginFormVersion);
 
   const restore = useCallback(async () => {
@@ -182,16 +145,8 @@ function App() {
       return;
     }
     const restoreState = getAuthRestoreState();
-    if (restoreState === 'cleanup-pending') {
-      setLogoutCleanupPending(true);
-      setSkipQueueRestoreAfterLogout(true);
-      clearAccessToken();
-      setAuthStatus('guest');
-      return;
-    }
     if (restoreState === 'signed-out') {
       setAuthRestoreBlocked(false);
-      setSkipQueueRestoreAfterLogout(true);
       clearAccessToken();
       setAuthStatus('guest');
       return;
@@ -406,35 +361,15 @@ function App() {
     setAuthStatus('logging-out');
     setLogoutError('');
     setManualLogoutError('');
-    setLogoutCleanupError('');
     let serverLogoutSucceeded = false;
     try {
-      await logout(() => {
-        if (isDirectAuthEnabled()) return;
-        serverLogoutSucceeded = true;
-        beginLogoutCleanupGate();
-        abortActiveCreate();
-        setLogoutCleanupPending(true);
-        setLoginFormVersion((version) => version + 1);
-      });
+      await logout();
       serverLogoutSucceeded = true;
-      if (!isDirectAuthEnabled()) await resetLoginQueueAfterLogout();
-      setLogoutCleanupPending(false);
-      setSkipQueueRestoreAfterLogout(true);
       clearAccessToken();
       setAuthStatus('guest');
       navigate(LOGIN_PATH);
     } catch (error) {
-      if (
-        serverLogoutSucceeded ||
-        error instanceof LogoutFinalizationError ||
-        isLogoutCleanupPending()
-      ) {
-        setLogoutCleanupPending(true);
-        setLogoutCleanupError(
-          '로그아웃은 완료됐지만 로그인 준비를 끝내지 못했어요. 다시 시도해 주세요.',
-        );
-        setSkipQueueRestoreAfterLogout(true);
+      if (serverLogoutSucceeded || error instanceof LogoutFinalizationError) {
         clearAccessToken();
         setAuthStatus('guest');
         navigate(LOGIN_PATH);
@@ -460,32 +395,13 @@ function App() {
     setLogoutError('');
     let serverLogoutSucceeded = false;
     try {
-      await logout(() => {
-        if (isDirectAuthEnabled()) return;
-        serverLogoutSucceeded = true;
-        beginLogoutCleanupGate();
-        abortActiveCreate();
-        setLogoutCleanupPending(true);
-        setLoginFormVersion((version) => version + 1);
-      });
+      await logout();
       serverLogoutSucceeded = true;
-      if (!isDirectAuthEnabled()) await resetLoginQueueAfterLogout();
-      setLogoutCleanupPending(false);
-      setSkipQueueRestoreAfterLogout(true);
       clearAccessToken();
       setAuthStatus('guest');
       navigate(LOGIN_PATH);
     } catch (error) {
-      if (
-        serverLogoutSucceeded ||
-        error instanceof LogoutFinalizationError ||
-        isLogoutCleanupPending()
-      ) {
-        setLogoutCleanupPending(true);
-        setLogoutCleanupError(
-          '로그아웃은 완료됐지만 로그인 준비를 끝내지 못했어요. 다시 시도해 주세요.',
-        );
-        setSkipQueueRestoreAfterLogout(true);
+      if (serverLogoutSucceeded || error instanceof LogoutFinalizationError) {
         clearAccessToken();
         setAuthStatus('guest');
         navigate(LOGIN_PATH);
@@ -497,29 +413,6 @@ function App() {
           ? '네트워크 상태를 확인한 뒤 다시 시도해 주세요.'
           : '회원 탈퇴 후 세션 폐기에 실패했어요. 다시 로그인하거나 로그아웃을 재시도해 주세요.',
       );
-    }
-  };
-
-  const retryLogoutCleanup = async () => {
-    if (logoutCleanupRetryRef.current) return;
-    logoutCleanupRetryRef.current = true;
-    setIsLogoutCleanupRetrying(true);
-    setLogoutCleanupError('');
-    try {
-      if (!isDirectAuthEnabled()) await resetLoginQueueAfterLogout();
-      setLogoutCleanupPending(false);
-      setSkipQueueRestoreAfterLogout(true);
-      clearAccessToken();
-      setAuthStatus('guest');
-      navigate(LOGIN_PATH);
-    } catch {
-      setLogoutCleanupPending(true);
-      setLogoutCleanupError(
-        '로그인 준비를 완료하지 못했어요. 연결 상태를 확인한 뒤 다시 시도해 주세요.',
-      );
-    } finally {
-      logoutCleanupRetryRef.current = false;
-      setIsLogoutCleanupRetrying(false);
     }
   };
 
@@ -543,21 +436,15 @@ function App() {
       <RouteLoadBoundary key={pathname} variant="login">
         <LoginPage
           key={loginFormVersion}
-          skipInitialQueueRestore={skipQueueRestoreAfterLogout || logoutCleanupPending}
           authCapabilityMessage={
             authCapability.supported ? undefined : getAuthCapabilityMessage(authCapability.reason)
           }
           authRestoreError={authRestoreBlocked ? authRestoreError : undefined}
           onRetryAuthRestore={() => void restore()}
-          logoutCleanupPending={logoutCleanupPending}
-          logoutCleanupError={logoutCleanupError}
-          logoutCleanupRetrying={isLogoutCleanupRetrying}
-          onRetryLogoutCleanup={() => void retryLogoutCleanup()}
           passwordChangedNotice={passwordChangedNotice}
           onPasswordChangedNoticeDismiss={() => setPasswordChangedNotice(false)}
           onLoginSuccess={handleLoginSuccess}
           onLoginStart={() => {
-            setSkipQueueRestoreAfterLogout(false);
             advanceAuthIntent();
             setAuthStatus('logging-in');
           }}

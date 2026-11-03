@@ -27,10 +27,6 @@ type LoginPageNoticesProps = {
   authCapabilityMessage?: string;
   authRestoreError?: string;
   onRetryAuthRestore?: () => void;
-  logoutCleanupPending?: boolean;
-  logoutCleanupError?: string;
-  logoutCleanupRetrying?: boolean;
-  onRetryLogoutCleanup?: () => void;
   passwordChangedNotice?: boolean;
   onPasswordChangedNoticeDismiss?: () => void;
 };
@@ -39,10 +35,6 @@ export function LoginPageNotices({
   authCapabilityMessage,
   authRestoreError,
   onRetryAuthRestore,
-  logoutCleanupPending,
-  logoutCleanupError,
-  logoutCleanupRetrying,
-  onRetryLogoutCleanup,
   passwordChangedNotice,
   onPasswordChangedNoticeDismiss,
 }: LoginPageNoticesProps) {
@@ -60,15 +52,6 @@ export function LoginPageNotices({
             다시 시도
           </button>
         </p>
-      )}
-      {logoutCleanupPending && (
-        <section className="login-notice" aria-label="로그아웃 정리 대기" role="alert">
-          <p>로그인 준비를 마무리하고 있어요. 완료될 때까지 다시 로그인할 수 없어요.</p>
-          {logoutCleanupError && <p>{logoutCleanupError}</p>}
-          <button type="button" onClick={onRetryLogoutCleanup} disabled={logoutCleanupRetrying}>
-            {logoutCleanupRetrying ? '로그인 준비 중…' : '로그인 준비 다시 시도'}
-          </button>
-        </section>
       )}
       {passwordChangedNotice && (
         <p role="status">

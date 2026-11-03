@@ -3,12 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { recommend, streamRecommendation } from './api/recommendations';
-import {
-  cancelLoginQueue,
-  getLoginQueueStatus,
-  resetLoginQueueAfterLogout,
-  submitQueuedLogin,
-} from './features/auth-login/api/loginQueueApi';
 import { logout, LogoutRequestError } from './features/auth-login/api/logoutApi';
 import { getMyProfile, getMySettings, withdrawMyAccount } from './features/mypage/api/mypageApi';
 import {
@@ -22,6 +16,7 @@ import {
 } from './features/auth-login/api/authSession';
 import { signup } from './features/user-signup/api/signupApi';
 import { getCurrentTerms, TermType } from './features/user-signup/api/termsApi';
+import { resetAuthCapabilitiesForTests } from './features/auth-login/api/authCapabilities';
 import type { VoiceStatus } from './hooks/useVoiceInput';
 import { navigate } from './shared/navigation';
 
@@ -59,39 +54,63 @@ vi.mock('./hooks/useVoiceInput', () => ({
     return { ...voiceState, ...voiceActions };
   },
 }));
-vi.mock('./features/auth-login/api/loginQueueApi', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./features/auth-login/api/loginQueueApi')>()),
-  startOrResumeLoginQueue: vi.fn(async () => ({
-    status: 'READY',
-    loginOutcome: null,
-    usersAhead: 0,
-    nextPollSeconds: 10,
-  })),
-  getLoginQueueStatus: vi.fn(async () => ({
-    status: 'READY',
-    loginOutcome: null,
-    usersAhead: 0,
-    nextPollSeconds: 10,
-  })),
-  getLoginOperationId: vi.fn(() => 'test-login-operation-id'),
-  clearLoginOperationId: vi.fn(),
-  submitQueuedLogin: vi.fn(async () => {
-    const { setAccessToken: storeToken } = await import('./features/auth-login/api/authSession');
-    storeToken('test-access-token');
-    return {
-      message: 'login success' as const,
-      data: { access_token: 'test-access-token', expires_in: 3600 },
-    };
-  }),
-  recoverQueuedLogin: vi.fn(async () => ({
-    message: 'login success' as const,
-    data: { access_token: 'test-access-token', expires_in: 3600 },
-  })),
-  resetLoginQueueAfterLogout: vi.fn(),
-  cancelLoginQueue: vi.fn(async () => undefined),
-  publishQueueSignal: vi.fn(),
-  subscribeQueueSignals: vi.fn(() => () => undefined),
-}));
+vi.mock('./features/auth-login/hooks/useDirectLoginFlow', async () => {
+  const { useRef, useState } = await import('react');
+  const { isDirectAuthEnabled } = await import('./features/auth-login/api/authProtocolMode');
+  return {
+    useDirectLoginFlow: (options: {
+      onLoginStart?: () => void;
+      onLoginFailure?: () => void;
+      onLoginSuccess?: (response: {
+        message: 'login success';
+        data: { access_token: string; expires_in: number };
+      }) => void;
+    }) => {
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const emailInputRef = useRef<HTMLInputElement>(null);
+      const recovery = {
+        isRecovering: false,
+        canRecoverSource: false,
+        canRebootstrap: false,
+        recoverSource: async () => undefined,
+        rebootstrap: async () => undefined,
+      };
+      return {
+        email,
+        password,
+        fieldErrors: {},
+        emailInputRef,
+        updateEmail: setEmail,
+        updatePassword: setPassword,
+        isPasswordVisible: false,
+        setIsPasswordVisible: () => undefined,
+        isPending: false,
+        isLocked: false,
+        isFormValid: email.includes('@') && password.trim().length > 0,
+        message: '',
+        recovery,
+        hasPendingLogout: false,
+        canRetryPendingLogout: false,
+        checkStatus: async () => undefined,
+        retryPendingLogout: async () => undefined,
+        handleSubmit: async (event: { preventDefault: () => void }) => {
+          event.preventDefault();
+          if (!isDirectAuthEnabled()) {
+            const { setAccessToken: storeToken } =
+              await import('./features/auth-login/api/authSession');
+            storeToken('test-access-token');
+          }
+          options.onLoginStart?.();
+          options.onLoginSuccess?.({
+            message: 'login success',
+            data: { access_token: 'test-access-token', expires_in: 3600 },
+          });
+        },
+      };
+    },
+  };
+});
 vi.mock('./features/auth-login/api/logoutApi', () => ({
   logout: vi.fn(),
   LogoutFinalizationError: class LogoutFinalizationError extends Error {
@@ -161,10 +180,19 @@ beforeEach(() => {
     });
   }
 });
+
+function enableDirectLoginForTest() {
+  vi.stubEnv('VITE_AUTH_DIRECT_V2_ENABLED', 'true');
+  Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+  Object.defineProperty(navigator, 'cookieEnabled', { configurable: true, value: true });
+  resetAuthCapabilitiesForTests();
+}
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
+  vi.stubEnv('VITE_AUTH_DIRECT_V2_ENABLED', undefined);
   vi.unstubAllGlobals();
+  resetAuthCapabilitiesForTests();
 });
 
 function accessTokenWithExpiration(expiresAt: number): string {
@@ -210,7 +238,6 @@ describe('탭 간 인증 세션 복구', () => {
     ).toBeInTheDocument();
     expect(window.location.pathname).toBe('/my');
     expect(getAccessToken()).toBe(restored);
-    expect(submitQueuedLogin).not.toHaveBeenCalled();
   });
 
   it('새 탭의 초기 복구 중 다른 탭에서 로그아웃하면 늦은 성공 응답을 무시한다', async () => {
@@ -640,13 +667,6 @@ describe('음성 transcript 공통 추천 흐름', () => {
       ],
       completed_at: '2026-09-21T12:00:00Z',
     });
-    vi.mocked(submitQueuedLogin).mockImplementation(async () => {
-      setAccessToken('test-access-token');
-      return {
-        message: 'login success',
-        data: { access_token: 'test-access-token', expires_in: 3600 },
-      };
-    });
     vi.mocked(signup).mockResolvedValue({
       message: 'register success',
       data: { user_id: 1 },
@@ -878,13 +898,6 @@ describe('로그인과 회원가입 화면 연결', () => {
         effective_at: '2026-09-25T10:00:00Z',
       })),
     );
-    vi.mocked(submitQueuedLogin).mockImplementation(async () => {
-      setAccessToken('test-access-token');
-      return {
-        message: 'login success',
-        data: { access_token: 'test-access-token', expires_in: 3600 },
-      };
-    });
     vi.mocked(signup).mockResolvedValue({
       message: 'register success',
       data: { user_id: 1 },
@@ -1161,6 +1174,7 @@ describe('로그인과 회원가입 화면 연결', () => {
   });
 
   it('로그인 성공 후 메인 페이지로 이동한다', async () => {
+    enableDirectLoginForTest();
     const user = userEvent.setup();
     window.history.replaceState(null, '', '/login');
     render(<App />);
@@ -1174,10 +1188,11 @@ describe('로그인과 회원가입 화면 연결', () => {
     });
 
     expect(window.location.pathname).toBe('/');
-    expect(getAccessToken()).toBe('test-access-token');
+    expect(getAccessToken()).toBeNull();
   });
 
   it('로그인 성공 후 returnTo에 지정된 보호 페이지로 돌아간다', async () => {
+    enableDirectLoginForTest();
     const user = userEvent.setup();
     resetAuthSessionForTests();
     sessionStorage.clear();
@@ -1201,6 +1216,7 @@ describe('로그인과 회원가입 화면 연결', () => {
   it.each(['//evil.example/path', 'https://evil.example/path', '/\\\\evil.example/path'])(
     '외부 returnTo %s로 로그인해도 메인 출처에 머문다',
     async (returnTo) => {
+      enableDirectLoginForTest();
       const user = userEvent.setup();
       window.history.replaceState(null, '', `/login?returnTo=${encodeURIComponent(returnTo)}`);
       render(<App />);
@@ -1215,6 +1231,7 @@ describe('로그인과 회원가입 화면 연결', () => {
   );
 
   it('로그아웃 성공 후 로그인 화면으로 이동한다', async () => {
+    enableDirectLoginForTest();
     const user = userEvent.setup();
     window.history.replaceState(null, '', '/login');
     render(<App />);
@@ -1225,16 +1242,12 @@ describe('로그인과 회원가입 화면 연결', () => {
     await screen.findByRole('button', { name: '내 공간' });
     await user.click(screen.getByRole('button', { name: '내 공간' }));
     expect(window.location.pathname).toBe('/my');
-    const queueStatusReadsBeforeLogout = vi.mocked(getLoginQueueStatus).mock.calls.length;
     await user.click(await screen.findByRole('button', { name: '로그아웃' }));
 
     await waitFor(() => {
       expect(logout).toHaveBeenCalledOnce();
-      expect(resetLoginQueueAfterLogout).toHaveBeenCalledOnce();
-      expect(cancelLoginQueue).not.toHaveBeenCalled();
       expect(screen.getByRole('heading', { name: '머문음' })).toBeInTheDocument();
     });
-    expect(getLoginQueueStatus).toHaveBeenCalledTimes(queueStatusReadsBeforeLogout);
     expect(screen.getByLabelText('이메일')).toHaveValue('');
     expect(screen.getByLabelText('비밀번호')).toHaveValue('');
     expect(
@@ -1243,7 +1256,8 @@ describe('로그인과 회원가입 화면 연결', () => {
     expect(screen.queryByRole('button', { name: '새로 로그인하기' })).not.toBeInTheDocument();
   });
 
-  it('signed-out epoch skips automatic queue restore when the login page opens', async () => {
+  it('signed-out epoch opens the direct login page', async () => {
+    enableDirectLoginForTest();
     window.localStorage.setItem(
       'meomuneum:auth-epoch',
       JSON.stringify({ id: 'signed-out', state: 'signed-out' }),
@@ -1253,10 +1267,9 @@ describe('로그인과 회원가입 화면 연결', () => {
     render(<App />);
 
     expect(await screen.findByLabelText('이메일')).toHaveValue('');
-    expect(getLoginQueueStatus).not.toHaveBeenCalled();
   });
 
-  it('auth epoch read failure fails closed before queue restore or credential submission', async () => {
+  it('auth epoch read failure fails closed before credential submission', async () => {
     const originalGetItem = Storage.prototype.getItem;
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key) {
       if (key === 'meomuneum:auth-epoch') {
@@ -1272,11 +1285,11 @@ describe('로그인과 회원가입 화면 연결', () => {
 
     expect(await screen.findByText(/저장된 로그인 상태를 확인할 수 없어요/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '로그인' })).toBeDisabled();
-    expect(getLoginQueueStatus).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('챗봇 플로팅 버튼과 브라우저 뒤로·앞으로가 렌더된 SPA 경로를 바꾼다', async () => {
+    enableDirectLoginForTest();
     const user = userEvent.setup();
     window.history.replaceState(null, '', '/login');
     render(<App />);
@@ -1284,7 +1297,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
     await user.click(screen.getByRole('button', { name: '로그인' }));
     expect(await screen.findByRole('heading', { name: '음악 지도' })).toBeInTheDocument();
-    expect(getAccessToken()).toBe('test-access-token');
+    expect(getAccessToken()).toBeNull();
 
     const chatbotLink = screen.getByRole('link', { name: '음악 찾기 열기' });
     await user.click(chatbotLink);
@@ -1386,6 +1399,7 @@ describe('로그인과 회원가입 화면 연결', () => {
   });
 
   it('로그인 후 채팅 탭을 누르면 준비 안내 화면으로 이동한다', async () => {
+    enableDirectLoginForTest();
     const user = userEvent.setup();
     window.history.replaceState(null, '', '/login');
     render(<App />);
@@ -1429,24 +1443,6 @@ describe('로그인과 회원가입 화면 연결', () => {
     expect(getAccessToken()).toBeNull();
     expect(await screen.findByLabelText('이메일')).toBeInTheDocument();
     expect(window.location.pathname).toBe('/login');
-  });
-
-  it('로그아웃 후 로컬 대기열 저장소 오류가 나도 토큰을 지우고 로그인 페이지로 이동한다', async () => {
-    const user = userEvent.setup();
-    vi.mocked(logout).mockResolvedValue(undefined);
-    vi.mocked(resetLoginQueueAfterLogout).mockImplementationOnce(() => {
-      throw new Error('local queue storage unavailable');
-    });
-    const logoutButton = await renderAuthenticatedMyPage();
-
-    await user.click(logoutButton);
-
-    expect(getAccessToken()).toBeNull();
-    expect(await screen.findByLabelText('이메일')).toBeInTheDocument();
-    expect(window.location.pathname).toBe('/login');
-    expect(screen.getByRole('button', { name: '로그인 준비 다시 시도' })).toBeInTheDocument();
-    expect(screen.getByLabelText('이메일')).toBeDisabled();
-    expect(screen.getByLabelText('비밀번호')).toBeDisabled();
   });
 
   it.each([

@@ -21,14 +21,20 @@ const VERIFIED_GATES = [
 
 afterEach(() => vi.unstubAllEnvs());
 
-it('preserves DEV enabled-only selection and exact true semantics', () => {
+it('defaults development to direct-v2 unless explicitly disabled', () => {
   vi.stubEnv('DEV', true);
   vi.stubEnv('PROD', false);
   for (const key of FLAGS) vi.stubEnv(key, undefined);
-  for (const value of INVALID_VALUES) {
+  vi.stubEnv(FLAGS[0], undefined);
+  expect(
+    isDirectAuthEnabled({ DEV: true, PROD: false, MODE: 'development' } as ImportMetaEnv),
+  ).toBe(true);
+  for (const value of ['TRUE', ' true', 'true ']) {
     vi.stubEnv(FLAGS[0], value);
-    expect(isDirectAuthEnabled()).toBe(false);
+    expect(isDirectAuthEnabled()).toBe(true);
   }
+  vi.stubEnv(FLAGS[0], 'false');
+  expect(isDirectAuthEnabled()).toBe(false);
   vi.stubEnv(FLAGS[0], 'true');
   expect(isDirectAuthEnabled()).toBe(true);
   for (const [, enabled] of VERIFIED_GATES) expect(enabled()).toBe(false);

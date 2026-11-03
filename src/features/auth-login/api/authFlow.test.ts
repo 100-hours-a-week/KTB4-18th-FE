@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   forgetAuthFlowForTests,
   getAuthFlow,
+  AuthFlowError,
   primeAuthFlowForTests,
   reconcileAuthFlow,
   updateAuthFlowFromResponse,
@@ -56,25 +57,18 @@ describe('authoritative auth flow reconciliation', () => {
     });
   });
 
-  it('forces a new read instead of joining an older pending read', async () => {
-    let finishOldRead!: (value: Response) => void;
-    const oldRead = new Promise<Response>((resolve) => {
-      finishOldRead = resolve;
-    });
-    const fetchMock = vi
-      .fn()
-      .mockReturnValueOnce(oldRead)
-      .mockResolvedValueOnce(response(flow('QUEUED', 2)));
+  it('fails closed when a legacy flow snapshot contains a removed queue lifecycle', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response(flow('ANONYMOUS', 2)));
+    fetchMock.mockResolvedValueOnce(
+      Response.json({
+        message: 'auth flow',
+        data: { ...flow('ANONYMOUS', 2), lifecycle: 'QUEUED' },
+      }),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
-    const first = reconcileAuthFlow();
-    const fresh = await reconcileAuthFlow(undefined, true);
-    finishOldRead(response(flow('ANONYMOUS', 1)));
-    await first;
-
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fresh.lifecycle).toBe('QUEUED');
-    await expect(getAuthFlow()).resolves.toMatchObject({ lifecycle: 'QUEUED', revision: 2 });
+    await expect(reconcileAuthFlow(undefined, true)).rejects.toBeInstanceOf(AuthFlowError);
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it('times out a stalled central flow read and reports unavailable state', async () => {

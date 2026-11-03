@@ -19,6 +19,7 @@ type DirectLoginPageProps = {
   onLoginSuccess?: (response: LoginSuccessResponse) => void;
   passwordChangedNotice?: boolean;
   onPasswordChangedNoticeDismiss?: () => void;
+  protocolEnabled?: boolean;
 };
 
 export function DirectLoginPage(props: DirectLoginPageProps) {
@@ -28,7 +29,7 @@ export function DirectLoginPage(props: DirectLoginPageProps) {
     onLoginFailure: props.onLoginFailure,
     onLoginSuccess: props.onLoginSuccess,
   });
-  const supported = getDirectAuthCapabilities().ready;
+  const supported = getDirectAuthCapabilities().ready && props.protocolEnabled !== false;
   const pending = flow.isPending || flow.recovery.isRecovering;
   return (
     <main className="login-screen">
@@ -42,7 +43,9 @@ export function DirectLoginPage(props: DirectLoginPageProps) {
             <LoginPageNotices {...props} />
             {!supported && (
               <p className="login-notice" role="alert">
-                브라우저의 보안 및 쿠키 설정을 확인한 뒤 다시 로그인해 주세요.
+                {props.protocolEnabled === false
+                  ? '현재 로그인 기능을 사용할 수 없어요. 잠시 후 다시 시도해 주세요.'
+                  : '브라우저의 보안 및 쿠키 설정을 확인한 뒤 다시 로그인해 주세요.'}
               </p>
             )}
             <div className="login-divider" aria-hidden="true">
@@ -57,7 +60,6 @@ export function DirectLoginPage(props: DirectLoginPageProps) {
                 {...flow}
                 isLoginLocked={flow.isLocked || pending}
                 isAuthSupported={supported}
-                logoutCleanupPending={false}
               />
               {flow.message && (
                 <p className="login-notice" role="status" aria-live="polite">

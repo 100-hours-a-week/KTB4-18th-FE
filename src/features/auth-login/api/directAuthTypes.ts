@@ -76,11 +76,9 @@ export type FlowData = {
   lifecycle: Lifecycle;
   authenticated: boolean;
   refreshGeneration: string;
-  currentTicket: null;
   pendingOperations: Array<PendingOperation>;
   lastLogoutReceipt: null | LogoutReceipt;
   lastRefreshReceipt: null | RefreshReceipt;
-  lastQueueCancelReceipt: null | QueueCancelReceipt;
   rebootstrapReason: 'EXISTING' | 'CREATED' | 'INVALID_COOKIE' | 'EXPIRED_COOKIE' | null;
   loginProtocol: 'direct-v2';
   flowCookieGeneration: string;
@@ -111,13 +109,7 @@ export type OperationInProgressData = {
 };
 export type PendingOperation = {
   operationId: string;
-  kind: 'LOGOUT' | 'REFRESH' | 'QUEUE_CANCEL' | 'DIRECT_LOGIN';
-};
-export type QueueCancelReceipt = {
-  operationId: string;
-  committed: boolean;
-  flowEpoch: string;
-  revision: string;
+  kind: 'LOGOUT' | 'REFRESH' | 'DIRECT_LOGIN';
 };
 export type RebootstrapData = {
   flow: CurrentOperationFlow;

@@ -3,7 +3,7 @@ const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 const FLOW_CHANNEL_NAME = 'meomuneum:auth-flow-hint';
 const FLOW_REQUEST_TIMEOUT_MS = 15_000;
 
-export type AuthFlowLifecycle = 'ANONYMOUS' | 'QUEUED' | 'AUTHENTICATED';
+export type AuthFlowLifecycle = 'ANONYMOUS' | 'AUTHENTICATED';
 export type AuthFlow = {
   flowId: string;
   flowEpoch: number;
@@ -23,12 +23,6 @@ export type AuthFlow = {
     flowEpoch: number;
     revision: number;
     resultGeneration: number;
-  } | null;
-  lastQueueCancelReceipt?: {
-    operationId: string;
-    committed: true;
-    flowEpoch: number;
-    revision: number;
   } | null;
 };
 
@@ -92,7 +86,7 @@ function parseFlow(value: unknown): AuthFlow {
     !/^[A-Za-z0-9_-]{16,128}$/.test(data.flowId) ||
     !Number.isSafeInteger(data.flowEpoch) ||
     !Number.isSafeInteger(data.revision) ||
-    !['ANONYMOUS', 'QUEUED', 'AUTHENTICATED'].includes(data.lifecycle ?? '') ||
+    !['ANONYMOUS', 'AUTHENTICATED'].includes(data.lifecycle ?? '') ||
     typeof data.authenticated !== 'boolean'
   ) {
     throw new AuthFlowError(502, 'AUTH_FLOW_RESPONSE_INVALID');

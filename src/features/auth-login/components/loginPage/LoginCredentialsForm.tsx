@@ -1,13 +1,12 @@
-import type { SetStateAction } from 'react';
+import type { RefObject, SetStateAction } from 'react';
 
-import { EMAIL_NOT_REGISTERED_ERROR } from '../../hooks/loginQueueFlowUtils';
-import type { FieldErrors } from '../../hooks/loginQueueFlowUtils';
-import type { useLoginQueueFlow } from '../../hooks/useLoginQueueFlow';
+import { EMAIL_NOT_REGISTERED_ERROR, type FieldErrors } from './loginFormValidation';
 
-type LoginFlowFields = Pick<
-  ReturnType<typeof useLoginQueueFlow>,
-  'emailInputRef' | 'updateEmail' | 'updatePassword'
->;
+type LoginFlowFields = {
+  emailInputRef: RefObject<HTMLInputElement | null>;
+  updateEmail: (value: string) => void;
+  updatePassword: (value: string) => void;
+};
 
 type LoginCredentialsFormProps = LoginFlowFields & {
   email: string;
@@ -17,7 +16,6 @@ type LoginCredentialsFormProps = LoginFlowFields & {
   setIsPasswordVisible: (value: SetStateAction<boolean>) => void;
   isLoginLocked: boolean;
   isAuthSupported: boolean;
-  logoutCleanupPending: boolean;
 };
 
 export function LoginCredentialsForm({
@@ -31,7 +29,6 @@ export function LoginCredentialsForm({
   setIsPasswordVisible,
   isLoginLocked,
   isAuthSupported,
-  logoutCleanupPending,
 }: LoginCredentialsFormProps) {
   return (
     <>
@@ -59,7 +56,7 @@ export function LoginCredentialsForm({
             spellCheck={false}
             aria-invalid={Boolean(fieldErrors.email)}
             aria-describedby={fieldErrors.email ? 'email-error' : undefined}
-            disabled={isLoginLocked || !isAuthSupported || logoutCleanupPending}
+            disabled={isLoginLocked || !isAuthSupported}
           />
         </div>
         {fieldErrors.email && (
@@ -94,14 +91,14 @@ export function LoginCredentialsForm({
             onChange={(event) => updatePassword(event.target.value)}
             aria-invalid={Boolean(fieldErrors.password)}
             aria-describedby={fieldErrors.password ? 'password-error' : undefined}
-            disabled={isLoginLocked || !isAuthSupported || logoutCleanupPending}
+            disabled={isLoginLocked || !isAuthSupported}
           />
           <button
             className="password-toggle"
             type="button"
             onClick={() => setIsPasswordVisible((visible) => !visible)}
             aria-label={isPasswordVisible ? '비밀번호 숨기기' : '비밀번호 표시'}
-            disabled={isLoginLocked || !isAuthSupported || logoutCleanupPending}
+            disabled={isLoginLocked || !isAuthSupported}
           >
             <img
               src={isPasswordVisible ? '/icons/auth/View-on.svg' : '/icons/auth/View-off.svg'}
