@@ -18,7 +18,7 @@ import { inspectDirectRecovery } from '../api/directAuthRecovery';
 import { readDirectAuthOperation } from '../api/directAuthOperationStore';
 import type { DirectAuthOperation } from '../api/directAuthTypes';
 import type { LoginSuccessResponse } from '../api/loginTypes';
-import { validate, type FieldErrors } from './loginQueueFlowUtils';
+import { validate, type FieldErrors } from '../components/loginPage/loginFormValidation';
 
 function pendingLogoutOperation(): DirectAuthOperation | null {
   try {
@@ -44,6 +44,7 @@ export function useDirectLoginFlow(options: Options) {
   const [hasPendingLogout, setHasPendingLogout] = useState(() => {
     return Boolean(pendingLogoutOperation());
   });
+  const [canRetryPendingLogout, setCanRetryPendingLogout] = useState(false);
   const [isLocked, setIsLocked] = useState(() => {
     try {
       return Boolean(unresolvedDirectOperation());
@@ -71,6 +72,21 @@ export function useDirectLoginFlow(options: Options) {
   const mounted = useRef(true);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const resolveDelay = useRef<(() => void) | undefined>(undefined);
+  useEffect(() => {
+    let expirationTimer: ReturnType<typeof setTimeout> | undefined;
+    const updateRetryAvailability = () => {
+      const operation = pendingLogoutOperation();
+      const remaining = operation ? operation.expiresAt - Date.now() : 0;
+      setCanRetryPendingLogout(remaining > 0);
+      if (remaining > 0) {
+        expirationTimer = setTimeout(updateRetryAvailability, remaining);
+      }
+    };
+    updateRetryAvailability();
+    return () => {
+      if (expirationTimer !== undefined) clearTimeout(expirationTimer);
+    };
+  }, [hasPendingLogout]);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -273,9 +289,7 @@ export function useDirectLoginFlow(options: Options) {
     checkStatus,
     retryPendingLogout,
     hasPendingLogout,
-    canRetryPendingLogout: Boolean(
-      pendingLogoutOperation() && pendingLogoutOperation()!.expiresAt > Date.now(),
-    ),
+    canRetryPendingLogout,
     recovery,
     isPending,
     isLocked,

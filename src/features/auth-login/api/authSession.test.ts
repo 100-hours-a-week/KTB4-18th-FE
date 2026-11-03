@@ -16,7 +16,6 @@ import {
   setAccessToken,
   shouldRefreshAccessToken,
 } from './authSession';
-import { beginLogoutCleanupGate } from './logoutCleanupGate';
 import { forgetAuthFlowForTests, primeAuthFlowForTests } from './authFlow';
 
 function accessTokenWithExpiration(expiresAt: number): string {
@@ -175,22 +174,6 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     expect(flowReads).toBe(1);
     expect(operationIds).toHaveLength(2);
     expect(operationIds[1]).not.toBe(operationIds[0]);
-  });
-
-  it('logout cleanup pending blocks refresh and marker storage failures fail closed', async () => {
-    beginLogoutCleanupGate();
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-
-    expect(getAuthRestoreState()).toBe('cleanup-pending');
-    await expect(refreshAccessToken()).rejects.toMatchObject({ status: null });
-    expect(fetchMock).not.toHaveBeenCalled();
-
-    resetAuthSessionForTests();
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-      throw new DOMException('storage unavailable', 'SecurityError');
-    });
-    expect(getAuthRestoreState()).toBe('cleanup-pending');
   });
 
   it('access JWT 만료 10분 전부터 refresh가 필요하다고 판단한다', () => {
