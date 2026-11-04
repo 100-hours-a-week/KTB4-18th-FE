@@ -27,6 +27,13 @@ import {
   type ChatCacheContext,
 } from './chatConversationCache';
 
+// Server events can arrive before the browser clock reaches their creation time.
+const SERVER_MESSAGE_CLOCK_TOLERANCE_MS = 1_000;
+
+function retainActiveChatMessages(messages: readonly ChatMessage[]): ChatMessage[] {
+  return retainChatMessages(messages, Date.now(), SERVER_MESSAGE_CLOCK_TOLERANCE_MS);
+}
+
 export interface PendingChatMessage {
   clientMessageId: string;
   content: string;
@@ -95,7 +102,7 @@ export class ChatParticipation {
   }
 
   private update(status: ChatParticipationState['status'], message: string) {
-    this.messages = retainChatMessages(this.messages);
+    this.messages = retainActiveChatMessages(this.messages);
     this.status = status;
     this.statusMessage = message;
     if (!this.isStopped)
@@ -263,7 +270,7 @@ export class ChatParticipation {
   }
 
   private rememberMessages() {
-    this.messages = retainChatMessages(this.messages);
+    this.messages = retainActiveChatMessages(this.messages);
     if (this.active && this.cacheContext)
       storeChatConversation(
         this.cacheContext,
@@ -290,7 +297,7 @@ export class ChatParticipation {
     if (!membership) return;
     if (event.type === 'CHAT_READY') return;
     if (event.type === 'CHAT_HISTORY') {
-      this.messages = retainChatMessages(event.messages);
+      this.messages = retainActiveChatMessages(event.messages);
       this.messages.forEach((message) => this.confirmPending(message));
       this.gaps = [...event.gaps];
       this.restoredThroughMessageId = this.messages.at(-1)?.messageId;
@@ -352,12 +359,13 @@ export class ChatParticipation {
             event.message.userId !== this.currentUserId))
       )
         return;
-      this.confirmPending(event.message);
       if (!this.messages.some((item) => item.messageId === event.message.messageId)) {
         this.messages.push(event.message);
-        this.messages.sort((a, b) => a.messageId - b.messageId);
       }
       this.rememberMessages();
+      if (this.messages.some((item) => item.messageId === event.message.messageId)) {
+        this.confirmPending(event.message);
+      }
     }
     this.update(this.status, this.statusMessage);
   }
