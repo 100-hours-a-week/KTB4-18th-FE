@@ -239,21 +239,42 @@ describe('지역 채팅 메시지 처리', () => {
   );
 
   it.each(['ack-first', 'broadcast-first'])(
-    '마스킹 ACK가 %s여도 원문 대기를 제거하고 서버 본문만 표시한다',
+    '서버 시각이 150ms 앞선 마스킹 메시지도 %s 순서로 즉시 한 번 표시한다',
     async (order) => {
       const { event } = await ready();
       participation.send('씨발');
       const clientMessageId = states.at(-1)!.pendingMessages![0].clientMessageId;
-      const message = { ...saved, clientMessageId, content: '**' };
+      const message = {
+        ...saved,
+        clientMessageId,
+        content: '**',
+        createdAt: new Date(Date.now() + 150).toISOString(),
+      };
       const ack = { type: 'CHAT_ACK' as const, membershipId: 900, message };
       const broadcast = { type: 'CHAT_MESSAGE' as const, message };
       event(order === 'ack-first' ? ack : broadcast);
+      expect(states.at(-1)?.messages).toEqual([message]);
+      expect(states.at(-1)?.pendingMessages).toEqual([]);
       event(order === 'ack-first' ? broadcast : ack);
       event(broadcast);
       expect(states.at(-1)?.messages).toEqual([message]);
       expect(states.at(-1)?.pendingMessages).toEqual([]);
     },
   );
+
+  it.each([
+    [1_000, true],
+    [1_001, false],
+  ])('서버 시각이 %ims 앞선 수신 메시지의 표시 여부는 %s이다', async (offset, isVisible) => {
+    const { event } = await ready();
+    const message = {
+      ...saved,
+      userId: 8,
+      createdAt: new Date(Date.now() + offset).toISOString(),
+    };
+    event({ type: 'CHAT_MESSAGE', message });
+    expect(states.at(-1)?.messages).toEqual(isVisible ? [message] : []);
+  });
 
   it('다른 방·참여·계정 또는 다른 UUID의 ACK로 내 전송을 완료하지 않는다', async () => {
     const { event } = await ready();
