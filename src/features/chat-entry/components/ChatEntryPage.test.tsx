@@ -97,7 +97,7 @@ describe('ChatEntryPage', () => {
     expect(author?.children).toHaveLength(0);
   });
 
-  it('복원한 이전 대화와 새 참여 대화를 구분하고 복원만으로 전송을 허용하지 않는다', () => {
+  it('복원한 이전 대화와 새 대화를 구분 문구 없이 표시하고 복원만으로 전송을 허용하지 않는다', () => {
     const state = useChatParticipation();
     vi.mocked(useChatParticipation).mockReturnValue({
       ...state,
@@ -113,8 +113,10 @@ describe('ChatEntryPage', () => {
       })),
     });
     render(<ChatEntryPage />);
-    expect(screen.getByText('이전에 봤던 대화')).toHaveAttribute('role', 'status');
-    expect(screen.getByText('다시 입장한 이후 대화')).toHaveAttribute('role', 'status');
+    expect(screen.queryByText('이전에 봤던 대화')).not.toBeInTheDocument();
+    expect(screen.queryByText('다시 입장한 이후 대화')).not.toBeInTheDocument();
+    expect(screen.getByRole('log')).toHaveTextContent('대화1');
+    expect(screen.getByRole('log')).toHaveTextContent('대화3');
     expect(screen.getByRole('textbox', { name: '메시지' })).toBeDisabled();
   });
 
@@ -398,7 +400,7 @@ describe('ChatEntryPage', () => {
     expect(screen.queryByRole('button', { name: '다시 입장' })).not.toBeInTheDocument();
     expect(retry).not.toHaveBeenCalled();
   });
-  it('복구 중 입력을 막고 부재 구분선·복구 재시도를 안내한다', () => {
+  it('복구 중 입력을 막고 부재를 단절로 표시하지 않으며 복구 재시도를 안내한다', () => {
     const state = useChatParticipation();
     const retryRecovery = vi.fn();
     vi.mocked(useChatParticipation).mockReturnValue({
@@ -411,7 +413,8 @@ describe('ChatEntryPage', () => {
     });
     render(<ChatEntryPage />);
     expect(screen.getByRole('textbox', { name: '메시지' })).toBeDisabled();
-    expect(screen.getByText('연결이 끊겨 일부 대화가 표시되지 않아요')).toBeInTheDocument();
+    expect(screen.queryByText('연결이 끊겨 일부 대화가 표시되지 않아요')).not.toBeInTheDocument();
+    expect(screen.queryByText('채팅 연결이 끊겼어요.')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '복구 다시 시도' }));
     expect(retryRecovery).toHaveBeenCalledOnce();
     expect(retry).not.toHaveBeenCalled();
@@ -526,12 +529,9 @@ describe('ChatEntryPage', () => {
       ],
     });
     render(<ChatEntryPage />);
-    expect(screen.getByText('이전에 봤던 대화')).toHaveAttribute('role', 'status');
-    expect(screen.getByText('다시 입장한 이후 대화')).toHaveAttribute('role', 'status');
-    expect(screen.getByText('연결이 끊겨 일부 대화가 표시되지 않아요')).toHaveAttribute(
-      'role',
-      'status',
-    );
+    expect(screen.queryByText('이전에 봤던 대화')).not.toBeInTheDocument();
+    expect(screen.queryByText('다시 입장한 이후 대화')).not.toBeInTheDocument();
+    expect(screen.queryByText('연결이 끊겨 일부 대화가 표시되지 않아요')).not.toBeInTheDocument();
     expect(screen.getByText('보관 기간이 지난 메시지는 표시되지 않아요')).toHaveAttribute(
       'role',
       'status',

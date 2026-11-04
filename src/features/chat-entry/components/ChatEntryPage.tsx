@@ -111,38 +111,32 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
   const isNormal = chat.status === 'ready' && chat.isReady;
   const isPresenceError = ['disconnected', 'error'].includes(chat.presenceStatus ?? '');
   const messages = chat.messages ?? [];
+  const gaps = chat.gaps ?? [];
+  const retentionNotice = '보관 기간이 지난 메시지는 표시되지 않아요';
   const displayedMessages = messages.map((message, index) => {
     const previous = messages[index - 1];
     const date = new Date(message.createdAt);
     const hasDate =
       !previous || new Date(previous.createdAt).toDateString() !== date.toDateString();
-    const boundaries: string[] = [];
-    if (chat.restoredThroughMessageId !== undefined) {
-      if (index === 0 && message.messageId <= chat.restoredThroughMessageId)
-        boundaries.push('이전에 봤던 대화');
-      if (
-        message.messageId > chat.restoredThroughMessageId &&
-        (!previous || previous.messageId <= chat.restoredThroughMessageId)
-      )
-        boundaries.push('다시 입장한 이후 대화');
-    }
-    for (const gap of chat.gaps ?? []) {
-      if (
+    const restoredThrough = chat.restoredThroughMessageId;
+    const startsNewParticipation =
+      restoredThrough !== undefined &&
+      previous &&
+      previous.messageId <= restoredThrough &&
+      message.messageId > restoredThrough;
+    const precedingGaps = gaps.filter(
+      (gap) =>
         gap.beforeMessageId < message.messageId &&
-        (!previous || previous.messageId <= gap.beforeMessageId)
-      )
-        boundaries.push(
-          gap.reason === 'ABSENCE'
-            ? '연결이 끊겨 일부 대화가 표시되지 않아요'
-            : '보관 기간이 지난 메시지는 표시되지 않아요',
-        );
-    }
+        (!previous || previous.messageId <= gap.beforeMessageId),
+    );
     const isContinuation =
       !hasDate &&
-      boundaries.length === 0 &&
+      !startsNewParticipation &&
+      precedingGaps.length === 0 &&
       previous?.userId === message.userId &&
       Math.floor(Date.parse(previous.createdAt) / 60000) === Math.floor(date.getTime() / 60000);
-    return { message, date, hasDate, boundaries, isContinuation };
+    const showRetentionNotice = precedingGaps.some((gap) => gap.reason === 'RETENTION');
+    return { message, date, hasDate, showRetentionNotice, isContinuation };
   });
 
   return (
@@ -219,7 +213,7 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
             aria-live="polite"
           >
             {displayedMessages.map(
-              ({ message, date, hasDate, boundaries, isContinuation }, index) => (
+              ({ message, date, hasDate, showRetentionNotice, isContinuation }, index) => (
                 <Fragment key={message.messageId}>
                   {hasDate && (
                     <p className="region-chat-date">
@@ -231,11 +225,11 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
                       })}
                     </p>
                   )}
-                  {boundaries.map((boundary, boundaryIndex) => (
-                    <p className="region-chat-gap" role="status" key={boundaryIndex}>
-                      {boundary}
+                  {showRetentionNotice && (
+                    <p className="region-chat-gap" role="status">
+                      {retentionNotice}
                     </p>
-                  ))}
+                  )}
                   <article
                     className={`region-chat-message${message.userId === chat.currentUserId ? ' region-chat-own' : ''}${isContinuation ? ' region-chat-continuation' : ''}`}
                   >
@@ -268,19 +262,15 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
                 </Fragment>
               ),
             )}
-            {(chat.gaps ?? [])
-              .filter((gap) => gap.beforeMessageId >= (messages.at(-1)?.messageId ?? 0))
-              .map((gap) => (
-                <p
-                  className="region-chat-gap"
-                  role="status"
-                  key={`${gap.reason}:${gap.beforeMessageId}:${gap.resumedAt}`}
-                >
-                  {gap.reason === 'ABSENCE'
-                    ? '연결이 끊겨 일부 대화가 표시되지 않아요'
-                    : '보관 기간이 지난 메시지는 표시되지 않아요'}
-                </p>
-              ))}
+            {gaps.some(
+              (gap) =>
+                gap.reason === 'RETENTION' &&
+                gap.beforeMessageId >= (messages.at(-1)?.messageId ?? 0),
+            ) && (
+              <p className="region-chat-gap" role="status">
+                {retentionNotice}
+              </p>
+            )}
             {(chat.pendingMessages ?? [])
               .filter(
                 (pending) =>
