@@ -52,6 +52,7 @@ export interface ChatParticipationState {
   messages?: ChatMessage[];
   pendingMessages?: PendingChatMessage[];
   sendNotice?: string;
+  showDisconnectToast?: boolean;
   gaps?: ChatGap[];
   restoredThroughMessageId?: number;
 }
@@ -74,6 +75,7 @@ export class ChatParticipation {
   private presenceVersion = -1;
   private presenceStatus: NonNullable<ChatParticipationState['presenceStatus']> = 'loading';
   private presenceTimer: number | undefined;
+  private disconnectToastTimer: number | undefined;
   private closeConnection:
     | ((() => void) & {
         send?: (id: string, content: string) => boolean;
@@ -117,6 +119,7 @@ export class ChatParticipation {
         messages: [...this.messages],
         pendingMessages: [...this.pending.values()],
         sendNotice: this.sendNotice,
+        showDisconnectToast: this.disconnectToastTimer !== undefined,
         gaps: [...this.gaps],
         restoredThroughMessageId: this.restoredThroughMessageId,
       });
@@ -230,6 +233,13 @@ export class ChatParticipation {
           if (!this.isStopped && this.active?.membership.membershipId === membership.membershipId)
             this.receive(event);
         },
+        () => {
+          window.clearTimeout(this.disconnectToastTimer);
+          this.disconnectToastTimer = window.setTimeout(() => {
+            this.disconnectToastTimer = undefined;
+            this.update(this.status, this.statusMessage);
+          }, 4_000);
+        },
       );
     });
   }
@@ -255,6 +265,8 @@ export class ChatParticipation {
 
   private clearMessages() {
     window.clearTimeout(this.expirationTimer);
+    window.clearTimeout(this.disconnectToastTimer);
+    this.disconnectToastTimer = undefined;
     this.cacheContext = null;
     this.restoredThroughMessageId = undefined;
     window.clearTimeout(this.presenceTimer);

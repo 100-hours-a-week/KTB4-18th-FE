@@ -117,6 +117,19 @@ describe('지역 채팅 메시지 처리', () => {
     return { status, event: event! };
   }
 
+  it('실제 단절 토스트는 재시도 중 반복되지 않고 4초 뒤 사라진다', async () => {
+    const { status } = await ready();
+    const [, , , disconnected] = vi.mocked(connectChatRoom).mock.calls.at(-1)!;
+    expect(states.at(-1)?.showDisconnectToast).toBe(false);
+    disconnected?.();
+    status('reconnecting', '다시 연결 중');
+    expect(states.at(-1)?.showDisconnectToast).toBe(true);
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(states.at(-1)?.showDisconnectToast).toBe(false);
+    status('reconnecting', '다시 연결 중');
+    expect(states.at(-1)?.showDisconnectToast).toBe(false);
+  });
+
   it('탭 이동 후 같은 방 새 참여에서 본 메시지만 복원하고 새 복구 문맥에 섞지 않는다', async () => {
     const first = await ready();
     first.event({ type: 'CHAT_MESSAGE', message: saved });

@@ -304,7 +304,7 @@ describe('ChatEntryPage', () => {
   it.each([
     ['loading', '인원 확인 중'],
     ['error', '인원 확인 실패'],
-    ['disconnected', '연결 끊김'],
+    ['disconnected', '인원 확인 중'],
     [undefined, '인원 확인 중'],
   ] as const)('%s 상태의 오래된 인원은 숨기고 기존 안내를 유지한다', (presenceStatus, notice) => {
     vi.mocked(useChatParticipation).mockReturnValue({
@@ -359,7 +359,7 @@ describe('ChatEntryPage', () => {
     vi.mocked(useChatParticipation).mockReturnValue({ ...updated, presenceStatus: 'disconnected' });
     view.rerender(<ChatEntryPage />);
     expect(screen.getByRole('heading').closest('header')).toHaveTextContent('-/1000');
-    expect(screen.getByLabelText('현재 접속 인원')).toHaveTextContent('연결 끊김');
+    expect(screen.getByLabelText('현재 접속 인원')).toHaveTextContent('인원 확인 중');
     vi.mocked(useChatParticipation).mockReturnValue({ ...updated, connectedCount: 0 });
     view.rerender(<ChatEntryPage />);
     expect(screen.getByRole('heading').closest('header')).toHaveTextContent('0/1000');
@@ -516,6 +516,20 @@ describe('ChatEntryPage', () => {
       expect(continuedNickname).not.toHaveClass('region-chat-nickname');
     }
     expect(screen.getByRole('log').querySelectorAll('.region-chat-nickname')).toHaveLength(3);
+  });
+
+  it('실제 단절 안내를 대화 목록 밖에 한 번 표시한다', () => {
+    vi.mocked(useChatParticipation).mockReturnValue({
+      ...readyState(),
+      status: 'reconnecting',
+      isReady: false,
+      showDisconnectToast: true,
+    });
+    render(<ChatEntryPage />);
+    expect(screen.getByText('채팅 연결이 끊겼어요.').closest('[aria-live]')).toHaveClass(
+      'region-chat-toast',
+    );
+    expect(screen.getByRole('log')).not.toHaveTextContent('채팅 연결이 끊겼어요.');
   });
 
   it('같은 작성자와 분이어도 복원·부재·보관 경계는 유지하고 그룹을 나눈다', () => {

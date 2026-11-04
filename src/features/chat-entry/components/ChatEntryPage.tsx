@@ -163,6 +163,9 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
             <span>/{capacity ?? '-'}</span>
           </div>
         </header>
+        <div className="region-chat-toast" aria-live="polite" aria-atomic="true">
+          {chat.showDisconnectToast && <p>채팅 연결이 끊겼어요.</p>}
+        </div>
         <div className="region-chat-status">
           <p role="status" className={isNormal ? 'chat-entry-visually-hidden' : undefined}>
             {chat.message}
@@ -173,11 +176,9 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
           >
             {isLiveCount
               ? `${chat.connectedCount} / ${capacity ?? '-'}명`
-              : chat.presenceStatus === 'disconnected'
-                ? '연결 끊김'
-                : chat.presenceStatus === 'error'
-                  ? '인원 확인 실패'
-                  : '인원 확인 중'}
+              : chat.presenceStatus === 'error'
+                ? '인원 확인 실패'
+                : '인원 확인 중'}
           </p>
           {capacity !== null && capacity !== undefined && (
             <span className="chat-entry-visually-hidden">정원 {capacity}명</span>
