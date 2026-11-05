@@ -9,6 +9,7 @@ import { useDirectLoginFlow } from '../hooks/useDirectLoginFlow';
 import { LoginPageBrand } from './loginPage/LoginPageBrand';
 import { LoginCredentialsForm } from './loginPage/LoginCredentialsForm';
 import { LoginPageNotices } from './loginPage/LoginPageStatus';
+import './LoginPage.css';
 
 type DirectLoginPageProps = {
   authCapabilityMessage?: string;
