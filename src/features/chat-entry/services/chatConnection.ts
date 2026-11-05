@@ -32,6 +32,7 @@ export function connectChatRoom(
   membership: ChatRoomMembership,
   onStatus: (status: ChatConnectionStatus, message: string) => void,
   onEvent?: (event: ChatEvent) => void,
+  onUnexpectedDisconnect?: () => void,
 ) {
   const url = new URL('/ws', import.meta.env.VITE_API_BASE_URL || window.location.origin);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -340,6 +341,7 @@ export function connectChatRoom(
     },
     onWebSocketClose: (event) => {
       if (isStopped || isPaused) return;
+      const wasReady = isReady;
       isReady = false;
       generation += 1;
       cancelRecovery();
@@ -350,11 +352,12 @@ export function connectChatRoom(
       else if (event.code === 4101) terminal('banned', chatBanNotice(event.reason?.split('|')[1]));
       else if (event.code === 4103) recoveryFailed();
       else {
+        if (wasReady && event.code !== 1000 && event.code !== 4102) onUnexpectedDisconnect?.();
         onStatus(
           'reconnecting',
           event.code === 1013
             ? '채팅 서비스가 일시 중단됐어요. 다시 연결한 후 대화를 복구하고 있습니다.'
-            : '연결이 끊겼어요. 이야기방에 다시 연결하고 있습니다.',
+            : '이야기방에 다시 연결하고 있어요.',
         );
         // Established views can reconnect beyond grace; only the server decides recoverable intervals.
         if (!hasReceivedReady)
