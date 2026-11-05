@@ -35,6 +35,10 @@ const ACCESS_CONTEXT_TIMEOUT_MS = 10_000;
 const STATUS_CHECK_TIMEOUT_MS = 5_000;
 let documentTabId: string | null = null;
 
+export function isLocalLocationRecommendationTestHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
 export type CoordinatorView = {
   noticeOpen: boolean;
   candidate: LocationRecommendationCandidate | null;
@@ -289,6 +293,7 @@ export class LocationRecommendationCoordinator {
   private isMapRoute = false;
   private mapEligibilityRevision = 0;
   private isMapEligible = false;
+  private hasEnteredReadyMap = false;
   private dismissedForActivation = false;
   private noticeAcknowledged = readNoticeAcknowledgement();
   private noticeOpen = false;
@@ -410,6 +415,7 @@ export class LocationRecommendationCoordinator {
 
   setMapState(isMapRoute: boolean, isMapReady: boolean): void {
     const previousMapRoute = this.isMapRoute;
+    const wasMapEligible = this.isMapEligible;
     const nextEligible = isMapRoute && isMapReady;
     const hasChanged = this.isMapEligible !== nextEligible;
     this.isMapRoute = isMapRoute;
@@ -420,6 +426,17 @@ export class LocationRecommendationCoordinator {
       this.isMapRoute,
       this.mapEligibilityRevision,
     );
+    if (nextEligible) {
+      if (
+        !wasMapEligible &&
+        this.hasEnteredReadyMap &&
+        isLocalLocationRecommendationTestHost(window.location.hostname) &&
+        this.isActuallyActive()
+      ) {
+        this.beginAccessEvent();
+      }
+      this.hasEnteredReadyMap = true;
+    }
     if (this.isMapEligible) void this.tryDisplayCandidate();
     if (previousMapRoute !== isMapRoute) this.scheduleActivityCheck();
   }

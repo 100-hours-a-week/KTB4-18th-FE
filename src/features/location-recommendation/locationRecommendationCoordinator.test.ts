@@ -4,6 +4,7 @@ import {
   getLocationSampleAgeMs,
   getLocationSample,
   isPersistedPageReentry,
+  isLocalLocationRecommendationTestHost,
   isValidLocationSample,
   LocationRecommendationCoordinator,
   reserveAccessSequence,
@@ -113,6 +114,39 @@ describe('location recommendation coordination helpers', () => {
     internals.setMapState(false, false);
 
     expect(internals.displayedCandidate).toBe(candidate);
+  });
+
+  it('enables repeated map recommendations only on localhost and IPv4 loopback', () => {
+    expect(isLocalLocationRecommendationTestHost('localhost')).toBe(true);
+    expect(isLocalLocationRecommendationTestHost('127.0.0.1')).toBe(true);
+    expect(isLocalLocationRecommendationTestHost('192.168.0.10')).toBe(false);
+    expect(isLocalLocationRecommendationTestHost('dev.meomuneum.com')).toBe(false);
+  });
+
+  it('starts another local recommendation when re-entering the ready main map', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const coordinator = new LocationRecommendationCoordinator('local-map-repeat-test', () => {});
+    const beginAccessEvent = vi.fn();
+    const internals = coordinator as unknown as {
+      serviceRoute: boolean;
+      isActive: boolean;
+      lastActive: boolean;
+      started: boolean;
+      hasEnteredReadyMap: boolean;
+      beginAccessEvent: typeof beginAccessEvent;
+      setMapState: (isMapRoute: boolean, isMapReady: boolean) => void;
+    };
+    internals.serviceRoute = true;
+    internals.isActive = true;
+    internals.lastActive = true;
+    internals.started = false;
+    internals.hasEnteredReadyMap = true;
+    internals.beginAccessEvent = beginAccessEvent;
+
+    internals.setMapState(false, false);
+    internals.setMapState(true, true);
+
+    expect(beginAccessEvent).toHaveBeenCalledOnce();
   });
 
   it('preserves an unclosed recommendation when temporarily leaving service routes', () => {

@@ -145,7 +145,7 @@ describe('createLocationRecommendation', () => {
             {
               ...track,
               previewUrl: 'https://audio-ssl.itunes.apple.com/preview.mp3',
-              artworkUrl: 'https://is1-ssl.mzstatic.com/image.jpg',
+              artworkUrl: 'https://is1-ssl.mzstatic.com/image/100x100bb.jpg',
               storeUrl: 'https://music.apple.com/kr/album/song',
             },
             {
@@ -164,7 +164,7 @@ describe('createLocationRecommendation', () => {
       tracks: [
         {
           previewUrl: 'https://audio-ssl.itunes.apple.com/preview.mp3',
-          artworkUrl: 'https://is1-ssl.mzstatic.com/image.jpg',
+          artworkUrl: 'https://is1-ssl.mzstatic.com/image/680x680bb.jpg',
           storeUrl: 'https://music.apple.com/kr/album/song',
         },
         { previewUrl: null, artworkUrl: null, storeUrl: null },
