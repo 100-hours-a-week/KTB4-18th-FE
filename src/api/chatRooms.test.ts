@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { setAccessToken } from '../features/auth-login/api/authSession';
+import { getAccessToken, setAccessToken } from '../features/auth-login/api/authSession';
 import {
   ChatRoomRequestError,
   getRegionChatRoom,
@@ -19,6 +19,26 @@ describe('chat room API', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     sessionStorage.clear();
+  });
+
+  it('503은 서비스 재시도를 안내하고 로그인을 유지한다', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ message: 'chat authentication service unavailable', data: null }),
+            { status: 503 },
+          ),
+        ),
+    );
+    await expect(getRegionChatRoom(25, new AbortController().signal)).rejects.toMatchObject({
+      status: 503,
+      message: expect.stringContaining('일시 중단'),
+      isBanned: false,
+    });
+    expect(getAccessToken()).toBe('access-token');
   });
 
   it('현재 행정구역 채팅방을 조회한다', async () => {

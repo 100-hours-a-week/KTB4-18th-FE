@@ -3,11 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { recommend, streamRecommendation } from './api/recommendations';
-import { login } from './features/auth-login/api/loginApi';
-import {
-  cancelLoginQueue,
-  resetLoginQueueAfterLogout,
-} from './features/auth-login/api/loginQueueApi';
 import { logout, LogoutRequestError } from './features/auth-login/api/logoutApi';
 import { getMyProfile, getMySettings, withdrawMyAccount } from './features/mypage/api/mypageApi';
 import {
@@ -21,6 +16,7 @@ import {
 } from './features/auth-login/api/authSession';
 import { signup } from './features/user-signup/api/signupApi';
 import { getCurrentTerms, TermType } from './features/user-signup/api/termsApi';
+import { resetAuthCapabilitiesForTests } from './features/auth-login/api/authCapabilities';
 import type { VoiceStatus } from './hooks/useVoiceInput';
 import { navigate } from './shared/navigation';
 
@@ -58,45 +54,70 @@ vi.mock('./hooks/useVoiceInput', () => ({
     return { ...voiceState, ...voiceActions };
   },
 }));
-vi.mock('./features/auth-login/api/loginApi', () => ({
-  login: vi.fn(),
-  LoginRequestError: class LoginRequestError extends Error {},
-}));
-vi.mock('./features/auth-login/api/loginQueueApi', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./features/auth-login/api/loginQueueApi')>()),
-  startOrResumeLoginQueue: vi.fn(async () => ({
-    status: 'READY',
-    loginOutcome: null,
-    usersAhead: 0,
-    nextPollSeconds: 10,
-  })),
-  getLoginQueueStatus: vi.fn(async () => ({
-    status: 'READY',
-    loginOutcome: null,
-    usersAhead: 0,
-    nextPollSeconds: 10,
-  })),
-  getLoginOperationId: vi.fn(() => 'test-login-operation-id'),
-  clearLoginOperationId: vi.fn(),
-  submitQueuedLogin: vi.fn(async () => {
-    const { setAccessToken: storeToken } = await import('./features/auth-login/api/authSession');
-    storeToken('test-access-token');
-    return {
-      message: 'login success' as const,
-      data: { access_token: 'test-access-token', expires_in: 3600 },
-    };
-  }),
-  recoverQueuedLogin: vi.fn(async () => ({
-    message: 'login success' as const,
-    data: { access_token: 'test-access-token', expires_in: 3600 },
-  })),
-  resetLoginQueueAfterLogout: vi.fn(),
-  cancelLoginQueue: vi.fn(async () => undefined),
-  publishQueueSignal: vi.fn(),
-  subscribeQueueSignals: vi.fn(() => () => undefined),
-}));
+vi.mock('./features/auth-login/hooks/useDirectLoginFlow', async () => {
+  const { useRef, useState } = await import('react');
+  const { isDirectAuthEnabled } = await import('./features/auth-login/api/authProtocolMode');
+  return {
+    useDirectLoginFlow: (options: {
+      onLoginStart?: () => void;
+      onLoginFailure?: () => void;
+      onLoginSuccess?: (response: {
+        message: 'login success';
+        data: { access_token: string; expires_in: number };
+      }) => void;
+    }) => {
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const emailInputRef = useRef<HTMLInputElement>(null);
+      const recovery = {
+        isRecovering: false,
+        canRecoverSource: false,
+        canRebootstrap: false,
+        recoverSource: async () => undefined,
+        rebootstrap: async () => undefined,
+      };
+      return {
+        email,
+        password,
+        fieldErrors: {},
+        emailInputRef,
+        updateEmail: setEmail,
+        updatePassword: setPassword,
+        isPasswordVisible: false,
+        setIsPasswordVisible: () => undefined,
+        isPending: false,
+        isLocked: false,
+        isFormValid: email.includes('@') && password.trim().length > 0,
+        message: '',
+        recovery,
+        hasPendingLogout: false,
+        canRetryPendingLogout: false,
+        checkStatus: async () => undefined,
+        retryPendingLogout: async () => undefined,
+        handleSubmit: async (event: { preventDefault: () => void }) => {
+          event.preventDefault();
+          if (!isDirectAuthEnabled()) {
+            const { setAccessToken: storeToken } =
+              await import('./features/auth-login/api/authSession');
+            storeToken('test-access-token');
+          }
+          options.onLoginStart?.();
+          options.onLoginSuccess?.({
+            message: 'login success',
+            data: { access_token: 'test-access-token', expires_in: 3600 },
+          });
+        },
+      };
+    },
+  };
+});
 vi.mock('./features/auth-login/api/logoutApi', () => ({
   logout: vi.fn(),
+  LogoutFinalizationError: class LogoutFinalizationError extends Error {
+    constructor() {
+      super('Logout succeeded, but local authentication state could not be finalized');
+    }
+  },
   LogoutRequestError: class LogoutRequestError extends Error {
     readonly status: number | null;
 
@@ -122,7 +143,7 @@ vi.mock('./features/mypage/api/mypageApi', async (importOriginal) => ({
   withdrawMyAccount: vi.fn(),
 }));
 vi.mock('./features/chat-entry/components/ChatEntryPage', () => ({
-  ChatEntryPage: () => <h1>우리 지역 채팅방</h1>,
+  ChatEntryPage: () => <h1>동네 이야기</h1>,
 }));
 
 beforeEach(() => {
@@ -159,10 +180,19 @@ beforeEach(() => {
     });
   }
 });
+
+function enableDirectLoginForTest() {
+  vi.stubEnv('VITE_AUTH_DIRECT_V2_ENABLED', 'true');
+  Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+  Object.defineProperty(navigator, 'cookieEnabled', { configurable: true, value: true });
+  resetAuthCapabilitiesForTests();
+}
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
+  vi.stubEnv('VITE_AUTH_DIRECT_V2_ENABLED', undefined);
   vi.unstubAllGlobals();
+  resetAuthCapabilitiesForTests();
 });
 
 function accessTokenWithExpiration(expiresAt: number): string {
@@ -203,10 +233,11 @@ describe('탭 간 인증 세션 복구', () => {
     vi.stubGlobal('fetch', fetcher);
     window.history.replaceState(null, '', '/login?returnTo=%2Fmy');
     render(<App />);
-    expect(await screen.findByRole('button', { name: '로그아웃' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: '로그아웃' }, { timeout: 5_000 }),
+    ).toBeInTheDocument();
     expect(window.location.pathname).toBe('/my');
     expect(getAccessToken()).toBe(restored);
-    expect(login).not.toHaveBeenCalled();
   });
 
   it('새 탭의 초기 복구 중 다른 탭에서 로그아웃하면 늦은 성공 응답을 무시한다', async () => {
@@ -277,7 +308,10 @@ describe('access token 사전 재발급 스케줄러', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(screen.getByRole('heading', { name: '음악 추천 챗봇' })).toBeInTheDocument();
+    await act(async () => {
+      await import('./features/chatbot/components/ChatbotPage');
+    });
+    expect(screen.getByRole('heading', { name: '음악 찾기' })).toBeInTheDocument();
 
     await act(async () => vi.advanceTimersByTimeAsync(50 * 60 * 1000 - 1));
     expect(refreshCount).toBe(0);
@@ -582,6 +616,9 @@ describe('access token 사전 재발급 스케줄러', () => {
       await vi.advanceTimersByTimeAsync(0);
       await Promise.resolve();
     });
+    await act(async () => {
+      await import('./features/mypage/components/MyPage');
+    });
     await act(async () => vi.advanceTimersByTimeAsync(1));
     const logoutButton = screen.getByRole('button', { name: '로그아웃' });
     await act(async () => fireEvent.click(logoutButton));
@@ -630,13 +667,6 @@ describe('음성 transcript 공통 추천 흐름', () => {
       ],
       completed_at: '2026-09-21T12:00:00Z',
     });
-    vi.mocked(login).mockImplementation(async () => {
-      setAccessToken('test-access-token');
-      return {
-        message: 'login success',
-        data: { access_token: 'test-access-token', expires_in: 3600 },
-      };
-    });
     vi.mocked(signup).mockResolvedValue({
       message: 'register success',
       data: { user_id: 1 },
@@ -648,15 +678,15 @@ describe('음성 transcript 공통 추천 흐름', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await screen.findByLabelText('추천받고 싶은 상황');
+    await screen.findByLabelText('음악을 찾고 싶은 순간');
     act(() => transcriptHandler('비 오는 날 노래'));
-    const input = screen.getByLabelText('추천받고 싶은 상황');
+    const input = screen.getByLabelText('음악을 찾고 싶은 순간');
     expect(input).toHaveValue('비 오는 날 노래');
     expect(recommend).not.toHaveBeenCalled();
 
     await user.clear(input);
     await user.type(input, '비 오는 날 드라이브 음악');
-    await user.click(screen.getByRole('button', { name: '추천 요청 보내기' }));
+    await user.click(screen.getByRole('button', { name: '음악 찾기 요청 보내기' }));
 
     expect(recommend).toHaveBeenCalledWith(
       '비 오는 날 드라이브 음악',
@@ -670,12 +700,12 @@ describe('음성 transcript 공통 추천 흐름', () => {
     '%i자 직접 입력은 글자 수를 표시하고 전체 내용을 전송한다',
     async (length) => {
       render(<App />);
-      const input = await screen.findByLabelText('추천받고 싶은 상황');
+      const input = await screen.findByLabelText('음악을 찾고 싶은 순간');
       expect(input).toHaveAttribute('maxLength', '200');
       const prompt = '가'.repeat(length);
       fireEvent.change(input, { target: { value: prompt } });
       expect(screen.getByText(`${length} / 200`)).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: '추천 요청 보내기' }));
+      fireEvent.click(screen.getByRole('button', { name: '음악 찾기 요청 보내기' }));
       await waitFor(() =>
         expect(recommend).toHaveBeenCalledWith(
           prompt,
@@ -690,28 +720,28 @@ describe('음성 transcript 공통 추천 흐름', () => {
   it('붙여넣기는 200자 한도를 지키고 공백 입력은 버튼과 Enter 전송을 차단한다', async () => {
     const user = userEvent.setup();
     render(<App />);
-    const input = await screen.findByLabelText('추천받고 싶은 상황');
+    const input = await screen.findByLabelText('음악을 찾고 싶은 순간');
     await user.click(input);
     await user.paste('가'.repeat(201));
     expect(input).toHaveValue('가'.repeat(200));
     expect(screen.getByText('200 / 200')).toBeInTheDocument();
     await user.clear(input);
-    expect(screen.getByRole('button', { name: '추천 요청 보내기' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '음악 찾기 요청 보내기' })).toBeDisabled();
     await user.type(input, '   ');
     fireEvent.keyDown(input, { key: 'Enter' });
-    expect(screen.getByRole('button', { name: '추천 요청 보내기' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '음악 찾기 요청 보내기' })).toBeDisabled();
     expect(recommend).not.toHaveBeenCalled();
   });
 
   it('초과 전사문은 원문을 유지하고 Enter와 버튼을 막으며 수정 후 VOICE 전송을 허용한다', async () => {
     render(<App />);
-    const input = await screen.findByLabelText('추천받고 싶은 상황');
+    const input = await screen.findByLabelText('음악을 찾고 싶은 순간');
     const transcript = '앞' + '가'.repeat(197) + '\n🎵';
     act(() => transcriptHandler(transcript));
     expect(input).toHaveValue(transcript);
     expect(screen.getByText('201 / 200')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('200자 이내로 수정');
-    const send = screen.getByRole('button', { name: '추천 요청 보내기' });
+    const send = screen.getByRole('button', { name: '음악 찾기 요청 보내기' });
     expect(send).toBeDisabled();
     fireEvent.click(send);
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -736,7 +766,7 @@ describe('음성 transcript 공통 추천 흐름', () => {
 
   it('한글 조합 중 Enter는 전송하지 않고 초과 입력도 절단 없이 수정을 안내한다', async () => {
     render(<App />);
-    const input = await screen.findByLabelText('추천받고 싶은 상황');
+    const input = await screen.findByLabelText('음악을 찾고 싶은 순간');
     fireEvent.compositionStart(input);
     fireEvent.change(input, { target: { value: '가'.repeat(200) } });
     fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
@@ -744,7 +774,7 @@ describe('음성 transcript 공통 추천 흐름', () => {
     fireEvent.change(input, { target: { value: '가'.repeat(201) } });
     fireEvent.compositionEnd(input);
     expect(input).toHaveValue('가'.repeat(201));
-    expect(screen.getByRole('button', { name: '추천 요청 보내기' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '음악 찾기 요청 보내기' })).toBeDisabled();
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(recommend).not.toHaveBeenCalled();
   });
@@ -754,12 +784,12 @@ describe('음성 transcript 공통 추천 흐름', () => {
       new Error('입력 내용과 요청 형식을 확인해 주세요. (최대 200자)'),
     );
     render(<App />);
-    const input = await screen.findByLabelText('추천받고 싶은 상황');
+    const input = await screen.findByLabelText('음악을 찾고 싶은 순간');
     fireEvent.change(input, { target: { value: '가'.repeat(200) } });
-    fireEvent.click(screen.getByRole('button', { name: '추천 요청 보내기' }));
+    fireEvent.click(screen.getByRole('button', { name: '음악 찾기 요청 보내기' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('최대 200자');
     expect(input).toHaveValue('가'.repeat(200));
-    expect(screen.getByRole('button', { name: '추천 요청 보내기' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '음악 찾기 요청 보내기' })).toBeEnabled();
     expect(streamRecommendation).not.toHaveBeenCalled();
   });
 
@@ -786,8 +816,8 @@ describe('음성 transcript 공통 추천 흐름', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await screen.findByRole('button', { name: '전사 다시 시도' });
-    await user.click(screen.getByRole('button', { name: '전사 다시 시도' }));
+    await screen.findByRole('button', { name: '음성 변환 다시 시도' });
+    await user.click(screen.getByRole('button', { name: '음성 변환 다시 시도' }));
     await user.click(screen.getByRole('button', { name: '다시 녹음' }));
     await user.click(screen.getByRole('button', { name: '텍스트로 입력' }));
 
@@ -816,12 +846,14 @@ describe('추천 결과 없음 안내', () => {
     const user = userEvent.setup();
 
     render(<App />);
-    await screen.findByLabelText('추천받고 싶은 상황');
-    await user.type(screen.getByLabelText('추천받고 싶은 상황'), '아무 조건');
-    await user.click(screen.getByRole('button', { name: '추천 요청 보내기' }));
+    await screen.findByLabelText('음악을 찾고 싶은 순간');
+    await user.type(screen.getByLabelText('음악을 찾고 싶은 순간'), '아무 조건');
+    await user.click(screen.getByRole('button', { name: '음악 찾기 요청 보내기' }));
 
-    expect(await screen.findByText('조건에 맞는 추천곡을 찾지 못했어요.')).toBeInTheDocument();
-    expect(screen.getByText('다른 분위기나 상황으로 다시 요청해 주세요.')).toBeInTheDocument();
+    expect(await screen.findByText('어울리는 곡을 아직 찾지 못했어요.')).toBeInTheDocument();
+    expect(
+      screen.getByText('장소나 기분을 조금 더 들려주시면 다시 골라볼게요.'),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/입력창에서 다시 전송할 수 있습니다/)).not.toBeInTheDocument();
   });
 });
@@ -866,13 +898,6 @@ describe('로그인과 회원가입 화면 연결', () => {
         effective_at: '2026-09-25T10:00:00Z',
       })),
     );
-    vi.mocked(login).mockImplementation(async () => {
-      setAccessToken('test-access-token');
-      return {
-        message: 'login success',
-        data: { access_token: 'test-access-token', expires_in: 3600 },
-      };
-    });
     vi.mocked(signup).mockResolvedValue({
       message: 'register success',
       data: { user_id: 1 },
@@ -884,10 +909,9 @@ describe('로그인과 회원가입 화면 연결', () => {
     window.history.replaceState(null, '', '/login');
     render(<App />);
 
-    expect(await screen.findByRole('link', { name: '회원가입 하기' })).toHaveAttribute(
-      'href',
-      '/signup',
-    );
+    expect(
+      await screen.findByRole('link', { name: '회원가입 하기' }, { timeout: 5_000 }),
+    ).toHaveAttribute('href', '/signup');
     expect(screen.getByRole('button', { name: '로그인' })).not.toHaveClass('visually-hidden');
   });
 
@@ -939,15 +963,15 @@ describe('로그인과 회원가입 화면 연결', () => {
 
     render(<App />);
 
-    expect(await screen.findByRole('heading', { name: '우리 지역 채팅방' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '동네 이야기' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/chat');
   });
 
-  it('회원가입 경로에서 회원가입 화면을 렌더링한다', () => {
+  it('회원가입 경로에서 회원가입 화면을 렌더링한다', async () => {
     window.history.replaceState(null, '', '/signup');
     render(<App />);
 
-    expect(screen.getByRole('heading', { name: '회원가입' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '회원가입' })).toBeInTheDocument();
   });
 
   it('회원가입 성공 후 로그인 화면으로 이동한다', async () => {
@@ -955,7 +979,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     window.history.replaceState(null, '', '/signup');
     render(<App />);
 
-    await user.type(screen.getByLabelText(/닉네임/), '가입테스트');
+    await user.type(await screen.findByLabelText(/닉네임/), '가입테스트');
     await user.type(screen.getByLabelText(/이메일/), 'signup.test@example.com');
     await user.type(screen.getByLabelText('비밀번호 *'), 'Testpass1!');
     await user.click(await screen.findByRole('checkbox', { name: '[필수] 서비스 이용약관' }));
@@ -1150,6 +1174,7 @@ describe('로그인과 회원가입 화면 연결', () => {
   });
 
   it('로그인 성공 후 메인 페이지로 이동한다', async () => {
+    enableDirectLoginForTest();
     const user = userEvent.setup();
     window.history.replaceState(null, '', '/login');
     render(<App />);
@@ -1163,10 +1188,11 @@ describe('로그인과 회원가입 화면 연결', () => {
     });
 
     expect(window.location.pathname).toBe('/');
-    expect(getAccessToken()).toBe('test-access-token');
+    expect(getAccessToken()).toBeNull();
   });
 
   it('로그인 성공 후 returnTo에 지정된 보호 페이지로 돌아간다', async () => {
+    enableDirectLoginForTest();
     const user = userEvent.setup();
     resetAuthSessionForTests();
     sessionStorage.clear();
@@ -1181,7 +1207,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
     await user.click(screen.getByRole('button', { name: '로그인' }));
 
-    expect(await screen.findByRole('heading', { name: '우리 지역 채팅방' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '동네 이야기' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/chat');
     expect(window.location.search).toBe('?room=music');
     expect(window.location.hash).toBe('#latest');
@@ -1190,6 +1216,7 @@ describe('로그인과 회원가입 화면 연결', () => {
   it.each(['//evil.example/path', 'https://evil.example/path', '/\\\\evil.example/path'])(
     '외부 returnTo %s로 로그인해도 메인 출처에 머문다',
     async (returnTo) => {
+      enableDirectLoginForTest();
       const user = userEvent.setup();
       window.history.replaceState(null, '', `/login?returnTo=${encodeURIComponent(returnTo)}`);
       render(<App />);
@@ -1204,6 +1231,7 @@ describe('로그인과 회원가입 화면 연결', () => {
   );
 
   it('로그아웃 성공 후 로그인 화면으로 이동한다', async () => {
+    enableDirectLoginForTest();
     const user = userEvent.setup();
     window.history.replaceState(null, '', '/login');
     render(<App />);
@@ -1211,20 +1239,57 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.type(await screen.findByLabelText('이메일'), 'login.test@example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
     await user.click(screen.getByRole('button', { name: '로그인' }));
-    await screen.findByRole('button', { name: '마이' });
-    await user.click(screen.getByRole('button', { name: '마이' }));
+    await screen.findByRole('button', { name: '내 공간' });
+    await user.click(screen.getByRole('button', { name: '내 공간' }));
     expect(window.location.pathname).toBe('/my');
     await user.click(await screen.findByRole('button', { name: '로그아웃' }));
 
     await waitFor(() => {
       expect(logout).toHaveBeenCalledOnce();
-      expect(resetLoginQueueAfterLogout).toHaveBeenCalledOnce();
-      expect(cancelLoginQueue).not.toHaveBeenCalled();
       expect(screen.getByRole('heading', { name: '머문음' })).toBeInTheDocument();
     });
+    expect(screen.getByLabelText('이메일')).toHaveValue('');
+    expect(screen.getByLabelText('비밀번호')).toHaveValue('');
+    expect(
+      screen.queryByRole('button', { name: '이전 로그인 상태 계속하기' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '새로 로그인하기' })).not.toBeInTheDocument();
+  });
+
+  it('signed-out epoch opens the direct login page', async () => {
+    enableDirectLoginForTest();
+    window.localStorage.setItem(
+      'meomuneum:auth-epoch',
+      JSON.stringify({ id: 'signed-out', state: 'signed-out' }),
+    );
+    window.history.replaceState(null, '', '/login');
+
+    render(<App />);
+
+    expect(await screen.findByLabelText('이메일')).toHaveValue('');
+  });
+
+  it('auth epoch read failure fails closed before credential submission', async () => {
+    const originalGetItem = Storage.prototype.getItem;
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key) {
+      if (key === 'meomuneum:auth-epoch') {
+        throw new DOMException('storage unavailable', 'SecurityError');
+      }
+      return originalGetItem.call(this, key);
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    window.history.replaceState(null, '', '/login');
+
+    render(<App />);
+
+    expect(await screen.findByText(/저장된 로그인 상태를 확인할 수 없어요/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '로그인' })).toBeDisabled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('챗봇 플로팅 버튼과 브라우저 뒤로·앞으로가 렌더된 SPA 경로를 바꾼다', async () => {
+    enableDirectLoginForTest();
     const user = userEvent.setup();
     window.history.replaceState(null, '', '/login');
     render(<App />);
@@ -1232,11 +1297,11 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
     await user.click(screen.getByRole('button', { name: '로그인' }));
     expect(await screen.findByRole('heading', { name: '음악 지도' })).toBeInTheDocument();
-    expect(getAccessToken()).toBe('test-access-token');
+    expect(getAccessToken()).toBeNull();
 
-    const chatbotLink = screen.getByRole('link', { name: '음악 추천 챗봇 열기' });
+    const chatbotLink = screen.getByRole('link', { name: '음악 찾기 열기' });
     await user.click(chatbotLink);
-    expect(await screen.findByRole('heading', { name: '음악 추천 챗봇' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '음악 찾기' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/chatbot');
     expect(logout).not.toHaveBeenCalled();
 
@@ -1246,7 +1311,7 @@ describe('로그인과 회원가입 화면 연결', () => {
 
     await act(async () => window.history.forward());
     await waitFor(() => expect(window.location.pathname).toBe('/chatbot'));
-    expect(screen.getByRole('heading', { name: '음악 추천 챗봇' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '음악 찾기' })).toBeInTheDocument();
     expect(logout).not.toHaveBeenCalled();
   });
 
@@ -1255,8 +1320,12 @@ describe('로그인과 회원가입 화면 연결', () => {
     resetAuthSessionForTests();
     sessionStorage.clear();
     window.history.replaceState(null, '', '/chatbot');
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementationOnce(() => {
-      throw new DOMException('temporarily blocked', 'SecurityError');
+    const originalGetItem = Storage.prototype.getItem;
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementationOnce(function (this: Storage, key) {
+      if (this === sessionStorage && key === 'access_token') {
+        throw new DOMException('temporarily blocked', 'SecurityError');
+      }
+      return originalGetItem.call(this, key);
     });
     let csrfCount = 0;
     vi.stubGlobal(
@@ -1280,11 +1349,11 @@ describe('로그인과 회원가입 화면 연결', () => {
     render(<App />);
 
     const retry = await screen.findByRole('button', { name: '다시 시도' });
-    expect(screen.queryByRole('heading', { name: '음악 추천 챗봇' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '음악 찾기' })).not.toBeInTheDocument();
     expect(recommend).not.toHaveBeenCalled();
     await user.click(retry);
 
-    expect(await screen.findByRole('heading', { name: '음악 추천 챗봇' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '음악 찾기' })).toBeInTheDocument();
     expect(getAccessToken()).toBe('restored-token');
   });
 
@@ -1319,9 +1388,9 @@ describe('로그인과 회원가입 화면 연결', () => {
     window.history.replaceState(null, '', '/');
     const user = userEvent.setup();
     render(<App />);
-    await screen.findByRole('button', { name: '기록' });
+    await screen.findByRole('button', { name: '음악 기록' });
     expect(getAccessToken()).toBe('test-token');
-    await user.click(screen.getByRole('button', { name: '기록' }));
+    await user.click(screen.getByRole('button', { name: '음악 기록' }));
     expect(await screen.findByRole('heading', { name: '머문음' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/login');
     expect(new URLSearchParams(window.location.search).get('returnTo')).toBe('/music-records');
@@ -1330,6 +1399,7 @@ describe('로그인과 회원가입 화면 연결', () => {
   });
 
   it('로그인 후 채팅 탭을 누르면 준비 안내 화면으로 이동한다', async () => {
+    enableDirectLoginForTest();
     const user = userEvent.setup();
     window.history.replaceState(null, '', '/login');
     render(<App />);
@@ -1337,9 +1407,9 @@ describe('로그인과 회원가입 화면 연결', () => {
     await user.type(await screen.findByLabelText('이메일'), 'login.test@example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'Testpass1!');
     await user.click(screen.getByRole('button', { name: '로그인' }));
-    await user.click(await screen.findByRole('button', { name: '채팅' }));
+    await user.click(await screen.findByRole('button', { name: '동네 이야기' }));
 
-    expect(await screen.findByRole('heading', { name: '우리 지역 채팅방' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '동네 이야기' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/chat');
   });
 
@@ -1363,28 +1433,13 @@ describe('로그인과 회원가입 화면 연결', () => {
     expect(withdrawalItem).toHaveAttribute('aria-disabled', 'true');
     await user.click(withdrawalItem);
     expect(withdrawMyAccount).not.toHaveBeenCalled();
-    expect(screen.getByRole('heading', { name: '마이페이지' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '내 공간' })).toBeInTheDocument();
     expect(screen.queryByText('인증 상태를 갱신하고 있어요.')).not.toBeInTheDocument();
 
     await act(async () => {
       logoutRequest.resolve(undefined);
       await logoutRequest.promise;
     });
-    expect(getAccessToken()).toBeNull();
-    expect(await screen.findByLabelText('이메일')).toBeInTheDocument();
-    expect(window.location.pathname).toBe('/login');
-  });
-
-  it('로그아웃 후 로컬 대기열 저장소 오류가 나도 토큰을 지우고 로그인 페이지로 이동한다', async () => {
-    const user = userEvent.setup();
-    vi.mocked(logout).mockResolvedValue(undefined);
-    vi.mocked(resetLoginQueueAfterLogout).mockImplementationOnce(() => {
-      throw new Error('local queue storage unavailable');
-    });
-    const logoutButton = await renderAuthenticatedMyPage();
-
-    await user.click(logoutButton);
-
     expect(getAccessToken()).toBeNull();
     expect(await screen.findByLabelText('이메일')).toBeInTheDocument();
     expect(window.location.pathname).toBe('/login');
@@ -1403,7 +1458,7 @@ describe('로그인과 회원가입 화면 연결', () => {
       await user.click(screen.getByRole('button', { name: '로그아웃' }));
 
       expect(await screen.findByText(message)).toBeInTheDocument();
-      expect(screen.getByRole('heading', { name: '마이페이지' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '내 공간' })).toBeInTheDocument();
       expect(getAccessToken()).not.toBeNull();
       await user.click(screen.getByRole('button', { name: '로그아웃' }));
       expect(logout).toHaveBeenCalledTimes(2);
@@ -1429,7 +1484,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(message);
     expect(screen.getByRole('button', { name: '다시 시도' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '로그인' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: '마이페이지' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '내 공간' })).not.toBeInTheDocument();
   });
 });
 
@@ -1464,8 +1519,35 @@ describe('음악 기록 생성·상세 경로 연결', () => {
     window.history.replaceState(null, '', '/music-records/new');
     vi.stubGlobal(
       'fetch',
-      vi.fn((input: string | URL) => {
+      vi.fn((input: string | URL, init?: RequestInit) => {
         const url = String(input);
+        if (url.endsWith('/api/v1/auth/token/csrf')) {
+          return Promise.resolve(Response.json({ data: { csrf_token: 'test-csrf-token' } }));
+        }
+        if (url.endsWith('/api/v1/songs') && init?.method === 'POST') {
+          return Promise.resolve(
+            Response.json(
+              {
+                message: 'song registered',
+                data: {
+                  music: {
+                    music_id: 11,
+                    provider: 'ITUNES',
+                    external_music_id: '123',
+                    title: '밤편지',
+                    artist_name: '아이유',
+                    album_cover_url: null,
+                    preview_url: null,
+                    youtube_video_id: null,
+                    is_queueable: false,
+                  },
+                  created: true,
+                },
+              },
+              { status: 201 },
+            ),
+          );
+        }
         if (url.includes('/api/v1/music/search')) {
           return Promise.resolve(
             Response.json({
@@ -1528,15 +1610,15 @@ describe('음악 기록 생성·상세 경로 연결', () => {
     render(<App />);
     await user.type(await screen.findByRole('textbox', { name: '음악 검색' }), '밤편지');
     await user.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    await user.click(screen.getByRole('button', { name: '선택하기' }));
-    await user.type(await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' }), '작성 중');
+    await user.click(screen.getByRole('button', { name: '이 곡으로 기록하기' }));
+    await user.type(await screen.findByRole('textbox', { name: '오늘의 기분과 한 줄' }), '작성 중');
     await user.click(await screen.findByRole('button', { name: '뒤로가기' }));
     await user.click(await screen.findByRole('button', { name: '확인' }));
     expect(await screen.findByRole('heading', { name: '음악 지도' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/');
 
     act(() => navigate('/music-records/1'));
-    const memo = await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' });
+    const memo = await screen.findByRole('textbox', { name: '오늘의 기분과 한 줄' });
     await user.clear(memo);
     await user.type(memo, '수정한 기록');
     await user.click(screen.getByRole('button', { name: '음악 기록 목록으로 돌아가기' }));

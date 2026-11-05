@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -15,6 +15,7 @@ import {
   withdrawMyAccount,
 } from '../api/mypageApi';
 import { MyPage } from './MyPage';
+import { getAllMusicRecords } from '../../music-record/api/musicRecordsApi';
 
 vi.mock('../api/mypageApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/mypageApi')>()),
@@ -37,6 +38,14 @@ vi.mock('../api/mypageApi', async (importOriginal) => ({
 vi.mock('../../music-record/api/musicRecordsApi', () => ({
   getAllMusicRecords: vi.fn().mockResolvedValue([]),
 }));
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
 
 vi.mock('../../user-signup/api/termsApi', () => ({
   getCurrentTerms: vi.fn().mockResolvedValue([
@@ -108,10 +117,51 @@ describe('MyPage profile validation', () => {
       map_visibility: 'PRIVATE',
       is_unrecorded_dot_recommendation_enabled: true,
     });
+    vi.mocked(getAllMusicRecords).mockReset().mockResolvedValue([]);
   });
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
+  });
+
+  it('publishes profile independently and starts the count delay only with its request', async () => {
+    vi.useFakeTimers();
+    const profileRequest = deferred<Awaited<ReturnType<typeof getMyProfile>>>();
+    const settingsRequest = deferred<Awaited<ReturnType<typeof getMySettings>>>();
+    const countRequest = deferred<Awaited<ReturnType<typeof getAllMusicRecords>>>();
+    vi.mocked(getMyProfile).mockReturnValueOnce(profileRequest.promise);
+    vi.mocked(getMySettings).mockReturnValueOnce(settingsRequest.promise);
+    vi.mocked(getAllMusicRecords).mockReturnValueOnce(countRequest.promise);
+
+    render(<MyPage onLogin={vi.fn()} onBack={vi.fn()} onLogout={vi.fn()} onWithdrawn={vi.fn()} />);
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(getMyProfile).toHaveBeenCalledOnce();
+    expect(getMySettings).toHaveBeenCalledOnce();
+    expect(getAllMusicRecords).not.toHaveBeenCalled();
+
+    await act(async () => vi.advanceTimersByTimeAsync(299));
+    expect(screen.queryByText('프로필을 불러오는 중')).not.toBeInTheDocument();
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(screen.getByRole('status')).toHaveTextContent('프로필을 불러오는 중');
+
+    await act(async () => profileRequest.resolve(profile));
+    expect(screen.getByText('기존닉')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: '마이페이지 메뉴' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '로그아웃' })).toBeEnabled();
+    expect(getAllMusicRecords).toHaveBeenCalledOnce();
+    expect(screen.queryByText('저장한 곡 수를 불러오는 중')).not.toBeInTheDocument();
+
+    await act(async () => vi.advanceTimersByTimeAsync(300));
+    expect(screen.getByRole('status')).toHaveTextContent('저장한 곡 수를 불러오는 중');
+    await act(async () => countRequest.resolve([]));
+    expect(screen.queryByText('저장한 곡 수를 불러오는 중')).not.toBeInTheDocument();
+    await act(async () =>
+      settingsRequest.resolve({
+        map_visibility: 'PUBLIC',
+        is_unrecorded_dot_recommendation_enabled: false,
+      }),
+    );
   });
 
   async function openProfileEditor() {
@@ -195,7 +245,7 @@ describe('MyPage profile validation', () => {
     const onBack = vi.fn();
     render(<MyPage onLogin={vi.fn()} onBack={onBack} onLogout={vi.fn()} onWithdrawn={vi.fn()} />);
 
-    await user.click(screen.getByRole('button', { name: '마이페이지로 돌아가기' }));
+    await user.click(screen.getByRole('button', { name: '내 공간으로 돌아가기' }));
 
     expect(onBack).toHaveBeenCalledOnce();
   });
@@ -268,7 +318,7 @@ describe('MyPage profile validation', () => {
   it('shows the Figma withdrawal warning first and preserves password confirmation before deletion', async () => {
     const user = await openProfileEditor();
     await user.click(screen.getByRole('button', { name: '더보기' }));
-    await user.click(screen.getByText('마이페이지로 돌아가기'));
+    await user.click(screen.getByText('내 공간으로 돌아가기'));
     await user.click(screen.getByRole('button', { name: '더보기' }));
     await user.click(screen.getByText('회원 탈퇴'));
 
@@ -290,7 +340,7 @@ describe('MyPage profile validation', () => {
   it('shows the Figma app version and opens open-source licenses in the terms bottom sheet', async () => {
     const user = await openProfileEditor();
     await user.click(screen.getByRole('button', { name: '더보기' }));
-    await user.click(screen.getByText('마이페이지로 돌아가기'));
+    await user.click(screen.getByText('내 공간으로 돌아가기'));
     await user.click(screen.getByText('약관 및 정책'));
 
     expect(await screen.findByText('서비스 이용약관')).toBeTruthy();
@@ -423,7 +473,7 @@ describe('MyPage profile validation', () => {
     await user.click(screen.getByRole('button', { name: '저장' }));
     await screen.findByText(/프로필 이미지는 저장했지만/);
     expect(uploadMyProfileImage).toHaveBeenCalledTimes(2);
-    await user.click(screen.getByRole('button', { name: '마이페이지로 돌아가기' }));
+    await user.click(screen.getByRole('button', { name: '내 공간으로 돌아가기' }));
     expect(await screen.findByAltText('프로필')).toHaveAttribute('src', 'blob:preview');
     expect(getMyProfileImage).toHaveBeenLastCalledWith(imageUrl);
   });

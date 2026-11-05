@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { login } from './loginApi';
 import { logout } from './logoutApi';
 import {
   ACCESS_TOKEN_CHANGED_EVENT,
@@ -9,6 +8,7 @@ import {
   clearAccessToken,
   getAccessToken,
   getAccessTokenExpiresAt,
+  getAuthRestoreState,
   getLastAccessTokenRefreshAt,
   refreshAccessToken,
   resetAuthSessionForTests,
@@ -16,6 +16,7 @@ import {
   setAccessToken,
   shouldRefreshAccessToken,
 } from './authSession';
+import { forgetAuthFlowForTests, primeAuthFlowForTests } from './authFlow';
 
 function accessTokenWithExpiration(expiresAt: number): string {
   const payload = btoa(JSON.stringify({ exp: Math.floor(expiresAt / 1000) }))
@@ -28,6 +29,15 @@ function accessTokenWithExpiration(expiresAt: number): string {
 describe('refresh 쿠키와 계정 전환 요청 순서', () => {
   beforeEach(() => {
     resetAuthSessionForTests();
+    forgetAuthFlowForTests();
+    primeAuthFlowForTests({
+      flowId: '123e4567-e89b-42d3-a456-426614174000',
+      flowEpoch: 1,
+      revision: 1,
+      lifecycle: 'AUTHENTICATED',
+      authenticated: true,
+      refreshGeneration: 1,
+    });
     sessionStorage.clear();
   });
   afterEach(() => {
@@ -35,6 +45,7 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     resetAuthSessionForTests();
+    forgetAuthFlowForTests();
     sessionStorage.clear();
   });
 
@@ -43,6 +54,126 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     window.localStorage.setItem('meomuneum:auth-epoch', 'browser-epoch');
     sessionStorage.setItem('access_token_epoch', 'browser-epoch');
     expect(getAccessToken()).toBe('persisted-token');
+  });
+
+  it('signed-out epoch prevents refresh until a user starts a new login', async () => {
+    window.localStorage.setItem(
+      'meomuneum:auth-epoch',
+      JSON.stringify({ id: 'signed-out-epoch', state: 'signed-out' }),
+    );
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect(getAuthRestoreState()).toBe('signed-out');
+    await expect(refreshAccessToken()).rejects.toMatchObject({ status: null });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('recovers a refresh committed before the response was lost using the DB receipt', async () => {
+    const operationIds: string[] = [];
+    const fetchMock = vi.fn((input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/token/csrf'))
+        return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+      if (url.endsWith('/token/refresh')) {
+        const operationId = new Headers(init?.headers).get('X-Refresh-Operation-Id') ?? '';
+        operationIds.push(operationId);
+        return operationIds.length === 1
+          ? Promise.reject(new TypeError('response lost after commit'))
+          : Promise.resolve(Response.json({ data: { access_token: 'recovered-access-token' } }));
+      }
+      if (url.endsWith('/api/v1/auth/flow'))
+        return Promise.resolve(
+          Response.json({
+            data: {
+              flowId: '123e4567-e89b-42d3-a456-426614174000',
+              flowEpoch: 1,
+              revision: 2,
+              lifecycle: 'AUTHENTICATED',
+              authenticated: true,
+              refreshGeneration: 2,
+              lastRefreshReceipt: {
+                operationId: operationIds[0],
+                committed: true,
+                flowEpoch: 1,
+                revision: 2,
+                resultGeneration: 2,
+              },
+            },
+          }),
+        );
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(refreshAccessToken()).resolves.toBe('recovered-access-token');
+
+    expect(operationIds).toHaveLength(2);
+    expect(operationIds[1]).not.toBe(operationIds[0]);
+    expect(localStorage.getItem('meomuneum:pending-refresh-operation')).toBeNull();
+  });
+
+  it('repairs the shared refresh cookie after AUTH_REFRESH_STALE from a concurrent tab', async () => {
+    const operationIds: string[] = [];
+    let flowReads = 0;
+    const fetchMock = vi.fn((input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/token/csrf'))
+        return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+      if (url.endsWith('/token/refresh')) {
+        const operationId = new Headers(init?.headers).get('X-Refresh-Operation-Id') ?? '';
+        operationIds.push(operationId);
+        if (operationIds.length === 1) {
+          return Promise.resolve(
+            Response.json(
+              { code: 'AUTH_REFRESH_STALE', message: 'AUTH_REFRESH_STALE' },
+              { status: 409 },
+            ),
+          );
+        }
+        expect(document.cookie).toContain('refresh_token=canonical-refresh');
+        return Promise.resolve(Response.json({ data: { access_token: 'recovered-after-stale' } }));
+      }
+      if (url.endsWith('/api/v1/auth/flow')) {
+        flowReads += 1;
+        document.cookie = 'refresh_token=canonical-refresh; Path=/';
+        return Promise.resolve(
+          Response.json(
+            {
+              data: {
+                flowId: '123e4567-e89b-42d3-a456-426614174000',
+                flowEpoch: 1,
+                revision: 2,
+                lifecycle: 'AUTHENTICATED',
+                authenticated: true,
+                refreshGeneration: 2,
+                lastRefreshReceipt: {
+                  operationId: '123e4567-e89b-42d3-a456-426614174099',
+                  committed: true,
+                  flowEpoch: 1,
+                  revision: 2,
+                  resultGeneration: 2,
+                },
+              },
+            },
+            {
+              headers: {
+                'X-Auth-Flow-Id': '123e4567-e89b-42d3-a456-426614174000',
+                'X-Auth-Flow-Epoch': '1',
+              },
+            },
+          ),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(refreshAccessToken()).resolves.toBe('recovered-after-stale');
+
+    expect(flowReads).toBe(1);
+    expect(operationIds).toHaveLength(2);
+    expect(operationIds[1]).not.toBe(operationIds[0]);
   });
 
   it('access JWT 만료 10분 전부터 refresh가 필요하다고 판단한다', () => {
@@ -96,27 +227,14 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     window.removeEventListener(ACCESS_TOKEN_CHANGED_EVENT, tokenChanged);
   });
 
-  it('로그인은 CSRF 세션 없이 Origin 정책과 access token 응답을 사용한다', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      Response.json({
-        message: 'login success',
-        data: { access_token: 'login-access-token', expires_in: 3600 },
-      }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
-
-    await login({ email: 'test@example.com', password: 'password' });
-
-    expect(fetchMock).toHaveBeenCalledOnce();
-    const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(new Headers(options.headers).has('X-CSRF-TOKEN')).toBe(false);
-    expect(getAccessToken()).toBe('login-access-token');
-  });
-
   it('로그인 시작 뒤 도착한 이전 refresh 응답은 폐기하고 새 계정 쿠키를 보존한다', async () => {
     let completeRefresh!: (response: Response) => void;
     const refreshResponse = new Promise<Response>((resolve) => {
       completeRefresh = resolve;
+    });
+    let completeLogin!: () => void;
+    const loginResponse = new Promise<void>((resolve) => {
+      completeLogin = resolve;
     });
     const order: string[] = [];
     vi.stubGlobal(
@@ -129,29 +247,24 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
           order.push('refresh');
           return refreshResponse;
         }
-        if (url.endsWith('/auth/login')) {
-          order.push('login');
-          return Promise.resolve(
-            Response.json({
-              message: 'login success',
-              data: {
-                access_token: 'new-user-token',
-                expires_in: 3600,
-              },
-            }),
-          );
-        }
         throw new Error(`Unexpected request: ${url}`);
       }),
     );
     const pending = refreshAccessToken();
     await vi.waitFor(() => expect(order).toEqual(['refresh']));
-    const signingIn = login({ email: 'test@example.com', password: 'password' });
+    const signingIn = runAuthTransition(async () => {
+      order.push('login');
+      await loginResponse;
+      setAccessToken('new-user-token');
+      return 'new-user-token';
+    });
     expect(order).toEqual(['refresh']);
     completeRefresh(Response.json({ data: { access_token: 'old-user-token' } }));
     await expect(pending).rejects.toMatchObject({ status: null });
+    await vi.waitFor(() => expect(order).toEqual(['refresh', 'login']));
+    completeLogin();
     const result = await signingIn;
-    expect(result.data.access_token).toBe('new-user-token');
+    expect(result).toBe('new-user-token');
     expect(getAccessToken()).toBe('new-user-token');
     expect(order).toEqual(['refresh', 'login']);
   });
@@ -163,6 +276,8 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     });
     const order: string[] = [];
     const logoutHeaders: Headers[] = [];
+    const flowId = '123e4567-e89b-42d3-a456-426614174000';
+    let flowReads = 0;
     setAccessToken('existing-token');
     vi.stubGlobal(
       'fetch',
@@ -174,10 +289,53 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
           order.push('refresh');
           return refreshResponse;
         }
+        if (url.endsWith('/auth/flow')) {
+          flowReads += 1;
+          const flowEpoch = flowReads === 1 ? 1 : 2;
+          return Promise.resolve(
+            Response.json({
+              data: {
+                flowId,
+                flowEpoch,
+                revision: flowEpoch,
+                lifecycle: flowReads === 1 ? 'AUTHENTICATED' : 'ANONYMOUS',
+                authenticated: flowReads === 1,
+                refreshGeneration: 1,
+                lastLogoutReceipt:
+                  flowReads === 1
+                    ? null
+                    : {
+                        operationId: JSON.parse(
+                          window.localStorage.getItem('meomuneum:pending-logout-operation') ??
+                            'null',
+                        )?.operationId,
+                        committed: true,
+                        flowEpoch: 2,
+                        revision: 2,
+                      },
+              },
+            }),
+          );
+        }
         if (url.endsWith('/auth/logout')) {
           order.push('logout');
-          logoutHeaders.push(new Headers(init?.headers));
-          return Promise.resolve(new Response(null, { status: 204 }));
+          const headers = new Headers(init?.headers);
+          logoutHeaders.push(headers);
+          return Promise.resolve(
+            Response.json(
+              {
+                data: {
+                  logoutReceipt: {
+                    operationId: headers.get('Idempotency-Key'),
+                    committed: true,
+                    flowEpoch: 2,
+                    revision: 2,
+                  },
+                },
+              },
+              { headers: { 'X-Auth-Flow-Id': flowId, 'X-Auth-Flow-Epoch': '2' } },
+            ),
+          );
         }
         throw new Error(`Unexpected request: ${url}`);
       }),
@@ -388,7 +546,21 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     const protectedResponse = new Promise<Response>((resolve) => {
       completeProtected = resolve;
     });
-    const fetchMock = vi.fn().mockReturnValue(protectedResponse);
+    const fetchMock = vi.fn((input: string | URL) =>
+      String(input).endsWith('/auth/flow')
+        ? Promise.resolve(
+            Response.json({
+              data: {
+                flowId: '123e4567-e89b-42d3-a456-426614174000',
+                flowEpoch: 1,
+                revision: 1,
+                lifecycle: 'AUTHENTICATED',
+                authenticated: true,
+              },
+            }),
+          )
+        : protectedResponse,
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     const pending = authenticatedFetch('/api/protected');
@@ -398,7 +570,9 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     completeProtected(Response.json({ message: 'unauthorized' }, { status: 401 }));
 
     await expect(pending).rejects.toMatchObject({ status: null });
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/protected')),
+    ).toHaveLength(1);
     expect(getAccessToken()).toBeNull();
   });
 
@@ -613,6 +787,21 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
       if (String(input).endsWith('/token/csrf')) {
         return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
       }
+      if (String(input).endsWith('/api/v1/auth/flow')) {
+        return Promise.resolve(
+          Response.json({
+            data: {
+              flowId: '123e4567-e89b-42d3-a456-426614174000',
+              flowEpoch: 1,
+              revision: 1,
+              lifecycle: 'AUTHENTICATED',
+              authenticated: true,
+              refreshGeneration: 1,
+              lastRefreshReceipt: null,
+            },
+          }),
+        );
+      }
       requestSignal = init!.signal!;
       refreshStarted();
       const stream = new ReadableStream<Uint8Array>({ start() {} });
@@ -659,6 +848,21 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     const fetchMock = vi.fn((input: string | URL, init?: RequestInit) => {
       if (String(input).endsWith('/token/csrf')) {
         return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+      }
+      if (String(input).endsWith('/api/v1/auth/flow')) {
+        return Promise.resolve(
+          Response.json({
+            data: {
+              flowId: '123e4567-e89b-42d3-a456-426614174000',
+              flowEpoch: 1,
+              revision: 1,
+              lifecycle: 'AUTHENTICATED',
+              authenticated: true,
+              refreshGeneration: 1,
+              lastRefreshReceipt: null,
+            },
+          }),
+        );
       }
       operationIds.push(new Headers(init?.headers).get('X-Refresh-Operation-Id') ?? '');
       return Promise.resolve(
@@ -738,11 +942,26 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
   });
 
   it('does not mark a protected mutation sent when its prerequisite refresh fails ambiguously', async () => {
-    const fetchMock = vi.fn((input: string | URL) =>
-      String(input).endsWith('/token/csrf')
-        ? Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }))
-        : Promise.reject(new TypeError('offline')),
-    );
+    const fetchMock = vi.fn((input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/token/csrf'))
+        return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+      if (url.endsWith('/api/v1/auth/flow'))
+        return Promise.resolve(
+          Response.json({
+            data: {
+              flowId: '123e4567-e89b-42d3-a456-426614174000',
+              flowEpoch: 1,
+              revision: 1,
+              lifecycle: 'AUTHENTICATED',
+              authenticated: true,
+              refreshGeneration: 1,
+              lastRefreshReceipt: null,
+            },
+          }),
+        );
+      return Promise.reject(new TypeError('offline'));
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
@@ -752,8 +971,9 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
       }),
     ).rejects.toMatchObject({ status: null, requestWasSent: false });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(String(fetchMock.mock.calls[1][0])).toMatch(/token\/refresh$/);
+    expect(String(fetchMock.mock.calls[2][0])).toMatch(/auth\/flow$/);
   });
 
   it('CSRF GET 403은 refresh나 보호 API를 호출하지 않는다', async () => {
@@ -773,15 +993,31 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     'refresh %s는 보호 API를 진행하지 않고 재시도 가능한 오류로 남긴다',
     async (_label, refreshResult, status) => {
       const fetchMock = vi.fn((input: string | URL) => {
-        if (String(input).endsWith('/api/v1/auth/token/csrf')) {
+        const url = String(input);
+        if (url.endsWith('/api/v1/auth/token/csrf')) {
           return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+        }
+        if (url.endsWith('/api/v1/auth/flow')) {
+          return Promise.resolve(
+            Response.json({
+              data: {
+                flowId: '123e4567-e89b-42d3-a456-426614174000',
+                flowEpoch: 1,
+                revision: 1,
+                lifecycle: 'AUTHENTICATED',
+                authenticated: true,
+                refreshGeneration: 1,
+                lastRefreshReceipt: null,
+              },
+            }),
+          );
         }
         return refreshResult();
       });
       vi.stubGlobal('fetch', fetchMock);
 
       await expect(authenticatedFetch('/api/protected')).rejects.toMatchObject({ status });
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenCalledTimes(status === null ? 3 : 2);
       expect(getAccessToken()).toBeNull();
     },
   );
@@ -1001,4 +1237,92 @@ describe('refresh 쿠키와 계정 전환 요청 순서', () => {
     await expect(authenticatedFetch('/api/protected')).rejects.toMatchObject({ status: null });
     expect(fetchMock).not.toHaveBeenCalled();
   });
+});
+
+describe('direct mode authentication adapter', () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it('executes password/account transitions without legacy refresh or persisted tokens', async () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('VITE_AUTH_DIRECT_V2_ENABLED', 'true');
+    const direct = await import('./directAuthSessionState');
+    const profile = await import('../../mypage/api/mypageApi');
+    const flow = {
+      flowId: 'f',
+      flowEpoch: '1',
+      revision: '2',
+      authenticated: true,
+      proofState: 'ACTIVE',
+      lifecycle: 'AUTHENTICATED',
+    } as const;
+    const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetcher);
+    direct.installDirectSession(direct.beginDirectAuthIntent(), 'memory', '60', flow);
+    await profile.changeMyPassword('old-example', 'new-example');
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls[0][1].method).toBe('PATCH');
+    expect(new Headers(fetcher.mock.calls[0][1].headers).get('Authorization')).toBe(
+      'Bearer memory',
+    );
+    expect(getAccessToken()).toBeNull();
+    fetcher.mockClear();
+    direct.installDirectSession(direct.beginDirectAuthIntent(), 'memory', '60', flow);
+    await profile.withdrawMyAccount('example');
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls[0][1].method).toBe('DELETE');
+    expect(sessionStorage.getItem('access_token')).toBeNull();
+  });
+  it('does not touch legacy storage or issue refresh when direct token is absent', async () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('VITE_AUTH_DIRECT_V2_ENABLED', 'true');
+    const direct = await import('./directAuthSessionState');
+    direct.clearDirectSession();
+    const fetcher = vi.fn();
+    vi.stubGlobal('fetch', fetcher);
+    await expect(refreshAccessToken()).rejects.toThrow();
+    await expect(authenticatedFetch('/api/v1/users/me')).rejects.toThrow();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+});
+
+it('preserves existing cache cleanup for direct logout intent and explicit token clearing', async () => {
+  vi.stubEnv('DEV', true);
+  vi.stubEnv('VITE_AUTH_DIRECT_V2_ENABLED', 'true');
+  const direct = await import('./directAuthSessionState');
+  const cache = await import('../../chat-entry/services/chatConversationCache');
+  const flow = {
+    flowId: '123e4567-e89b-42d3-a456-426614174000',
+    flowEpoch: '1',
+    revision: '2',
+    lifecycle: 'AUTHENTICATED',
+    authenticated: true,
+    proofState: 'ACTIVE',
+  } as const;
+  const token = `header.${btoa(JSON.stringify({ sub: '7', exp: Math.floor(Date.now() / 1000) + 60 }))}.signature`;
+  const saved = {
+    messageId: 1,
+    roomId: 700,
+    userId: 7,
+    clientMessageId: 'saved',
+    nickname: '작성자',
+    content: 'stored',
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    direct.installDirectSession(direct.beginDirectAuthIntent(), token, '60', flow);
+    const old = cache.openChatConversation(7, 25, 700).context;
+    cache.storeChatConversation(old, 25, 700, [saved]);
+    expect(sessionStorage.getItem(cache.CHAT_CACHE_KEY)).not.toBeNull();
+    clearAccessToken();
+    expect(sessionStorage.getItem(cache.CHAT_CACHE_KEY)).toBeNull();
+    cache.storeChatConversation(old, 25, 700, [saved]);
+    expect(sessionStorage.getItem(cache.CHAT_CACHE_KEY)).toBeNull();
+    direct.installDirectSession(direct.beginDirectAuthIntent(), token, '60', flow);
+    const next = cache.openChatConversation(7, 25, 700).context;
+    cache.storeChatConversation(next, 25, 700, [saved]);
+    direct.beginDirectAuthIntent();
+    expect(sessionStorage.getItem(cache.CHAT_CACHE_KEY)).toBeNull();
+  } finally {
+    direct.clearDirectSession();
+    vi.unstubAllEnvs();
+  }
 });

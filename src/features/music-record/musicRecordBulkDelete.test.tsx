@@ -223,7 +223,7 @@ describe('음악 기록 다중 선택 삭제', () => {
     select(7);
     select(8);
     confirm();
-    await screen.findByText('아직 기록한 음악이 없어요.');
+    await screen.findByText('아직 비어 있는 음악 기록이에요.');
     expect(screen.getByText('2개의 기록이 삭제되었어요')).toBeInTheDocument();
     expect(deleteCalls()).toHaveLength(1);
     const options = deleteCalls()[0][1]!;

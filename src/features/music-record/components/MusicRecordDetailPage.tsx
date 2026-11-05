@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
+import { MusicRecordDetailSkeleton } from '../../../components/RouteLoadSkeleton';
 import { navigate } from '../../../shared/navigation';
 import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
 import {
@@ -16,6 +17,7 @@ import { musicRecordFilterPath, readMusicRecordSidoCode } from '../model/musicRe
 import { invalidateMapDotsCache } from '../../mainMap/mapApi';
 import { MusicRecordDeleteDialog } from './MusicRecordDeleteDialog';
 import { UnsavedChangesDialog } from './UnsavedChangesDialog';
+import { useDelayedPending } from '../../../hooks/useDelayedPending';
 
 type MusicRecordDetailPageProps = { recordId: number };
 
@@ -65,6 +67,8 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
   const selectedSidoCode = readMusicRecordSidoCode();
   const listPath = musicRecordFilterPath('/music-records', selectedSidoCode);
   const [record, setRecord] = useState<MusicRecordDetail | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadRequestId, setLoadRequestId] = useState(0);
   const [selectedMusic, setSelectedMusic] = useState<Music | null>(null);
   const [place, setPlace] = useState('');
   const [memo, setMemo] = useState('');
@@ -81,13 +85,20 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
   });
   const isMutationPending = useRef(false);
   const activeRecordId = useRef<number | null>(recordId);
+  const loadGeneration = useRef(0);
+  const isSkeletonVisible = useDelayedPending(isLoading, loadRequestId);
 
   useEffect(() => {
+    const current = ++loadGeneration.current;
+    setLoadRequestId(current);
+    setIsLoading(true);
+    setRecord(null);
+    setError('');
     activeRecordId.current = recordId;
     let active = true;
     void getMusicRecord(recordId)
       .then((detail) => {
-        if (!active) return;
+        if (!active || current !== loadGeneration.current) return;
         setRecord(detail);
         setPlace(detail.custom_place_name ?? '');
         setMemo(detail.emotion_memo ?? '');
@@ -133,12 +144,16 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
         }
       })
       .catch((caught: unknown) => {
-        if (active)
+        if (active && current === loadGeneration.current)
           setError(caught instanceof Error ? caught.message : '기록을 불러오지 못했습니다.');
+      })
+      .finally(() => {
+        if (active && current === loadGeneration.current) setIsLoading(false);
       });
     return () => {
       active = false;
       activeRecordId.current = null;
+      loadGeneration.current += 1;
     };
   }, [recordId]);
 
@@ -340,8 +355,12 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
     }
   };
 
+  const coverUrl = getHighResolutionArtworkUrl(
+    selectedMusic?.album_cover_url ?? record?.music.album_cover_url ?? null,
+  );
+
   return (
-    <main className="music-page music-detail-page">
+    <main className="music-page music-detail-page" aria-busy={!record && isLoading}>
       <header className="music-page-header">
         <button
           ref={backButton}
@@ -364,27 +383,20 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
         </p>
       )}
       {!record ? (
-        !error && (
-          <p role="status" className="music-empty">
-            기록을 불러오는 중…
-          </p>
-        )
+        !error && isSkeletonVisible && <MusicRecordDetailSkeleton />
       ) : (
         <section className="music-form" aria-label="음악 기록 상세 및 수정">
           <article className="music-selected-content">
-            {(selectedMusic?.album_cover_url ?? record.music.album_cover_url) ? (
-              <img
-                src={
-                  getHighResolutionArtworkUrl(
-                    selectedMusic?.album_cover_url ?? record.music.album_cover_url ?? null,
-                  ) ?? ''
-                }
-                alt=""
-              />
+            {coverUrl ? (
+              <>
+                <img className="music-hero-backdrop" src={coverUrl} alt="" aria-hidden="true" />
+                <img src={coverUrl} alt="" />
+              </>
             ) : (
               <span className="music-cover-placeholder" aria-hidden="true" />
             )}
             <div>
+              <p className="music-hero-eyebrow">그날의 한 곡</p>
               <strong>{selectedMusic?.title ?? record.music.title}</strong>
               <span>{selectedMusic?.artist_name ?? record.music.artist_name}</span>
             </div>
@@ -420,19 +432,19 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
               disabled={isSaving || isDeleting}
               maxLength={100}
               onChange={(event) => setPlace(event.target.value)}
-              placeholder="장소 이름 (선택)"
+              placeholder="예: 집 앞 작은 공원 (선택)"
             />
           </label>
           <label>
-            지금 느끼는 것 기록
+            오늘의 기분과 한 줄
             <textarea
-              aria-label="지금 느끼는 것 기록"
+              aria-label="오늘의 기분과 한 줄"
               aria-describedby="detail-memo-count"
               value={memo}
               disabled={isSaving || isDeleting}
               maxLength={500}
               onChange={(event) => setMemo(event.target.value.slice(0, 500))}
-              placeholder="지금의 감정을 기록해 주세요"
+              placeholder="그날의 기분이나 기억하고 싶은 순간을 적어 주세요"
             />
             <span id="detail-memo-count" className="music-memo-count" aria-live="polite">
               {memo.length}/500

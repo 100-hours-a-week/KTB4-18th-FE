@@ -79,7 +79,9 @@ export function ZoneMapCanvas({
         </svg>
         {children}
       </div>
-      {isFallback && <p className="zone-map__notice">지도 데이터를 다시 연결하는 중이에요.</p>}
+      {isFallback && (
+        <p className="zone-map__notice">지도를 연결하고 있어요. 잠시 후 다시 확인해 주세요.</p>
+      )}
     </section>
   );
 }

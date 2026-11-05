@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { clearAccessToken, setAccessToken } from '../auth-login/api/authSession';
+import { forgetAuthFlowForTests, primeAuthFlowForTests } from '../auth-login/api/authFlow';
 import { fetchMapDots, invalidateMapDotsCache } from '../mainMap/mapApi';
 import { deleteMusicRecord, MusicApiError, type MusicRecordDetail } from './api/musicRecordsApi';
 import { MusicRecordDetailPage } from './components/MusicRecordDetailPage';
@@ -30,6 +31,13 @@ describe('음악 기록 삭제', () => {
 
   beforeEach(() => {
     sessionStorage.clear();
+    primeAuthFlowForTests({
+      flowId: '123e4567-e89b-42d3-a456-426614174000',
+      flowEpoch: 1,
+      revision: 1,
+      lifecycle: 'AUTHENTICATED',
+      authenticated: true,
+    });
     setAccessToken('test-access-token');
     window.history.replaceState(null, '', '/music-records/7');
     invalidateMapDotsCache();
@@ -70,6 +78,7 @@ describe('음악 기록 삭제', () => {
     vi.unstubAllGlobals();
     sessionStorage.clear();
     clearAccessToken();
+    forgetAuthFlowForTests();
   });
 
   const deleteCalls = () =>
@@ -107,7 +116,7 @@ describe('음악 기록 삭제', () => {
     expect(options?.body).toBeUndefined();
     view.unmount();
     render(<MusicRecordListPage />);
-    expect(await screen.findByText('아직 기록한 음악이 없어요.')).toBeInTheDocument();
+    expect(await screen.findByText('아직 비어 있는 음악 기록이에요.')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('기록이 삭제되었어요');
     await fetchMapDots(signal);
     const calls = vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith('/map-dots'));
@@ -160,7 +169,7 @@ describe('음악 기록 삭제', () => {
     await waitFor(() => expect(window.location.pathname).toBe('/music-records'));
     view.unmount();
     render(<MusicRecordListPage />);
-    expect(await screen.findByText('아직 기록한 음악이 없어요.')).toBeInTheDocument();
+    expect(await screen.findByText('아직 비어 있는 음악 기록이에요.')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('이미 삭제되었거나 없는 기록');
   });
 

@@ -1,0 +1,65 @@
+.login-error,
+.login-notice,
+.login-success {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.login-request-toast {
+  position: fixed;
+  z-index: 1000;
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  display: flex;
+  width: min(calc(100vw - 32px), 480px);
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  transform: translateX(-50%);
+  border: 1px solid var(--color-border-error);
+  border-radius: 12px;
+  background: var(--color-bg-primary);
+  box-shadow: 0 8px 28px rgb(23 23 23 / 14%);
+  color: var(--color-text-error);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.login-request-toast button {
+  flex: none;
+  border: 0;
+  padding: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.login-request-toast button:focus-visible {
+  outline: 2px solid var(--color-border-interactive-primary);
+  outline-offset: 2px;
+}
+
+.login-error,
+.login-notice {
+  color: var(--color-text-error);
+}
+
+.login-inline-signup-link {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.login-inline-signup-link:focus-visible {
+  outline: 2px solid var(--color-border-interactive-primary);
+  outline-offset: 2px;
+}
+
+.login-success {
+  color: var(--color-text-success);
+}

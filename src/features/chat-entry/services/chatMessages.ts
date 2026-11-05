@@ -170,12 +170,12 @@ export const REJECTION_MESSAGES: Record<string, string> = {
   PERSONAL_INFORMATION: '개인정보가 포함된 메시지는 보낼 수 없어요.',
   CLIENT_ID_CONFLICT: '이 메시지를 재전송할 수 없어요. 새 메시지로 작성해 주세요.',
   RETRY_UNAVAILABLE: '재전송 가능한 시간이 지났어요.',
-  NOT_READY: '채팅방 연결이 완료된 후 보내 주세요.',
+  NOT_READY: '이야기방 연결이 완료된 후 보내 주세요.',
 };
 
 export function chatBanNotice(until?: string) {
   const date = until && Number.isFinite(Date.parse(until)) ? new Date(until) : null;
   return date
-    ? `채팅 이용이 제한되었습니다. 제한 종료: ${date.toLocaleString('ko-KR')}`
-    : '채팅 이용이 일주일간 제한되어 입장할 수 없습니다.';
+    ? `동네 이야기 이용이 제한되었습니다. 제한 종료: ${date.toLocaleString('ko-KR')}`
+    : '동네 이야기 이용이 일주일간 제한되어 입장할 수 없습니다.';
 }

@@ -81,6 +81,26 @@ beforeEach(async () => {
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), 'http://localhost');
+      if (url.pathname.endsWith('/songs') && init?.method === 'POST')
+        return Response.json(
+          {
+            data: {
+              music: {
+                music_id: 12,
+                provider: 'ITUNES',
+                external_music_id: '123',
+                title: '새 음악',
+                artist_name: '가수',
+                album_cover_url: null,
+                preview_url: null,
+                youtube_video_id: null,
+                is_queueable: false,
+              },
+              created: true,
+            },
+          },
+          { status: 201 },
+        );
       if (url.pathname.endsWith('/auth/token/csrf'))
         return Response.json({ data: { csrf_token: 'csrf' } });
       if (url.pathname.endsWith('/music-records') && init?.method === 'DELETE') {
@@ -189,7 +209,7 @@ describe('음악 기록 지역 필터 목록', () => {
   it('빈 기록에는 가짜 전국/지역 버튼을 표시하지 않는다', async () => {
     pages = [[]];
     render(<MusicRecordListPage />);
-    await screen.findByText('아직 기록한 음악이 없어요.');
+    await screen.findByText('아직 비어 있는 음악 기록이에요.');
     expect(screen.queryByRole('group', { name: '음악 기록 지역 필터' })).not.toBeInTheDocument();
   });
 
@@ -479,7 +499,7 @@ describe('상세 왕복 지역 선택 회귀', () => {
   it.each(['save', 'delete', 'missing'] as const)('%s 완료 후 지역을 유지한다', async (action) => {
     await openSeoulDetail();
     if (action === 'save') {
-      fireEvent.change(screen.getByPlaceholderText('장소 이름 (선택)'), {
+      fireEvent.change(screen.getByPlaceholderText('예: 집 앞 작은 공원 (선택)'), {
         target: { value: '산책' },
       });
       fireEvent.click(screen.getByRole('button', { name: '저장' }));
@@ -503,7 +523,7 @@ describe('상세 왕복 지역 선택 회귀', () => {
   it('검색한 음악 선택 후 상세와 목록 복귀도 지역을 유지한다', async () => {
     await openSeoulDetail();
     fireEvent.click(screen.getByRole('button', { name: '음악 변경' }));
-    fireEvent.change(screen.getByPlaceholderText('곡 제목, 아티스트 검색'), {
+    fireEvent.change(screen.getByPlaceholderText('노래 제목이나 아티스트를 찾아보세요'), {
       target: { value: '새 음악' },
     });
     fireEvent.click(
@@ -581,7 +601,7 @@ describe('상세 왕복 지역 선택 회귀', () => {
     expect(new URLSearchParams(window.location.search).get('returnTo')).toBe(
       '/music-records?sido=11',
     );
-    expect(screen.getByLabelText('이메일')).toBeInTheDocument();
+    expect(await screen.findByLabelText('이메일', {}, { timeout: 5_000 })).toBeInTheDocument();
   });
   it('없는 URL 지역은 성공 snapshot 검증 후에만 전국으로 정리한다', async () => {
     window.history.replaceState(null, '', '/music-records?tab=recent&sido=99#records');

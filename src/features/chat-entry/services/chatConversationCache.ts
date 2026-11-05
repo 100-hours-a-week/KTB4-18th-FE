@@ -65,11 +65,15 @@ function message(value: unknown, roomId: number): ChatMessage | null {
   };
 }
 
-export function retainChatMessages(items: readonly ChatMessage[], now = Date.now()): ChatMessage[] {
+export function retainChatMessages(
+  items: readonly ChatMessage[],
+  now = Date.now(),
+  futureToleranceMs = 0,
+): ChatMessage[] {
   const unique = new Map<number, ChatMessage>();
   for (const item of items) {
     const sent = Date.parse(item.createdAt);
-    if (Number.isFinite(sent) && sent > now - CHAT_CACHE_TTL_MS && sent <= now)
+    if (Number.isFinite(sent) && sent > now - CHAT_CACHE_TTL_MS && sent <= now + futureToleranceMs)
       unique.set(item.messageId, item);
   }
   return [...unique.values()].sort((a, b) => a.messageId - b.messageId).slice(-CHAT_CACHE_LIMIT);

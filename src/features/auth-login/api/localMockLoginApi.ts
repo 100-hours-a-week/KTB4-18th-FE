@@ -1,5 +1,5 @@
 import { getCsrfToken, runAuthTransition, setAccessToken } from './authSession';
-import type { LoginSuccessResponse } from './loginApi';
+import type { LoginSuccessResponse } from './loginTypes';
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 

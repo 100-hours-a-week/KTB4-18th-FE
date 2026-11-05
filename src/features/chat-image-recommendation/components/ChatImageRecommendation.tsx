@@ -235,7 +235,7 @@ export function ChatImageRecommendation({ conversationKey, disabled, onUsable }:
         className="chat-image-entry"
         type="button"
         disabled={disabled}
-        aria-label="이미지로 음악 추천받기"
+        aria-label="사진으로 음악 찾기"
         onClick={() => setOpen(true)}
       >
         <img src="/icons/chatbot/image-button.svg" alt="" aria-hidden="true" />
@@ -247,19 +247,19 @@ export function ChatImageRecommendation({ conversationKey, disabled, onUsable }:
             className="chat-image-page"
             role="dialog"
             aria-modal="true"
-            aria-label="이미지로 음악 추천"
+            aria-label="사진으로 음악 찾기"
             tabIndex={-1}
           >
             <header className="chat-image-page-header" inert={rejected}>
               <button
                 type="button"
-                aria-label="이미지 추천 닫기"
+                aria-label="사진으로 음악 찾기 닫기"
                 disabled={pageLocked}
                 onClick={close}
               >
                 <img src="/icons/chatbot/Arrow-reft.svg" alt="" />
               </button>
-              <h2>이미지로 음악 추천</h2>
+              <h2>사진으로 음악 찾기</h2>
               <span />
             </header>
             <main className="chat-image-page-content" inert={rejected}>
@@ -268,11 +268,11 @@ export function ChatImageRecommendation({ conversationKey, disabled, onUsable }:
                   <img
                     className="chat-image-review"
                     src={previewUrl}
-                    alt="선택한 장소 사진 미리보기"
+                    alt="추천에 사용할 주변 사진 미리보기"
                   />
-                  <h3 className="chat-image-review-title">등록한 이미지로 추천받을까요?</h3>
+                  <h3 className="chat-image-review-title">이 분위기에 맞는 음악을 찾아볼까요?</h3>
                   <p className="chat-image-review-description">
-                    추천받을 이미지가 맞는지 확인해 주세요.
+                    사진 속 풍경을 보고 지금 듣기 좋은 곡을 추천해드려요.
                   </p>
                 </>
               ) : (
@@ -280,8 +280,8 @@ export function ChatImageRecommendation({ conversationKey, disabled, onUsable }:
                   <div className="chat-image-placeholder">
                     <img src="/icons/chatbot/image.svg" alt="" aria-hidden="true" />
                   </div>
-                  <h3>이미지를 등록하고 음악을 추천받아 보세요</h3>
-                  <p>사진 속 장면에 어울리는 곡을 추천해요.</p>
+                  <h3>지금 주변을 찍어주세요</h3>
+                  <p>눈앞의 풍경에 어울리는 음악을 찾아드릴게요.</p>
                 </div>
               )}
               {working && (
@@ -320,8 +320,8 @@ export function ChatImageRecommendation({ conversationKey, disabled, onUsable }:
                 )}
                 <p className="chat-image-footer-helper">
                   {previewUrl
-                    ? '등록한 이미지를 바탕으로 음악을 추천해요.'
-                    : '기본 카메라를 사용해 사진을 촬영해 주세요.'}
+                    ? '이 사진으로 음악 찾기를 누르면 추천을 시작해요.'
+                    : '카메라로 지금 주변의 풍경을 담아주세요.'}
                 </p>
               </div>
               <button
@@ -335,8 +335,8 @@ export function ChatImageRecommendation({ conversationKey, disabled, onUsable }:
                   : hasAcceptedId
                     ? '분석 결과 다시 확인'
                     : previewUrl
-                      ? '이 사진으로 추천받기'
-                      : '이미지 등록 후 추천받기'}
+                      ? '이 사진으로 음악 찾기'
+                      : '주변을 촬영한 뒤 음악을 찾아보세요'}
               </button>
             </footer>
             {rejected && (

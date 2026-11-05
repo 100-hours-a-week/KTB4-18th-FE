@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useDelayedPending } from '../../../hooks/useDelayedPending';
 
 import { ROUTE_CHANGE_EVENT } from '../../../shared/navigation';
 import { getAllMusicRecords, MusicApiError, type MusicRecord } from '../api/musicRecordsApi';
@@ -30,13 +31,19 @@ const REGION_LABELS: Record<string, string> = {
 
 export function useMusicRecordRegionFilter() {
   const [snapshot, setSnapshot] = useState<MusicRecord[]>([]);
-  const [isSnapshotLoading, setIsSnapshotLoading] = useState(true);
+  const [isSnapshotLoading, setIsSnapshotLoading] = useState(false);
+  const [isSnapshotRequestPending, setIsSnapshotRequestPending] = useState(false);
+  const [snapshotRequestIdentity, setSnapshotRequestIdentity] = useState('');
   const [snapshotError, setSnapshotError] = useState('');
   const [selectedSidoCode, setSelectedSidoCode] = useState<string | null>(readMusicRecordSidoCode);
   const snapshotRef = useRef<MusicRecord[]>([]);
   const generation = useRef(0);
   const active = useRef(false);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSnapshotSkeletonVisible = useDelayedPending(
+    isSnapshotRequestPending,
+    snapshotRequestIdentity,
+  );
 
   useEffect(() => {
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
@@ -64,6 +71,8 @@ export function useMusicRecordRegionFilter() {
     setSnapshotError('');
     const attempt = async (retryCount: number) => {
       if (!isCurrent()) return;
+      setSnapshotRequestIdentity(`${requestGeneration}-${retryCount}`);
+      setIsSnapshotRequestPending(true);
       try {
         const records = await getAllMusicRecords();
         if (!isCurrent()) return;
@@ -72,9 +81,11 @@ export function useMusicRecordRegionFilter() {
         setSelectedSidoCode((code) =>
           records.some((record) => record.region.sido.code === code) ? code : null,
         );
+        setIsSnapshotRequestPending(false);
         setIsSnapshotLoading(false);
       } catch (caught) {
         if (!isCurrent()) return;
+        setIsSnapshotRequestPending(false);
         const isAuthorizationError =
           caught instanceof MusicApiError && (caught.status === 401 || caught.status === 403);
         if (!isAuthorizationError && retryCount < 3) {
@@ -136,6 +147,7 @@ export function useMusicRecordRegionFilter() {
     selectedSidoCode,
     setSelectedSidoCode,
     isSnapshotLoading,
+    isSnapshotSkeletonVisible,
     snapshotError,
     filteredSnapshot: snapshot.filter((record) => record.region.sido.code === selectedSidoCode),
     refreshSnapshot,

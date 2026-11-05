@@ -102,7 +102,7 @@ export function useChatRoomLocationRevalidation({
         if (candidate.region.sigungu.regionId === activeChatRoom.room.regionId) {
           if (isMounted) {
             setStatus('stable');
-            setMessage('현재 지역 채팅방을 유지합니다.');
+            setMessage('현재 지역 이야기방을 유지합니다.');
           }
           return;
         }
@@ -118,14 +118,14 @@ export function useChatRoomLocationRevalidation({
         if (confirmation.region.sigungu.regionId !== candidate.region.sigungu.regionId) {
           if (isMounted) {
             setStatus('mismatch');
-            setMessage('행정구역 경계로 판단되어 기존 채팅방을 유지합니다.');
+            setMessage('행정구역 경계로 판단되어 기존 이야기방을 유지합니다.');
           }
           return;
         }
 
         if (isMounted) {
           setStatus('moving');
-          setMessage('새 지역 채팅방으로 이동하고 있어요.');
+          setMessage('새 지역 이야기방으로 이동하고 있어요.');
         }
         const room = await getRegionChatRoom(
           confirmation.region.sigungu.regionId,
@@ -145,7 +145,7 @@ export function useChatRoomLocationRevalidation({
         }
         onMovedRef.current({ room, membership });
         setStatus('moved');
-        setMessage(`${room.regionName} 채팅방으로 이동했어요.`);
+        setMessage(`${room.regionName} 이야기방으로 이동했어요.`);
       } catch (caught) {
         if (!isCurrent()) {
           return;
@@ -153,7 +153,7 @@ export function useChatRoomLocationRevalidation({
         if (caught instanceof ChatRoomRequestError && caught.status === 409) {
           onMembershipEndedRef.current();
           setStatus('roomFull');
-          setMessage('새 지역 채팅방의 정원이 가득 찼습니다. 기존 채팅방에서도 퇴장되었어요.');
+          setMessage('새 지역 이야기방의 정원이 가득 찼습니다. 기존 이야기방에서도 퇴장되었어요.');
           return;
         }
         setStatus('error');

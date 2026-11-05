@@ -1,0 +1,991 @@
+.route-skeleton {
+  --route-skeleton-base: #e9e9ec;
+  --route-skeleton-highlight: #f6f6f7;
+  box-sizing: border-box;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  color: #171717;
+  background: #fefeff;
+  font-family: var(--font-sans);
+}
+
+.route-skeleton__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.route-skeleton__bone {
+  display: block;
+  min-width: 0;
+}
+
+.route-skeleton__inline {
+  min-width: 0;
+}
+
+.route-skeleton--login {
+  display: flex;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse 340px 500px at 73% 34%, rgb(232 232 232 / 48%), transparent 76%),
+    radial-gradient(ellipse 260px 430px at 14% 67%, rgb(238 238 238 / 42%), transparent 78%),
+    #fefeff;
+}
+
+.route-skeleton__auth-layout {
+  display: flex;
+  width: min(100%, 680px);
+  min-height: 100dvh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 44px;
+  padding: 32px 24px;
+}
+
+.route-skeleton__auth-brand {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+}
+
+.route-skeleton__auth-mark {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+}
+
+.route-skeleton__auth-wordmark {
+  width: 112px;
+  height: 18px;
+  border-radius: 999px;
+}
+
+.route-skeleton__auth-divider {
+  display: flex;
+  width: min(100%, 480px);
+  align-items: center;
+  gap: 8px;
+}
+
+.route-skeleton__auth-divider > .route-skeleton__bone:first-child,
+.route-skeleton__auth-divider > .route-skeleton__bone:last-child {
+  height: 1px;
+  flex: 1;
+  border-radius: 0;
+}
+
+.route-skeleton__auth-divider-label {
+  width: 76px;
+  height: 10px;
+}
+
+.route-skeleton__auth-fields {
+  display: grid;
+  width: min(100%, 480px);
+  gap: 8px;
+}
+
+.route-skeleton__auth-field {
+  height: 64px;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  background-color: #fff;
+}
+
+.route-skeleton__auth-submit {
+  height: 52px;
+  margin-top: 4px;
+  border-radius: 8px;
+}
+
+.route-skeleton__auth-signup {
+  width: 108px;
+  height: 14px;
+  border-radius: 999px;
+}
+
+.route-skeleton--signup {
+  background: #fefeff;
+}
+
+.route-skeleton__signup-shell {
+  box-sizing: border-box;
+  width: min(100%, 680px);
+  min-height: 100dvh;
+  margin: 0 auto;
+}
+
+.route-skeleton__signup-header,
+.route-skeleton__music-header,
+.route-skeleton__chat-entry-header,
+.route-skeleton__chatbot-header {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
+  align-items: center;
+}
+
+.route-skeleton__signup-header {
+  height: 56px;
+  padding: 0 16px;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.route-skeleton__signup-icon,
+.route-skeleton__music-header-icon,
+.route-skeleton__chat-entry-icon,
+.route-skeleton__chatbot-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+
+.route-skeleton__signup-title {
+  width: 80px;
+  height: 20px;
+  justify-self: center;
+}
+
+.route-skeleton__signup-form {
+  display: grid;
+  gap: 40px;
+  padding: 20px 20px 32px;
+}
+
+.route-skeleton__signup-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.route-skeleton__signup-field {
+  height: 71px;
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  background-color: #fff;
+}
+
+.route-skeleton__signup-gender {
+  height: 72px;
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+}
+
+.route-skeleton__signup-copy {
+  display: grid;
+  gap: 8px;
+  padding: 4px 0 8px;
+}
+
+.route-skeleton__signup-copy .route-skeleton__bone {
+  width: 72%;
+  height: 12px;
+}
+
+.route-skeleton__signup-copy .route-skeleton__bone:last-child {
+  width: 54%;
+}
+
+.route-skeleton__signup-terms {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+}
+
+.route-skeleton__signup-terms-heading {
+  width: 92px;
+  height: 18px;
+  margin-bottom: 4px;
+}
+
+.route-skeleton__signup-term {
+  width: 88%;
+  height: 16px;
+  border-radius: 4px;
+}
+
+.route-skeleton__signup-submit {
+  height: 52px;
+  border-radius: 8px;
+}
+
+.route-skeleton__signup-terms-inline {
+  display: grid;
+  gap: 12px;
+  min-height: 188px;
+  padding: 16px;
+}
+
+.route-skeleton__signup-terms-inline .route-skeleton__signup-terms-heading {
+  margin-bottom: 4px;
+}
+
+.route-skeleton__chat-entry-shell {
+  position: relative;
+  display: flex;
+  width: min(100%, 680px);
+  height: 100dvh;
+  min-height: 0;
+  flex-direction: column;
+  margin: 0 auto;
+  overflow: hidden;
+  border-inline: 1px solid #e5e5e5;
+  background: #fefeff;
+}
+
+.route-skeleton__chat-entry-header {
+  flex: 0 0 68px;
+  grid-template-columns: 80px minmax(0, 1fr) 80px;
+  column-gap: 8px;
+  padding: 24px 16px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.route-skeleton__chat-entry-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.route-skeleton__chat-entry-title {
+  width: 132px;
+  height: 20px;
+  justify-self: center;
+}
+
+.route-skeleton__chat-entry-count {
+  width: 44px;
+  height: 16px;
+  justify-self: end;
+}
+
+.route-skeleton__chat-entry-status {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+}
+
+.route-skeleton__chat-entry-status .route-skeleton__bone:first-child {
+  width: 132px;
+  height: 14px;
+}
+
+.route-skeleton__chat-entry-status .route-skeleton__bone:last-child {
+  width: 72px;
+  height: 14px;
+}
+
+.route-skeleton__chat-entry-messages {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 22px;
+  padding: 24px 20px;
+}
+
+.route-skeleton__chat-entry-bubble {
+  width: min(72%, 320px);
+  height: 72px;
+  border-radius: 12px;
+}
+
+.route-skeleton__chat-entry-bubble--right {
+  width: min(58%, 260px);
+  height: 54px;
+  align-self: flex-end;
+}
+
+.route-skeleton__chat-entry-bubble--left-short {
+  width: min(48%, 220px);
+  height: 48px;
+}
+
+.route-skeleton__chat-entry-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+  border-top: 1px solid #e5e5e5;
+}
+
+.route-skeleton__chat-entry-composer > .route-skeleton__bone:first-child {
+  height: 48px;
+  flex: 1;
+  border-radius: 12px;
+}
+
+.route-skeleton__chat-entry-send {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+}
+
+.route-skeleton--my-page {
+  padding: max(0px, env(safe-area-inset-top)) 1.25rem calc(2rem + env(safe-area-inset-bottom));
+}
+
+.route-skeleton__my-shell {
+  width: min(100%, 680px);
+  margin: 0 auto;
+}
+
+.route-skeleton__my-header {
+  display: grid;
+  min-height: 4.25rem;
+  grid-template-columns: 2rem 1fr 2rem;
+  align-items: center;
+  margin: 0 -1.25rem 1.25rem;
+  padding: 0 1rem;
+}
+
+.route-skeleton__my-header-icon {
+  width: 2rem;
+  height: 2rem;
+}
+
+.route-skeleton__my-header-title {
+  width: 92px;
+  height: 20px;
+  justify-self: center;
+}
+
+.route-skeleton__my-summary {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0 auto 1.75rem;
+}
+
+.route-skeleton__my-avatar {
+  width: 4rem;
+  height: 4rem;
+  flex: 0 0 4rem;
+}
+
+.route-skeleton__my-profile-lines,
+.route-skeleton__my-song-count {
+  display: grid;
+  gap: 8px;
+}
+
+.route-skeleton__my-profile-lines {
+  flex: 1;
+}
+
+.route-skeleton__my-profile-name {
+  width: 104px;
+  height: 18px;
+}
+
+.route-skeleton__my-profile-email {
+  width: min(100%, 160px);
+  height: 14px;
+}
+
+.route-skeleton__my-song-count {
+  min-width: 4rem;
+  padding-left: 1rem;
+  border-left: 1px solid #e5e5e5;
+}
+
+.route-skeleton__my-song-count .route-skeleton__bone:first-child {
+  width: 32px;
+  height: 18px;
+}
+
+.route-skeleton__my-song-count .route-skeleton__bone:last-child {
+  width: 52px;
+  height: 12px;
+}
+
+.route-skeleton__my-navigation {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+}
+
+.route-skeleton__my-navigation-row {
+  height: 46px;
+  border-radius: 6px;
+  background-color: #fff;
+}
+
+.route-skeleton__my-logout {
+  width: 64px;
+  height: 14px;
+  margin: 1.75rem auto 0;
+}
+
+.route-skeleton__my-inline {
+  display: grid;
+  gap: 0;
+  padding-bottom: 1.5rem;
+}
+
+.route-skeleton__my-profile-inline .route-skeleton__my-summary {
+  margin: 0 auto 1.75rem;
+}
+
+.route-skeleton__my-count-inline {
+  display: grid;
+  min-width: 2rem;
+  min-height: 18px;
+  align-items: center;
+}
+
+.route-skeleton__my-count-inline .route-skeleton__bone {
+  width: 32px;
+  height: 18px;
+}
+
+.route-skeleton__my-settings-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.route-skeleton__my-settings-list .route-skeleton__bone {
+  height: 72px;
+  border: 1px solid #e5e5e5;
+}
+
+.route-skeleton__my-inline .route-skeleton__my-summary {
+  margin-top: 0;
+}
+
+.route-skeleton__my-session-list,
+.route-skeleton__my-term-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.route-skeleton__my-session-row {
+  display: grid;
+  gap: 8px;
+  padding: 1rem;
+  border: 1px solid #e5e5e5;
+  border-radius: 0.75rem;
+}
+
+.route-skeleton__my-session-title {
+  width: 42%;
+  height: 18px;
+}
+
+.route-skeleton__my-session-date {
+  width: 66%;
+  height: 13px;
+}
+
+.route-skeleton__my-session-date--short {
+  width: 50%;
+}
+
+.route-skeleton__my-term-row {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1rem;
+  border: 1px solid #e5e5e5;
+  border-radius: 0.5rem;
+}
+
+.route-skeleton__my-term-row .route-skeleton__bone:first-child {
+  width: 48%;
+  height: 15px;
+}
+
+.route-skeleton__my-term-row .route-skeleton__bone:last-child {
+  width: 18px;
+  height: 18px;
+}
+
+.route-skeleton__my-recommendations {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.route-skeleton__my-recommendation-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.route-skeleton__my-recommendation-cover {
+  width: 48px;
+  height: 48px;
+}
+
+.route-skeleton__my-recommendation-row > div {
+  display: grid;
+  gap: 8px;
+}
+
+.route-skeleton__my-recommendation-title {
+  width: 72%;
+  height: 16px;
+}
+
+.route-skeleton__my-recommendation-artist {
+  width: 48%;
+  height: 13px;
+}
+
+.route-skeleton__my-recommendation-action {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+
+.route-skeleton--music-list,
+.route-skeleton--music-create,
+.route-skeleton--music-detail {
+  width: min(100%, 680px);
+  margin: 0 auto;
+  background: #fefeff;
+}
+
+.route-skeleton__music-shell {
+  min-height: 100dvh;
+}
+
+.route-skeleton__music-header {
+  min-height: 3.5rem;
+  grid-template-columns: 2rem minmax(0, 1fr) 2rem;
+  padding: 0 1rem;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.route-skeleton__music-header-icon {
+  width: 2rem;
+  height: 2rem;
+}
+
+.route-skeleton__music-header-title {
+  width: 96px;
+  height: 22px;
+  justify-self: center;
+}
+
+.route-skeleton__music-list-content {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+.route-skeleton__music-filter {
+  width: 100%;
+  height: 48px;
+  border-radius: 0.75rem;
+}
+
+.route-skeleton__record-rows {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.route-skeleton__record-row {
+  box-sizing: border-box;
+  display: flex;
+  min-height: 8.75rem;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid #e5e5e5;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.route-skeleton__record-cover {
+  width: 3.125rem;
+  height: 3.125rem;
+  flex: 0 0 3.125rem;
+}
+
+.route-skeleton__record-copy {
+  display: grid;
+  flex: 1;
+  gap: 0.5rem;
+  padding-top: 2px;
+}
+
+.route-skeleton__record-title {
+  width: min(72%, 240px);
+  height: 18px;
+}
+
+.route-skeleton__record-artist {
+  width: min(52%, 180px);
+  height: 14px;
+}
+
+.route-skeleton__record-meta {
+  width: min(38%, 130px);
+  height: 12px;
+  margin-top: auto;
+}
+
+.route-skeleton__music-create-content {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+.route-skeleton__music-search {
+  height: 52px;
+  border: 1px solid #e5e5e5;
+  border-radius: 0.75rem;
+}
+
+.route-skeleton__music-footer {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  justify-content: center;
+  padding: 1rem max(1.25rem, env(safe-area-inset-right)) calc(1rem + env(safe-area-inset-bottom));
+  border-top: 1px solid #e5e5e5;
+  background: #fefeff;
+}
+
+.route-skeleton__music-footer .route-skeleton__bone {
+  width: min(100%, 640px);
+  height: 52px;
+  border-radius: 0.5rem;
+}
+
+.route-skeleton__music-detail-content {
+  display: grid;
+  gap: 2.25rem;
+  padding: 1.25rem 1.25rem 2rem;
+}
+
+.route-skeleton__music-selected {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.route-skeleton__music-album {
+  width: min(100%, 350px);
+  aspect-ratio: 1;
+  grid-column: 1 / -1;
+  justify-self: center;
+  border-radius: 0.5rem;
+}
+
+.route-skeleton__music-selected-title {
+  width: min(72%, 240px);
+  height: 26px;
+}
+
+.route-skeleton__music-selected-artist {
+  width: min(52%, 180px);
+  height: 14px;
+}
+
+.route-skeleton__music-change {
+  width: 80px;
+  height: 36px;
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  border-radius: 0.5rem;
+}
+
+.route-skeleton__music-detail-field {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.route-skeleton__music-field-label {
+  width: 70px;
+  height: 16px;
+}
+
+.route-skeleton__music-field-input {
+  height: 56px;
+  border: 1px solid #e5e5e5;
+  border-radius: 0.5rem;
+}
+
+.route-skeleton__music-field-textarea {
+  height: 162px;
+  border: 1px solid #e5e5e5;
+  border-radius: 0.5rem;
+}
+
+.route-skeleton__music-submit {
+  height: 52px;
+  border-radius: 0.5rem;
+}
+
+.route-skeleton__record-inline {
+  width: 100%;
+}
+
+.route-skeleton__music-search-results {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0 1.25rem;
+}
+
+.route-skeleton__music-search-result {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 64px;
+}
+
+.route-skeleton__music-search-cover {
+  width: 48px;
+  height: 48px;
+}
+
+.route-skeleton__music-search-copy {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.route-skeleton__music-search-title {
+  width: min(72%, 240px);
+  height: 17px;
+}
+
+.route-skeleton__music-search-artist {
+  width: min(52%, 180px);
+  height: 13px;
+}
+
+.route-skeleton__music-search-action {
+  width: 32px;
+  height: 32px;
+}
+
+.route-skeleton__music-region-filter {
+  display: flex;
+  gap: 0.5rem;
+  overflow: hidden;
+}
+
+.route-skeleton__music-region-pill {
+  width: 4.5rem;
+  height: 2.5rem;
+  flex: 0 0 4.5rem;
+  border-radius: 999px;
+}
+
+.route-skeleton__music-detail-inline {
+  display: grid;
+  gap: 2.25rem;
+  padding: 1.25rem 0 2rem;
+}
+
+.route-skeleton__chatbot-shell {
+  display: flex;
+  width: min(100%, 680px);
+  height: 100dvh;
+  min-height: 0;
+  flex-direction: column;
+  margin: 0 auto;
+  overflow: hidden;
+  border-inline: 1px solid #e5e5e5;
+}
+
+.route-skeleton__chatbot-header {
+  flex: 0 0 56px;
+  padding: 0 16px;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.route-skeleton__chatbot-title {
+  width: 136px;
+  height: 20px;
+  justify-self: center;
+}
+
+.route-skeleton__chatbot-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 24px;
+  overflow: hidden;
+  padding: 20px;
+}
+
+.route-skeleton__chatbot-date {
+  width: 156px;
+  height: 30px;
+  align-self: center;
+  border-radius: 8px;
+}
+
+.route-skeleton__chatbot-message {
+  display: grid;
+  width: min(calc(100% - 80px), 480px);
+  gap: 10px;
+  padding: 14px;
+  border-radius: 8px;
+  background: #f5f5f5;
+}
+
+.route-skeleton__chatbot-message .route-skeleton__bone {
+  height: 14px;
+}
+
+.route-skeleton__chatbot-message .route-skeleton__bone:nth-child(2) {
+  width: 86%;
+}
+
+.route-skeleton__chatbot-message .route-skeleton__bone:nth-child(3) {
+  width: 62%;
+}
+
+.route-skeleton__chatbot-composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+  border-top: 1px solid #e5e5e5;
+}
+
+.route-skeleton__chatbot-attach,
+.route-skeleton__chatbot-send {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 50%;
+}
+
+.route-skeleton__chatbot-input {
+  height: 48px;
+  flex: 1;
+  border-radius: 12px;
+}
+
+.route-skeleton__map-content {
+  position: relative;
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  margin-top: 1.5rem;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid #e5e5e5;
+  border-radius: 1.5rem;
+  background: #f5f5f6;
+}
+
+.route-skeleton__map-dots {
+  position: relative;
+  width: min(74%, 300px);
+  aspect-ratio: 0.72;
+  transform: rotate(8deg);
+}
+
+.route-skeleton__map-dots .route-skeleton__bone {
+  position: absolute;
+  width: 18%;
+  aspect-ratio: 1;
+}
+
+.route-skeleton__map-dots .route-skeleton__bone:nth-child(1) {
+  top: 2%;
+  left: 43%;
+}
+.route-skeleton__map-dots .route-skeleton__bone:nth-child(2) {
+  top: 13%;
+  left: 30%;
+}
+.route-skeleton__map-dots .route-skeleton__bone:nth-child(3) {
+  top: 15%;
+  left: 51%;
+}
+.route-skeleton__map-dots .route-skeleton__bone:nth-child(4) {
+  top: 28%;
+  left: 18%;
+}
+.route-skeleton__map-dots .route-skeleton__bone:nth-child(5) {
+  top: 31%;
+  left: 39%;
+}
+.route-skeleton__map-dots .route-skeleton__bone:nth-child(6) {
+  top: 29%;
+  left: 61%;
+}
+.route-skeleton__map-dots .route-skeleton__bone:nth-child(7) {
+  top: 43%;
+  left: 27%;
+}
+.route-skeleton__map-dots .route-skeleton__bone:nth-child(8) {
+  top: 45%;
+  left: 49%;
+}
+.route-skeleton__map-dots .route-skeleton__bone:nth-child(9) {
+  top: 57%;
+  left: 10%;
+}
+.route-skeleton__map-dots .route-skeleton__bone:nth-child(10) {
+  top: 59%;
+  left: 33%;
+}
+.route-skeleton__map-dots .route-skeleton__bone:nth-child(11) {
+  top: 61%;
+  left: 56%;
+}
+.route-skeleton__map-dots .route-skeleton__bone:nth-child(12) {
+  top: 74%;
+  left: 25%;
+}
+.route-skeleton__map-dots .route-skeleton__bone:nth-child(13) {
+  top: 77%;
+  left: 46%;
+}
+.route-skeleton__map-dots .route-skeleton__bone:nth-child(14) {
+  top: 89%;
+  left: 38%;
+}
+
+@keyframes route-skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+
+@media (max-width: 47.999rem) {
+  .route-skeleton__my-summary {
+    gap: 1rem;
+  }
+
+  .route-skeleton__my-profile-email {
+    display: none;
+  }
+
+  .route-skeleton__my-song-count {
+    min-width: 3.5rem;
+    padding-left: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-skeleton__bone.route-skeleton__bone::after {
+    animation: none;
+    background-image: none;
+  }
+}

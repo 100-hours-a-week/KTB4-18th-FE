@@ -1,4 +1,8 @@
-import { AuthRequestError, authenticatedFetch } from '../../auth-login/api/authSession';
+import {
+  AuthRequestError,
+  authenticatedFetch,
+  getCsrfToken,
+} from '../../auth-login/api/authSession';
 import { invalidateMapDotsCache } from '../../mainMap/mapApi';
 import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
 
@@ -108,6 +112,71 @@ export const searchMusic = async (query: string, cursor?: string | null) => {
     })),
   };
 };
+export async function registerSelectedMusic(
+  externalTrackId: string,
+  signal?: AbortSignal,
+): Promise<Music & { music_id: number }> {
+  let csrf: string;
+  try {
+    signal?.throwIfAborted();
+    csrf = await getCsrfToken(signal);
+    signal?.throwIfAborted();
+  } catch (caught) {
+    if (signal?.aborted) throw signal.reason;
+    if (caught instanceof MusicApiError) throw caught;
+    throw new MusicApiError(
+      caught instanceof AuthRequestError ? caught.status : null,
+      '곡을 선택할 수 없습니다. 다시 시도해 주세요.',
+      false,
+    );
+  }
+  const data = await fetchProtectedData<{ music?: unknown; created?: unknown }>('/songs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+    body: JSON.stringify({ externalTrackId }),
+    signal,
+  });
+  signal?.throwIfAborted();
+  const music = data.music;
+  if (
+    typeof data.created !== 'boolean' ||
+    !music ||
+    typeof music !== 'object' ||
+    !('music_id' in music) ||
+    typeof music.music_id !== 'number' ||
+    !Number.isSafeInteger(music.music_id) ||
+    music.music_id <= 0 ||
+    !('provider' in music) ||
+    music.provider !== 'ITUNES' ||
+    !('external_music_id' in music) ||
+    music.external_music_id !== externalTrackId ||
+    !('title' in music) ||
+    typeof music.title !== 'string' ||
+    !('artist_name' in music) ||
+    typeof music.artist_name !== 'string' ||
+    !('album_cover_url' in music) ||
+    (typeof music.album_cover_url !== 'string' && music.album_cover_url !== null) ||
+    !('preview_url' in music) ||
+    (typeof music.preview_url !== 'string' && music.preview_url !== null) ||
+    !('youtube_video_id' in music) ||
+    (typeof music.youtube_video_id !== 'string' && music.youtube_video_id !== null) ||
+    !('is_queueable' in music) ||
+    typeof music.is_queueable !== 'boolean'
+  ) {
+    throw new MusicApiError(null, '선택한 곡의 정보를 확인하지 못했습니다.', true);
+  }
+  return {
+    music_id: music.music_id,
+    provider: music.provider,
+    external_music_id: music.external_music_id,
+    title: music.title,
+    artist_name: music.artist_name,
+    album_cover_url: getHighResolutionArtworkUrl(music.album_cover_url),
+    preview_url: music.preview_url,
+    youtube_video_id: music.youtube_video_id,
+    is_queueable: music.is_queueable,
+  };
+}
 export const resolveLocation = (latitude: number, longitude: number, accuracy_meters: number) =>
   fetchProtectedData<Location>('/locations/resolve', {
     method: 'POST',

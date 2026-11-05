@@ -27,6 +27,13 @@ import {
   type ChatCacheContext,
 } from './chatConversationCache';
 
+// Server events can arrive before the browser clock reaches their creation time.
+const SERVER_MESSAGE_CLOCK_TOLERANCE_MS = 1_000;
+
+function retainActiveChatMessages(messages: readonly ChatMessage[]): ChatMessage[] {
+  return retainChatMessages(messages, Date.now(), SERVER_MESSAGE_CLOCK_TOLERANCE_MS);
+}
+
 export interface PendingChatMessage {
   clientMessageId: string;
   content: string;
@@ -45,6 +52,7 @@ export interface ChatParticipationState {
   messages?: ChatMessage[];
   pendingMessages?: PendingChatMessage[];
   sendNotice?: string;
+  showDisconnectToast?: boolean;
   gaps?: ChatGap[];
   restoredThroughMessageId?: number;
 }
@@ -67,6 +75,7 @@ export class ChatParticipation {
   private presenceVersion = -1;
   private presenceStatus: NonNullable<ChatParticipationState['presenceStatus']> = 'loading';
   private presenceTimer: number | undefined;
+  private disconnectToastTimer: number | undefined;
   private closeConnection:
     | ((() => void) & {
         send?: (id: string, content: string) => boolean;
@@ -95,7 +104,7 @@ export class ChatParticipation {
   }
 
   private update(status: ChatParticipationState['status'], message: string) {
-    this.messages = retainChatMessages(this.messages);
+    this.messages = retainActiveChatMessages(this.messages);
     this.status = status;
     this.statusMessage = message;
     if (!this.isStopped)
@@ -110,6 +119,7 @@ export class ChatParticipation {
         messages: [...this.messages],
         pendingMessages: [...this.pending.values()],
         sendNotice: this.sendNotice,
+        showDisconnectToast: this.disconnectToastTimer !== undefined,
         gaps: [...this.gaps],
         restoredThroughMessageId: this.restoredThroughMessageId,
       });
@@ -142,7 +152,7 @@ export class ChatParticipation {
 
   private async enter(location: LocationResolution) {
     if (!this.ownsSession()) return;
-    this.update('joining', '현재 지역 채팅방에 입장하고 있어요.');
+    this.update('joining', '현재 지역 이야기방에 입장하고 있어요.');
     const room = await getRegionChatRoom(location.region.sigungu.regionId, this.controller.signal);
     await transition(async () => {
       if (!this.ownsSession()) return;
@@ -200,7 +210,9 @@ export class ChatParticipation {
               this.update(this.status, this.statusMessage);
             }, 10_000);
           }
-          if (status === 'reconnecting') {
+          if (status === 'reconnecting' || status === 'recovery-failed') {
+            this.pendingTimers.forEach((timer) => window.clearTimeout(timer));
+            this.pendingTimers.clear();
             this.pending.forEach((item) => {
               if (item.status === 'sending') {
                 item.status = 'uncertain';
@@ -220,6 +232,13 @@ export class ChatParticipation {
         (event) => {
           if (!this.isStopped && this.active?.membership.membershipId === membership.membershipId)
             this.receive(event);
+        },
+        () => {
+          window.clearTimeout(this.disconnectToastTimer);
+          this.disconnectToastTimer = window.setTimeout(() => {
+            this.disconnectToastTimer = undefined;
+            this.update(this.status, this.statusMessage);
+          }, 4_000);
         },
       );
     });
@@ -246,6 +265,8 @@ export class ChatParticipation {
 
   private clearMessages() {
     window.clearTimeout(this.expirationTimer);
+    window.clearTimeout(this.disconnectToastTimer);
+    this.disconnectToastTimer = undefined;
     this.cacheContext = null;
     this.restoredThroughMessageId = undefined;
     window.clearTimeout(this.presenceTimer);
@@ -261,7 +282,7 @@ export class ChatParticipation {
   }
 
   private rememberMessages() {
-    this.messages = retainChatMessages(this.messages);
+    this.messages = retainActiveChatMessages(this.messages);
     if (this.active && this.cacheContext)
       storeChatConversation(
         this.cacheContext,
@@ -288,7 +309,8 @@ export class ChatParticipation {
     if (!membership) return;
     if (event.type === 'CHAT_READY') return;
     if (event.type === 'CHAT_HISTORY') {
-      this.messages = retainChatMessages(event.messages);
+      this.messages = retainActiveChatMessages(event.messages);
+      this.messages.forEach((message) => this.confirmPending(message));
       this.gaps = [...event.gaps];
       this.restoredThroughMessageId = this.messages.at(-1)?.messageId;
       this.rememberMessages();
@@ -349,18 +371,13 @@ export class ChatParticipation {
             event.message.userId !== this.currentUserId))
       )
         return;
-      const pending = this.pending.get(event.message.clientMessageId);
-      // ACK content is the stored server result and can differ after masking.
-      if (pending && event.message.userId === this.currentUserId) {
-        this.pending.delete(event.message.clientMessageId);
-        window.clearTimeout(this.pendingTimers.get(event.message.clientMessageId));
-        this.pendingTimers.delete(event.message.clientMessageId);
-      }
       if (!this.messages.some((item) => item.messageId === event.message.messageId)) {
         this.messages.push(event.message);
-        this.messages.sort((a, b) => a.messageId - b.messageId);
       }
       this.rememberMessages();
+      if (this.messages.some((item) => item.messageId === event.message.messageId)) {
+        this.confirmPending(event.message);
+      }
     }
     this.update(this.status, this.statusMessage);
   }
@@ -372,7 +389,7 @@ export class ChatParticipation {
       : Array.from(text).length > 300
         ? '메시지는 300자까지 보낼 수 있어요.'
         : this.status !== 'ready'
-          ? '채팅방 연결이 완료된 후 보내 주세요.'
+          ? '이야기방 연결이 완료된 후 보내 주세요.'
           : '';
     if (this.sendNotice) {
       this.update(this.status, this.statusMessage);
@@ -381,6 +398,14 @@ export class ChatParticipation {
     const id = crypto.randomUUID();
     this.pending.set(id, { clientMessageId: id, content: text, status: 'sending', notice: '' });
     return this.transmit(id);
+  }
+
+  private confirmPending(message: ChatMessage) {
+    // Only a stored result for this account can confirm an uncertain UUID, including after masking.
+    if (message.userId !== this.currentUserId || !this.pending.has(message.clientMessageId)) return;
+    this.pending.delete(message.clientMessageId);
+    window.clearTimeout(this.pendingTimers.get(message.clientMessageId));
+    this.pendingTimers.delete(message.clientMessageId);
   }
 
   retryMessage(id: string) {
@@ -460,7 +485,7 @@ export class ChatParticipation {
         confirmation.region.sigungu.regionId !== candidate.region.sigungu.regionId
       )
         return;
-      this.update('joining', '지역 이동이 확인되어 새 채팅방으로 이동하고 있어요.');
+      this.update('joining', '지역 이동이 확인되어 새 이야기방으로 이동하고 있어요.');
       // Always leave the old room before any destination lookup, including failed/full destinations.
       await this.depart(confirmation.locationResolutionToken);
       await this.enter(confirmation);
@@ -480,7 +505,9 @@ export class ChatParticipation {
         : error instanceof ChatRoomRequestError && error.status === 409
           ? 'full'
           : 'error',
-      error instanceof Error ? error.message : '채팅방에 입장하지 못했습니다. 다시 시도해 주세요.',
+      error instanceof Error
+        ? error.message
+        : '이야기방에 입장하지 못했습니다. 다시 시도해 주세요.',
     );
   }
 

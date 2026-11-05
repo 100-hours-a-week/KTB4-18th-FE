@@ -117,6 +117,19 @@ describe('지역 채팅 메시지 처리', () => {
     return { status, event: event! };
   }
 
+  it('실제 단절 토스트는 재시도 중 반복되지 않고 4초 뒤 사라진다', async () => {
+    const { status } = await ready();
+    const [, , , disconnected] = vi.mocked(connectChatRoom).mock.calls.at(-1)!;
+    expect(states.at(-1)?.showDisconnectToast).toBe(false);
+    disconnected?.();
+    status('reconnecting', '다시 연결 중');
+    expect(states.at(-1)?.showDisconnectToast).toBe(true);
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(states.at(-1)?.showDisconnectToast).toBe(false);
+    status('reconnecting', '다시 연결 중');
+    expect(states.at(-1)?.showDisconnectToast).toBe(false);
+  });
+
   it('탭 이동 후 같은 방 새 참여에서 본 메시지만 복원하고 새 복구 문맥에 섞지 않는다', async () => {
     const first = await ready();
     first.event({ type: 'CHAT_MESSAGE', message: saved });
@@ -239,21 +252,42 @@ describe('지역 채팅 메시지 처리', () => {
   );
 
   it.each(['ack-first', 'broadcast-first'])(
-    '마스킹 ACK가 %s여도 원문 대기를 제거하고 서버 본문만 표시한다',
+    '서버 시각이 150ms 앞선 마스킹 메시지도 %s 순서로 즉시 한 번 표시한다',
     async (order) => {
       const { event } = await ready();
       participation.send('씨발');
       const clientMessageId = states.at(-1)!.pendingMessages![0].clientMessageId;
-      const message = { ...saved, clientMessageId, content: '**' };
+      const message = {
+        ...saved,
+        clientMessageId,
+        content: '**',
+        createdAt: new Date(Date.now() + 150).toISOString(),
+      };
       const ack = { type: 'CHAT_ACK' as const, membershipId: 900, message };
       const broadcast = { type: 'CHAT_MESSAGE' as const, message };
       event(order === 'ack-first' ? ack : broadcast);
+      expect(states.at(-1)?.messages).toEqual([message]);
+      expect(states.at(-1)?.pendingMessages).toEqual([]);
       event(order === 'ack-first' ? broadcast : ack);
       event(broadcast);
       expect(states.at(-1)?.messages).toEqual([message]);
       expect(states.at(-1)?.pendingMessages).toEqual([]);
     },
   );
+
+  it.each([
+    [1_000, true],
+    [1_001, false],
+  ])('서버 시각이 %ims 앞선 수신 메시지의 표시 여부는 %s이다', async (offset, isVisible) => {
+    const { event } = await ready();
+    const message = {
+      ...saved,
+      userId: 8,
+      createdAt: new Date(Date.now() + offset).toISOString(),
+    };
+    event({ type: 'CHAT_MESSAGE', message });
+    expect(states.at(-1)?.messages).toEqual(isVisible ? [message] : []);
+  });
 
   it('다른 방·참여·계정 또는 다른 UUID의 ACK로 내 전송을 완료하지 않는다', async () => {
     const { event } = await ready();
@@ -321,6 +355,30 @@ describe('지역 채팅 메시지 처리', () => {
     expect(states.at(-1)?.messages).toEqual([message]);
     expect(states.at(-1)?.pendingMessages).toEqual([]);
     expect(states.at(-1)?.gaps).toHaveLength(1);
+  });
+
+  it('복구 실패로 대기 전송을 불확정 처리하고 서버 이력의 내 UUID만 확정한다', async () => {
+    const { event, status } = await ready();
+    participation.send('씨발');
+    const id = states.at(-1)!.pendingMessages![0].clientMessageId;
+    status('recovery-failed', '일시 장애');
+    expect(states.at(-1)?.pendingMessages?.[0].status).toBe('uncertain');
+    expect(participation.retryMessage(id)).toBe(false);
+    expect(leaveChatRoom).not.toHaveBeenCalled();
+    event({
+      type: 'CHAT_HISTORY',
+      messages: [{ ...saved, clientMessageId: id, userId: 8 }],
+      gaps: [],
+    });
+    expect(states.at(-1)?.pendingMessages).toHaveLength(1);
+    const message = { ...saved, clientMessageId: id, content: '**' };
+    event({ type: 'CHAT_HISTORY', messages: [message], gaps: [] });
+    event({ type: 'CHAT_ACK', membershipId: 900, message });
+    status('ready', '복원');
+    expect(states.at(-1)?.pendingMessages).toEqual([]);
+    expect(states.at(-1)?.messages).toEqual([message]);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(states.at(-1)?.pendingMessages).toEqual([]);
   });
 
   it('퇴장 후 지연된 메시지를 무시하고 메시지와 전송 상태를 비운다', async () => {

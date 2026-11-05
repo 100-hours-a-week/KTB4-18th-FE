@@ -17,10 +17,10 @@
   min-width: 58px;
   flex-shrink: 0;
   padding: 8px 12px;
-  border: 1px solid #e5e5ec;
+  border: 1px solid var(--color-border-tertiary);
   border-radius: 100px;
-  background: #ffffff;
-  color: #111111;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
   font-family: Pretendard, sans-serif;
   font-size: 13px;
   font-weight: 500;
@@ -30,9 +30,9 @@
 }
 
 .music-record-region-filter-button[aria-pressed='true'] {
-  border-color: #000000;
-  background: #171717;
-  color: #ffffff;
+  border-color: var(--color-border-interactive-primary);
+  background: var(--color-bg-interactive-inverse);
+  color: var(--color-text-interactive-inverse);
   font-weight: 600;
 }
 
@@ -41,7 +41,7 @@
 }
 
 .music-record-region-filter-button:focus-visible {
-  outline: 2px solid #111111;
+  outline: 2px solid var(--color-border-interactive-primary);
   outline-offset: -3px;
 }
 

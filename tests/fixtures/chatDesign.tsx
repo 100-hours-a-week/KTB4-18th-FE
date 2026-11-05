@@ -94,6 +94,35 @@ function scenarioState(): ChatParticipationState {
     state.isReady = false;
     state.message = statusMessages[status]!;
   }
+  if (scenario === 'consecutive-user-1') {
+    state.messages = [1, 2, 3, 4, 5].map((messageId) => ({
+      ...state.messages![0],
+      messageId,
+      clientMessageId: `user-1-${messageId}`,
+      userId: 1,
+      nickname: '사용자 1',
+      content: `사용자 1의 연속 메시지 ${messageId}`,
+      createdAt: '2026-10-01T07:37:00Z',
+    }));
+  }
+  if (scenario === 'interrupted-user-1-six') {
+    const messages = [
+      { userId: 1, nickname: '사용자 1', content: '사용자 1 메시지 1' },
+      { userId: 1, nickname: '사용자 1', content: '사용자 1 메시지 2' },
+      { userId: 1, nickname: '사용자 1', content: '사용자 1 메시지 3' },
+      { userId: 2, nickname: '사용자 2', content: '사용자 2의 중간 메시지' },
+      { userId: 1, nickname: '사용자 1', content: '사용자 1 메시지 4' },
+      { userId: 1, nickname: '사용자 1', content: '사용자 1 메시지 5' },
+      { userId: 1, nickname: '사용자 1', content: '사용자 1 메시지 6' },
+    ];
+    state.messages = messages.map((message, index) => ({
+      ...state.messages![0],
+      ...message,
+      messageId: index + 1,
+      clientMessageId: `interrupted-${index + 1}`,
+      createdAt: '2026-10-01T07:37:00Z',
+    }));
+  }
   if (scenario === 'boundaries') {
     state.messages = [
       ...[1, 2, 3].map((messageId) => ({

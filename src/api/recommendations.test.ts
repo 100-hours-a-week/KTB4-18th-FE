@@ -1,13 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearAccessToken, setAccessToken } from '../features/auth-login/api/authSession';
+import { forgetAuthFlowForTests, primeAuthFlowForTests } from '../features/auth-login/api/authFlow';
 import { recommend } from './recommendations';
 
 describe('recommend', () => {
-  beforeEach(() => setAccessToken('access-token'));
+  beforeEach(() => {
+    primeAuthFlowForTests({
+      flowId: '123e4567-e89b-42d3-a456-426614174000',
+      flowEpoch: 1,
+      revision: 1,
+      lifecycle: 'AUTHENTICATED',
+      authenticated: true,
+    });
+    setAccessToken('access-token');
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
     clearAccessToken();
     sessionStorage.clear();
+    forgetAuthFlowForTests();
   });
 
   it('로그인 토큰을 Authorization 헤더로 전달한다', async () => {

@@ -44,14 +44,13 @@ async function fetchChatPage(
   });
   let response: Response;
   try {
-    const request =
-      mode === 'history'
-        ? (input: RequestInfo | URL, init: RequestInit) =>
-            chatSessionFetch(input, init, ownerToken!)
-        : authenticatedFetch;
+    const request = ownerToken
+      ? (input: RequestInfo | URL, init: RequestInit) => chatSessionFetch(input, init, ownerToken!)
+      : authenticatedFetch;
     response = await request(`${base}/api/v1/chat-rooms/${membership.roomId}/messages?${query}`, {
       method: 'GET',
       credentials: 'include',
+      cache: 'no-store',
       headers: { 'X-Chat-View-Session': viewId },
       signal,
     });
@@ -128,8 +127,9 @@ export function fetchChatRecovery(
   viewId: string,
   cursor: string,
   signal: AbortSignal,
+  ownerToken?: string,
 ): Promise<ChatRecoveryPage> {
-  return fetchChatPage(membership, viewId, cursor, signal, 'recovery');
+  return fetchChatPage(membership, viewId, cursor, signal, 'recovery', ownerToken);
 }
 
 export function fetchChatHistory(

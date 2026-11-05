@@ -1,0 +1,28 @@
+            if (System.getenv("CHAT_DISTRIBUTED_FE_DIR") != null) {
+                Path frontend = Path.of(System.getenv("CHAT_DISTRIBUTED_FE_DIR"));
+                Path fixture = evidence.resolve("frontend-config.json").toAbsolutePath();
+                Path result = frontend.resolve("node_modules/.tmp/chat-multiserver-verification/process-result.json");
+                Files.writeString(fixture, json.writeValueAsString(Map.of("taskA",polling.base(),
+                        "taskB",subscribed.base(),"token",token(revokedSid),"location",location(revokedSid,region),
+                        "region",region,"evidence",result.toString())));
+                var frontendProcess = new ProcessBuilder("node", "node_modules/vitest/vitest.mjs", "run",
+                        "tests/integration/chatDistributedRecovery.integration.test.ts", "--reporter=json",
+                        "--outputFile=" + evidence.resolve("frontend-results.json").toAbsolutePath())
+                        .directory(frontend.toFile()).redirectErrorStream(true)
+                        .redirectOutput(evidence.resolve("frontend.log").toFile());
+                frontendProcess.environment().put("CHAT_DISTRIBUTED_FE_CONFIG",fixture.toString());
+                Process child = null;
+                try {
+                    child = frontendProcess.start();
+                    if (!child.waitFor(90,TimeUnit.SECONDS)) throw new AssertionError("frontend deadline");
+                    assertEquals(0,child.exitValue(),"inspect frontend.log");
+                } finally {
+                    if (child != null) child.destroyForcibly();
+                    Files.deleteIfExists(fixture);
+                    Path results = evidence.resolve("frontend-results.json");
+                    if (Files.exists(results)) Files.copy(results,
+                            frontend.resolve("node_modules/.tmp/chat-multiserver-verification/process-tests.json"),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+                return;
+            }

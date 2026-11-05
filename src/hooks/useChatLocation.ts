@@ -37,7 +37,7 @@ function positionErrorMessage(error: unknown) {
   }
   switch (error.code) {
     case 1:
-      return '채팅방 자동 입장을 위해 위치 권한을 허용해 주세요.';
+      return '이야기방 자동 입장을 위해 위치 권한을 허용해 주세요.';
     case 2:
       return '현재 위치를 확인할 수 없습니다. ' + '위치 서비스를 켠 뒤 다시 시도해 주세요.';
     case 3:
