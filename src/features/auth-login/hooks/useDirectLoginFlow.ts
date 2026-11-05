@@ -15,7 +15,12 @@ import {
   releaseRejectedDirectLogin,
 } from '../api/directAuthSessionFlow';
 import { inspectDirectRecovery } from '../api/directAuthRecovery';
-import { readDirectAuthOperation } from '../api/directAuthOperationStore';
+import { readCurrentDirectOperation } from '../api/directAuthFlowApi';
+import {
+  clearExpiredDirectAuthRefreshOperation,
+  readDirectAuthOperation,
+  snapshotDirectAuthOperations,
+} from '../api/directAuthOperationStore';
 import type { DirectAuthOperation } from '../api/directAuthTypes';
 import type { LoginSuccessResponse } from '../api/loginTypes';
 import { validate, type FieldErrors } from '../components/loginPage/loginFormValidation';
@@ -100,7 +105,13 @@ export function useDirectLoginFlow(options: Options) {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (busy.current || isLocked || recovery.isRecovering) return;
-    const errors = validate(email, password);
+    const submittedEmail =
+      event.currentTarget.querySelector<HTMLInputElement>('#email')?.value ?? email;
+    const submittedPassword =
+      event.currentTarget.querySelector<HTMLInputElement>('#password')?.value ?? password;
+    setEmail(submittedEmail);
+    setPassword(submittedPassword);
+    const errors = validate(submittedEmail, submittedPassword);
     setFieldErrors(errors);
     if (Object.keys(errors).length) return;
     busy.current = true;
@@ -110,7 +121,7 @@ export function useDirectLoginFlow(options: Options) {
     options.onLoginStart?.();
     const version = beginDirectAuthIntent();
     activeIntent.current = version;
-    const credentials = { email: email.trim(), password };
+    const credentials = { email: submittedEmail.trim(), password: submittedPassword };
     try {
       const result = await startDirectLogin(credentials, version);
       credentials.password = '';
@@ -192,7 +203,46 @@ export function useDirectLoginFlow(options: Options) {
     setIsPending(true);
     const version = directAuthVersion();
     try {
-      const source = readDirectAuthOperation('LOGIN');
+      const refresh = readDirectAuthOperation('REFRESH');
+      if (refresh && refresh.expiresAt <= Date.now()) {
+        const snapshot = snapshotDirectAuthOperations();
+        if (Object.entries(snapshot).some(([kind, raw]) => kind !== 'REFRESH' && raw !== null)) {
+          if (mounted.current && version === directAuthVersion()) {
+            setIsLocked(true);
+            setMessage(
+              '다른 인증 요청이 남아 있어 자동으로 정리하지 않았어요. 인증 상태를 다시 확인해 주세요.',
+            );
+          }
+          return;
+        }
+        try {
+          const current = await readCurrentDirectOperation();
+          if (
+            current.data.operation === null &&
+            clearExpiredDirectAuthRefreshOperation(snapshot, refresh)
+          ) {
+            if (mounted.current && version === directAuthVersion()) {
+              setIsLocked(false);
+              if (current.data.flow.authenticated) {
+                setMessage('이전에 완료된 로그인 상태를 복구하고 있어요.');
+                options.onRetryAuthRestore?.();
+              } else {
+                setMessage('만료된 로그인 요청을 정리했어요. 다시 로그인해 주세요.');
+              }
+            }
+          } else if (mounted.current && version === directAuthVersion()) {
+            setIsLocked(true);
+            setMessage('인증 상태를 안전하게 확인하지 못했어요. 다시 시도해 주세요.');
+          }
+        } catch {
+          if (mounted.current && version === directAuthVersion()) {
+            setIsLocked(true);
+            setMessage('인증 상태를 안전하게 확인하지 못했어요. 다시 시도해 주세요.');
+          }
+        }
+        return;
+      }
+      const source = readDirectAuthOperation('LOGIN') ?? readDirectAuthOperation('LOGIN_RECOVERY');
       const logout = readDirectAuthOperation('LOGOUT');
       const status = logout
         ? await (async () => {

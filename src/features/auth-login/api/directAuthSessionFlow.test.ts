@@ -41,12 +41,17 @@ function transport(
     loseLogin?: boolean;
     rejected?: 'INVALID_CREDENTIALS' | 'NOT_ADMITTED';
     preAdmission?: boolean;
+    legacyFlow?: boolean;
   } = {},
 ) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input);
     if (path.endsWith('/token/csrf')) return json('csrf token issued', { csrf_token: 'csrf' });
-    if (path.endsWith('/flow')) return json('auth flow', flow);
+    if (path.endsWith('/flow'))
+      return overrides.legacyFlow
+        ? json('AUTH_FLOW_REBOOTSTRAP_REQUIRED', null, 409)
+        : json('auth flow', flow);
+    if (path.endsWith('/flows')) return json('auth flow', flow);
     if (path.endsWith('/login')) {
       const original = readDirectAuthOperation('LOGIN')!;
       expect(original).not.toBeNull();
@@ -96,6 +101,23 @@ function transport(
     throw new Error('Unexpected route');
   });
 }
+it('upgrades a legacy flow cookie before submitting login', async () => {
+  const fetcher = transport({ legacyFlow: true });
+  vi.stubGlobal('fetch', fetcher);
+  const version = beginDirectAuthIntent();
+  const result = await startDirectLogin({ email: 'a@b.com', password: 'example' }, version);
+
+  expect(result.token).toEqual(token);
+  expect(
+    fetcher.mock.calls.map(([url, init]) => [String(url).split('/api/v1/auth')[1], init?.method]),
+  ).toEqual([
+    ['/token/csrf', 'GET'],
+    ['/flow', 'GET'],
+    ['/flows', 'POST'],
+    ['/login', 'POST'],
+  ]);
+  expect(readDirectAuthOperation('BOOTSTRAP')).toBeNull();
+});
 it('persists before the single LOGIN POST and installs only after terminal/canonical GET', async () => {
   const fetcher = transport();
   vi.stubGlobal('fetch', fetcher);
