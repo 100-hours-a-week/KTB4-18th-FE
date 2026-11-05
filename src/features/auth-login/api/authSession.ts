@@ -112,6 +112,8 @@ function sharedAuthEpoch(): string {
   }
 }
 
+export { sharedAuthEpoch as getSharedAuthEpoch };
+
 export function getAuthRestoreState(): AuthRestoreState {
   if (isDirectAuthEnabled()) return 'ready';
   try {

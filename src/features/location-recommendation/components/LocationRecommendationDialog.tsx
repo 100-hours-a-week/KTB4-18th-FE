@@ -35,7 +35,7 @@ export function LocationRecommendationDialog({
     const inertSiblings: { element: HTMLElement; wasInert: boolean }[] = [];
     let branch: HTMLElement | null = portalTarget;
     while (branch?.parentElement) {
-      const parent = branch.parentElement;
+      const parent: HTMLElement = branch.parentElement;
       Array.from(parent.children).forEach((sibling) => {
         if (sibling === branch || !(sibling instanceof HTMLElement)) return;
         inertSiblings.push({ element: sibling, wasInert: sibling.inert });
