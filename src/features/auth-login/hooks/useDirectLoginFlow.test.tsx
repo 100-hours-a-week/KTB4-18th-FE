@@ -140,7 +140,7 @@ it('rejects empty DOM fields even when stale React state contains credentials', 
     password: '비밀번호를 입력해 주세요.',
   });
 });
-it('bounds 202 status polling at ten same-operation GET checks without any repeated POST', async () => {
+it('bounds pending-operation checks at ten same-operation GETs without any repeated POST', async () => {
   vi.useFakeTimers();
   vi.mocked(startDirectLogin).mockResolvedValue({ operation: source, token: null });
   vi.mocked(inspectDirectLogin).mockResolvedValue({ terminal: null, canonicalMatches: false });
@@ -158,7 +158,7 @@ it('bounds 202 status polling at ten same-operation GET checks without any repea
   expect(inspectDirectLogin).toHaveBeenLastCalledWith(source);
   expect(completeDirectLogin).not.toHaveBeenCalled();
   expect(hook.result.current.isLocked).toBe(true);
-  expect(hook.result.current.message).toContain('상태를 확인');
+  expect(hook.result.current.message).toContain('다시 로그인해 주세요');
 });
 it('keeps uncertainty locked on a failed status read and never reports success', async () => {
   vi.mocked(startDirectLogin).mockRejectedValue(new Error());

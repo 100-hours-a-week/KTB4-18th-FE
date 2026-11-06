@@ -17,6 +17,7 @@ import {
   shouldRefreshAccessToken,
 } from './authSession';
 import { forgetAuthFlowForTests, primeAuthFlowForTests } from './authFlow';
+import * as directAuthState from './directAuthSessionState';
 
 function accessTokenWithExpiration(expiresAt: number): string {
   const payload = btoa(JSON.stringify({ exp: Math.floor(expiresAt / 1000) }))
@@ -1281,6 +1282,90 @@ describe('direct mode authentication adapter', () => {
     await expect(refreshAccessToken()).rejects.toThrow();
     await expect(authenticatedFetch('/api/v1/users/me')).rejects.toThrow();
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('refreshes the HttpOnly-cookie session after a protected 401 and retries once', async () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('VITE_AUTH_DIRECT_V2_ENABLED', 'true');
+    vi.stubEnv('VITE_AUTH_DIRECT_V2_REFRESH_VERIFIED', 'true');
+    const operations = await import('./directAuthOperationStore');
+    const flowId = '123e4567-e89b-42d3-a456-426614174000';
+    const flow = {
+      flowId,
+      flowEpoch: '1',
+      revision: '2',
+      authenticated: true,
+      proofState: 'ACTIVE',
+      lifecycle: 'AUTHENTICATED',
+    } as const;
+    expect(
+      directAuthState.installDirectSession(
+        directAuthState.beginDirectAuthIntent(),
+        'expired-access',
+        '3600',
+        flow,
+      ),
+    ).toBe(true);
+    expect(directAuthState.getDirectAccessToken()).toBe('expired-access');
+
+    let protectedCalls = 0;
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/protected')) {
+        protectedCalls += 1;
+        return new Response(null, { status: protectedCalls === 1 ? 401 : 200 });
+      }
+      if (url.endsWith('/api/v1/users/me')) return new Response(null, { status: 401 });
+      if (url.endsWith('/api/v1/auth/token/csrf'))
+        return Response.json({ message: 'csrf token issued', data: { csrf_token: 'csrf' } });
+      if (url.endsWith('/api/v1/auth/token/refresh') && init?.method === 'POST')
+        return Response.json({
+          message: 'token refreshed',
+          data: { access_token: 'fresh-access', expires_in: '3600' },
+        });
+      if (url.endsWith('/api/v1/auth/flow/current-operation')) {
+        const source = operations.readDirectAuthOperation('REFRESH');
+        return Response.json({
+          message: 'current auth operation',
+          data: {
+            flow: {
+              flowId,
+              flowEpoch: source ? '2' : '1',
+              revision: source ? '3' : '2',
+              lifecycle: 'AUTHENTICATED',
+              authenticated: true,
+              proofState: 'ACTIVE',
+            },
+            operation: source
+              ? {
+                  flowId,
+                  startingEpoch: source.startingEpoch,
+                  operationId: source.operationId,
+                  kind: 'REFRESH',
+                  status: 'SUCCEEDED',
+                  resultEpoch: '2',
+                  resultRevision: '3',
+                  reasonCode: null,
+                  leaseExpiresAt: null,
+                  receiptExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+                  clientExpiresAt: String(source.expiresAt),
+                  effectiveExpiresAt: String(source.expiresAt),
+                }
+              : null,
+          },
+        });
+      }
+      throw new Error(`Unexpected auth request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    expect(directAuthState.getDirectAccessToken()).toBe('expired-access');
+
+    const response = await authenticatedFetch('/api/protected');
+
+    expect(response.status).toBe(200);
+    expect(protectedCalls).toBe(2);
+    expect(directAuthState.getDirectAccessToken()).toBe('fresh-access');
+    expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
   });
 });
 

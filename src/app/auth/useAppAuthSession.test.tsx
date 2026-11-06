@@ -43,10 +43,10 @@ function useHarness() {
   return { status, version };
 }
 it('keeps initial state restoring until a slow authenticated check completes', async () => {
-  let finish!: () => void;
+  let finish!: (result: 'VALID') => void;
   vi.mocked(restoreVerifiedDirectSession).mockImplementation(
     () =>
-      new Promise<void>((resolve) => {
+      new Promise<'VALID'>((resolve) => {
         finish = resolve;
       }),
   );
@@ -54,20 +54,20 @@ it('keeps initial state restoring until a slow authenticated check completes', a
   expect(hook.result.current.status).toBe('restoring');
   await act(async () => {
     installDirectSession(directAuthVersion(), 'memory', '60', flow);
-    finish();
+    finish('VALID');
   });
   expect(hook.result.current.status).toBe('authenticated');
 });
 it('reconciles peer and expiry notifications without a guest state before confirmation', async () => {
-  vi.mocked(restoreVerifiedDirectSession).mockResolvedValue();
+  vi.mocked(restoreVerifiedDirectSession).mockResolvedValue('VALID');
   installDirectSession(beginDirectAuthIntent(), 'memory', '60', flow);
   const hook = renderHook(useHarness);
   await act(async () => {});
   expect(hook.result.current.status).toBe('authenticated');
-  let finish!: () => void;
+  let finish!: (result: 'VALID') => void;
   vi.mocked(restoreVerifiedDirectSession).mockImplementation(
     () =>
-      new Promise<void>((resolve) => {
+      new Promise<'VALID'>((resolve) => {
         finish = resolve;
       }),
   );
@@ -78,13 +78,13 @@ it('reconciles peer and expiry notifications without a guest state before confir
   );
   expect(hook.result.current.status).toBe('authenticated');
   await act(async () => {
-    finish();
+    finish('VALID');
   });
   expect(hook.result.current.status).toBe('authenticated');
 });
 it('checks focus, visibility and reconnect even when BroadcastChannel is unsupported', async () => {
   vi.stubGlobal('BroadcastChannel', undefined);
-  vi.mocked(restoreVerifiedDirectSession).mockResolvedValue();
+  vi.mocked(restoreVerifiedDirectSession).mockResolvedValue('VALID');
   const hook = renderHook(useHarness);
   await act(async () => {});
   const initial = vi.mocked(restoreVerifiedDirectSession).mock.calls.length;
@@ -100,15 +100,15 @@ it('checks focus, visibility and reconnect even when BroadcastChannel is unsuppo
   expect(hook.result.current.status).toBe('guest');
 });
 it('coalesces overlapping observations and rechecks once after an in-flight result', async () => {
-  let finish!: () => void;
+  let finish!: (result: 'VALID') => void;
   vi.mocked(restoreVerifiedDirectSession)
     .mockImplementationOnce(
       () =>
-        new Promise<void>((resolve) => {
+        new Promise<'VALID'>((resolve) => {
           finish = resolve;
         }),
     )
-    .mockResolvedValue();
+    .mockResolvedValue('VALID');
   const hook = renderHook(useHarness);
   act(() => {
     window.dispatchEvent(new Event('focus'));
@@ -116,7 +116,7 @@ it('coalesces overlapping observations and rechecks once after an in-flight resu
   });
   expect(restoreVerifiedDirectSession).toHaveBeenCalledOnce();
   await act(async () => {
-    finish();
+    finish('VALID');
   });
   expect(restoreVerifiedDirectSession).toHaveBeenCalledTimes(2);
   expect(hook.result.current.status).toBe('guest');
@@ -124,14 +124,15 @@ it('coalesces overlapping observations and rechecks once after an in-flight resu
 
 it('holds a blank restoring state on actual client expiry until a replacement is confirmed', async () => {
   vi.useFakeTimers();
-  vi.mocked(restoreVerifiedDirectSession).mockResolvedValue();
+  vi.stubEnv('VITE_AUTH_DIRECT_V2_REFRESH_VERIFIED', 'false');
+  vi.mocked(restoreVerifiedDirectSession).mockResolvedValue('VALID');
   installDirectSession(beginDirectAuthIntent(), 'memory', '1', flow);
   const hook = renderHook(useHarness);
   await act(async () => {});
-  let finish!: () => void;
+  let finish!: (result: 'VALID') => void;
   vi.mocked(restoreVerifiedDirectSession).mockImplementation(
     () =>
-      new Promise<void>((resolve) => {
+      new Promise<'VALID'>((resolve) => {
         finish = resolve;
       }),
   );
@@ -141,13 +142,75 @@ it('holds a blank restoring state on actual client expiry until a replacement is
   expect(hook.result.current.status).toBe('restoring');
   await act(async () => {
     installDirectSession(directAuthVersion(), 'replacement', '60', flow);
-    finish();
+    finish('VALID');
   });
   expect(hook.result.current.status).toBe('authenticated');
 });
 
+it('refreshes a direct-v2 token ten minutes before its one-hour expiry', async () => {
+  vi.useFakeTimers();
+  vi.mocked(restoreVerifiedDirectSession).mockResolvedValue('VALID');
+  installDirectSession(beginDirectAuthIntent(), 'memory', '3600', flow);
+  renderHook(useHarness);
+  await act(async () => {});
+
+  expect(restoreVerifiedDirectSession).toHaveBeenCalledWith({ forceRefresh: false });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(50 * 60 * 1000 - 1);
+  });
+  expect(restoreVerifiedDirectSession).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  expect(restoreVerifiedDirectSession).toHaveBeenLastCalledWith({ forceRefresh: true });
+});
+
+it('runs one due refresh immediately when a backgrounded tab becomes visible', async () => {
+  vi.useFakeTimers();
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+  vi.mocked(restoreVerifiedDirectSession).mockResolvedValue('VALID');
+  installDirectSession(beginDirectAuthIntent(), 'memory', '3600', flow);
+  renderHook(useHarness);
+  await act(async () => {});
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(50 * 60 * 1000);
+  });
+  expect(restoreVerifiedDirectSession).toHaveBeenCalledTimes(1);
+
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+  await act(async () => {
+    document.dispatchEvent(new Event('visibilitychange'));
+    await Promise.resolve();
+  });
+  expect(restoreVerifiedDirectSession).toHaveBeenCalledTimes(2);
+  expect(restoreVerifiedDirectSession).toHaveBeenLastCalledWith({ forceRefresh: true });
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+});
+
+it('keeps a valid access session after proactive refresh is unavailable and avoids a refresh loop', async () => {
+  vi.useFakeTimers();
+  vi.mocked(restoreVerifiedDirectSession)
+    .mockResolvedValueOnce('VALID')
+    .mockResolvedValue('UNAVAILABLE');
+  installDirectSession(beginDirectAuthIntent(), 'memory', '3600', flow);
+  const hook = renderHook(useHarness);
+  await act(async () => {});
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(50 * 60 * 1000);
+  });
+
+  expect(getDirectAccessToken()).toBe('memory');
+  expect(hook.result.current.status).toBe('authenticated');
+  expect(restoreVerifiedDirectSession).toHaveBeenCalledTimes(2);
+  await act(async () => {
+    window.dispatchEvent(new Event('focus'));
+  });
+  expect(restoreVerifiedDirectSession).toHaveBeenCalledTimes(3);
+  expect(restoreVerifiedDirectSession).toHaveBeenLastCalledWith({ forceRefresh: false });
+});
+
 it('preserves the form key during guest focus, pageshow, online and peer observations', async () => {
-  vi.mocked(restoreVerifiedDirectSession).mockResolvedValue();
+  vi.mocked(restoreVerifiedDirectSession).mockResolvedValue('VALID');
   const hook = renderHook(useHarness);
   await act(async () => {});
   const version = hook.result.current.version;
@@ -166,7 +229,7 @@ it('preserves the form key during guest focus, pageshow, online and peer observa
   expect(hook.result.current.version).toBe(version);
 });
 it('does not remount a logging-in form during a concurrent observation', async () => {
-  vi.mocked(restoreVerifiedDirectSession).mockResolvedValue();
+  vi.mocked(restoreVerifiedDirectSession).mockResolvedValue('VALID');
   const hook = renderHook(() => {
     const [status, setStatus] = useState<AuthStatus>('logging-in');
     const [version, setVersion] = useState(0);
@@ -182,15 +245,15 @@ it('does not remount a logging-in form during a concurrent observation', async (
 });
 
 it('keeps a displayed guest form mounted while its background GET remains slow', async () => {
-  vi.mocked(restoreVerifiedDirectSession).mockResolvedValue();
+  vi.mocked(restoreVerifiedDirectSession).mockResolvedValue('VALID');
   const hook = renderHook(useHarness);
   await act(async () => {});
   expect(hook.result.current.status).toBe('guest');
   const version = hook.result.current.version;
-  let finish!: () => void;
+  let finish!: (result: 'VALID') => void;
   vi.mocked(restoreVerifiedDirectSession).mockImplementation(
     () =>
-      new Promise<void>((resolve) => {
+      new Promise<'VALID'>((resolve) => {
         finish = resolve;
       }),
   );
@@ -198,7 +261,7 @@ it('keeps a displayed guest form mounted while its background GET remains slow',
   expect(hook.result.current.status).toBe('guest');
   expect(hook.result.current.version).toBe(version);
   await act(async () => {
-    finish();
+    finish('VALID');
   });
   expect(hook.result.current.status).toBe('guest');
   expect(hook.result.current.version).toBe(version);

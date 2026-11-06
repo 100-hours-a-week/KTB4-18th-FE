@@ -1,7 +1,3 @@
-import {
-  isDirectRebootstrapVerified,
-  isDirectSourceRecoveryVerified,
-} from '../api/authProtocolMode';
 import { getDirectAuthCapabilities } from '../api/authCapabilities';
 import { ActionButton } from '@seed-design/react';
 import type { LoginSuccessResponse } from '../api/loginTypes';
@@ -40,7 +36,12 @@ export function DirectLoginPage(props: DirectLoginPageProps) {
             <div className="diary-login-intro">
               <h2>오늘도, 한 곡 남겨볼까요?</h2>
             </div>
-            <LoginPageNotices {...props} />
+            <LoginPageNotices
+              authCapabilityMessage={props.authCapabilityMessage}
+              authRestoreError={props.authRestoreError}
+              passwordChangedNotice={props.passwordChangedNotice}
+              onPasswordChangedNoticeDismiss={props.onPasswordChangedNoticeDismiss}
+            />
             {!supported && (
               <p className="login-notice" role="alert">
                 {props.protocolEnabled === false
@@ -65,40 +66,6 @@ export function DirectLoginPage(props: DirectLoginPageProps) {
                 <p className="login-notice" role="status" aria-live="polite">
                   {flow.message}
                 </p>
-              )}
-              {(flow.isLocked ||
-                isDirectRebootstrapVerified() ||
-                isDirectSourceRecoveryVerified()) && (
-                <button type="button" onClick={() => void flow.checkStatus()} disabled={pending}>
-                  상태 확인
-                </button>
-              )}
-              {flow.hasPendingLogout && flow.canRetryPendingLogout && (
-                <button
-                  type="button"
-                  onClick={() => void flow.retryPendingLogout()}
-                  disabled={pending}
-                >
-                  로그아웃 다시 시도
-                </button>
-              )}
-              {flow.recovery.canRecoverSource && (
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => void flow.recovery.recoverSource()}
-                >
-                  세션 복구
-                </button>
-              )}
-              {flow.recovery.canRebootstrap && (
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => void flow.recovery.rebootstrap()}
-                >
-                  인증 상태 다시 준비
-                </button>
               )}
               <ActionButton
                 className={pending ? 'login-submit is-pending' : 'login-submit'}
