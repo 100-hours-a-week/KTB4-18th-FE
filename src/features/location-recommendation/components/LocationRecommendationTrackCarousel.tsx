@@ -36,41 +36,19 @@ type LocationRecommendationTrackCarouselProps = {
   preview: MusicPreviewState;
 };
 
-function withoutRecommendationMedia(track: LocationRecommendationTrack) {
-  return { ...track, previewUrl: null, artworkUrl: null, storeUrl: null };
-}
-
-function getTrackKey(track: LocationRecommendationTrack) {
-  return JSON.stringify([track.trackId, track.title, track.artist]);
-}
-
 export function LocationRecommendationTrackCarousel({
   tracks,
   isPreviewAllowed,
   preview,
 }: LocationRecommendationTrackCarouselProps) {
-  const isDevelopmentBuild = import.meta.env.DEV;
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(tracks[0]?.trackId ?? null);
-  const [resolvedTrackMedia, setResolvedTrackMedia] = useState<ResolvedTrackMedia>({});
   const [unavailableArtworkUrls, setUnavailableArtworkUrls] = useState<Set<string>>(
     () => new Set(),
   );
   const [isDragging, setIsDragging] = useState(false);
+  const [isStepping, setIsStepping] = useState(false);
   const [dragProgress, setDragProgress] = useState(0);
-  const mediaTracks = isDevelopmentBuild
-    ? tracks.map(
-        (item) => resolvedTrackMedia[getTrackKey(item)] ?? withoutRecommendationMedia(item),
-      )
-    : tracks;
-  const resolvingTrackIds = new Set(
-    isDevelopmentBuild
-      ? tracks
-          .filter(
-            (item) => !Object.prototype.hasOwnProperty.call(resolvedTrackMedia, getTrackKey(item)),
-          )
-          .map((item) => item.trackId)
-      : [],
-  );
+  const mediaTracks = tracks;
   const selectedTrackIndex = Math.max(
     0,
     mediaTracks.findIndex((item) => item.trackId === selectedTrackId),
