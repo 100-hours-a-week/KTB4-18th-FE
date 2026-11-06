@@ -27,6 +27,13 @@ import {
   type ChatCacheContext,
 } from './chatConversationCache';
 
+// Server events can arrive before the browser clock reaches their creation time.
+const SERVER_MESSAGE_CLOCK_TOLERANCE_MS = 1_000;
+
+function retainActiveChatMessages(messages: readonly ChatMessage[]): ChatMessage[] {
+  return retainChatMessages(messages, Date.now(), SERVER_MESSAGE_CLOCK_TOLERANCE_MS);
+}
+
 export interface PendingChatMessage {
   clientMessageId: string;
   content: string;
@@ -45,6 +52,7 @@ export interface ChatParticipationState {
   messages?: ChatMessage[];
   pendingMessages?: PendingChatMessage[];
   sendNotice?: string;
+  showDisconnectToast?: boolean;
   gaps?: ChatGap[];
   restoredThroughMessageId?: number;
 }
@@ -67,6 +75,7 @@ export class ChatParticipation {
   private presenceVersion = -1;
   private presenceStatus: NonNullable<ChatParticipationState['presenceStatus']> = 'loading';
   private presenceTimer: number | undefined;
+  private disconnectToastTimer: number | undefined;
   private closeConnection:
     | ((() => void) & {
         send?: (id: string, content: string) => boolean;
@@ -95,7 +104,7 @@ export class ChatParticipation {
   }
 
   private update(status: ChatParticipationState['status'], message: string) {
-    this.messages = retainChatMessages(this.messages);
+    this.messages = retainActiveChatMessages(this.messages);
     this.status = status;
     this.statusMessage = message;
     if (!this.isStopped)
@@ -110,6 +119,7 @@ export class ChatParticipation {
         messages: [...this.messages],
         pendingMessages: [...this.pending.values()],
         sendNotice: this.sendNotice,
+        showDisconnectToast: this.disconnectToastTimer !== undefined,
         gaps: [...this.gaps],
         restoredThroughMessageId: this.restoredThroughMessageId,
       });
@@ -223,6 +233,13 @@ export class ChatParticipation {
           if (!this.isStopped && this.active?.membership.membershipId === membership.membershipId)
             this.receive(event);
         },
+        () => {
+          window.clearTimeout(this.disconnectToastTimer);
+          this.disconnectToastTimer = window.setTimeout(() => {
+            this.disconnectToastTimer = undefined;
+            this.update(this.status, this.statusMessage);
+          }, 4_000);
+        },
       );
     });
   }
@@ -248,6 +265,8 @@ export class ChatParticipation {
 
   private clearMessages() {
     window.clearTimeout(this.expirationTimer);
+    window.clearTimeout(this.disconnectToastTimer);
+    this.disconnectToastTimer = undefined;
     this.cacheContext = null;
     this.restoredThroughMessageId = undefined;
     window.clearTimeout(this.presenceTimer);
@@ -263,7 +282,7 @@ export class ChatParticipation {
   }
 
   private rememberMessages() {
-    this.messages = retainChatMessages(this.messages);
+    this.messages = retainActiveChatMessages(this.messages);
     if (this.active && this.cacheContext)
       storeChatConversation(
         this.cacheContext,
@@ -290,7 +309,7 @@ export class ChatParticipation {
     if (!membership) return;
     if (event.type === 'CHAT_READY') return;
     if (event.type === 'CHAT_HISTORY') {
-      this.messages = retainChatMessages(event.messages);
+      this.messages = retainActiveChatMessages(event.messages);
       this.messages.forEach((message) => this.confirmPending(message));
       this.gaps = [...event.gaps];
       this.restoredThroughMessageId = this.messages.at(-1)?.messageId;
@@ -352,12 +371,13 @@ export class ChatParticipation {
             event.message.userId !== this.currentUserId))
       )
         return;
-      this.confirmPending(event.message);
       if (!this.messages.some((item) => item.messageId === event.message.messageId)) {
         this.messages.push(event.message);
-        this.messages.sort((a, b) => a.messageId - b.messageId);
       }
       this.rememberMessages();
+      if (this.messages.some((item) => item.messageId === event.message.messageId)) {
+        this.confirmPending(event.message);
+      }
     }
     this.update(this.status, this.statusMessage);
   }

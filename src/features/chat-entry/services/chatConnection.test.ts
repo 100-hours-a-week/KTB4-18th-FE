@@ -519,6 +519,31 @@ describe('구독 완료와 누락 메시지 복구', () => {
     expect(status).toHaveBeenLastCalledWith('error', expect.any(String));
     expect(client.deactivate).toHaveBeenCalledOnce();
   });
+
+  it('입장 완료 후 비정상 종료만 단절로 알리고 재시도 중에는 반복하지 않는다', async () => {
+    const disconnected = vi.fn();
+    const connection = connectChatRoom(membership, vi.fn(), undefined, disconnected);
+    const close = (code: number) => config?.onWebSocketClose?.({ code } as CloseEvent);
+    close(1006);
+    expect(disconnected).not.toHaveBeenCalled();
+
+    config?.onConnect?.({} as never);
+    await ready();
+    close(1006);
+    close(1006);
+    expect(disconnected).toHaveBeenCalledOnce();
+
+    config?.onConnect?.({} as never);
+    await ready();
+    close(1006);
+    expect(disconnected).toHaveBeenCalledTimes(2);
+
+    config?.onConnect?.({} as never);
+    await ready();
+    close(4100);
+    expect(disconnected).toHaveBeenCalledTimes(2);
+    connection();
+  });
 });
 
 describe('다중 서버 중단·복구 경계', () => {

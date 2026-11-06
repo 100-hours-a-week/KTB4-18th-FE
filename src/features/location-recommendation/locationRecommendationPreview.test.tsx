@@ -1,7 +1,10 @@
 import { act, cleanup, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LocationRecommendationTrackCarousel } from './components/LocationRecommendationTrackCarousel';
+import { resolveItunesTrack } from './api/itunesTrackSearch';
 import { useMusicPreview } from '../music-record/hooks/useMusicPreview';
+
+vi.mock('./api/itunesTrackSearch', () => ({ resolveItunesTrack: vi.fn() }));
 
 class TestAudio {
   static latest: TestAudio | null = null;
@@ -144,8 +147,27 @@ describe('location recommendation previews', () => {
 
     renderCarousel();
 
+    expect(resolveItunesTrack).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: '미리 듣기: 노래' })).toBeEnabled();
+    expect(screen.getByRole('link', { name: 'Apple Music에서 보기' })).toHaveAttribute(
+      'href',
+      'https://ai.example.com/store',
+    );
+  });
+
+  it('DEV lookup failure leaves AI media unavailable without fallback', async () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('PROD', false);
+    vi.mocked(resolveItunesTrack).mockResolvedValueOnce({
+      ...recommendationTrack,
+      previewUrl: null,
+      artworkUrl: null,
+      storeUrl: null,
+    });
+
+    renderCarousel();
+
+    expect(await screen.findByRole('button', { name: '미리 듣기: 노래' })).toBeDisabled();
     expect(screen.queryByRole('link', { name: 'Apple Music에서 보기' })).not.toBeInTheDocument();
-    expect(screen.queryByText('iTunes에서 제공')).not.toBeInTheDocument();
   });
 });

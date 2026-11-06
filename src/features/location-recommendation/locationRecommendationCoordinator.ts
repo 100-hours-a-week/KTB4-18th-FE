@@ -343,6 +343,7 @@ export class LocationRecommendationCoordinator {
     this.loadStoredTimeoutCleanupMarkers();
   }
 
+
   async readRuntimeStatus(): Promise<LocationRecommendationRuntimeStatus> {
     let permission: LocationRecommendationRuntimeStatus['permission'] = 'unsupported';
     try {
@@ -414,6 +415,7 @@ export class LocationRecommendationCoordinator {
       waitingFor,
     };
   }
+
 
   start(): void {
     if (this.started || this.isDisabled) return;

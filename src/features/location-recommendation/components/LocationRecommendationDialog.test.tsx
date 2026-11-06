@@ -19,6 +19,10 @@ vi.mock('../../music-record/hooks/useMusicPreview', () => ({
   }),
 }));
 
+vi.mock('../api/itunesTrackSearch', () => ({
+  resolveItunesTrack: vi.fn(async (track: LocationRecommendationTrack) => track),
+}));
+
 const makeTrack = (index: number): LocationRecommendationTrack => ({
   trackId: `track-${index}`,
   title: `노래 ${index}`,

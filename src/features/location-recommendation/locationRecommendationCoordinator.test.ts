@@ -1532,10 +1532,10 @@ describe('location recommendation coordination helpers', () => {
     await recreatedInternals.reconcilePendingMarkers();
 
     expect(cancelLocationRecommendation).toHaveBeenCalledTimes(2);
-    expect(cancelLocationRecommendation.mock.calls[1][0]).toEqual(
-      cancelLocationRecommendation.mock.calls[0][0],
+    expect(vi.mocked(cancelLocationRecommendation).mock.calls[1][0]).toEqual(
+      vi.mocked(cancelLocationRecommendation).mock.calls[0][0],
     );
-    expect(cancelLocationRecommendation.mock.calls[1][0]).toMatchObject({
+    expect(vi.mocked(cancelLocationRecommendation).mock.calls[1][0]).toMatchObject({
       requestId,
       scopeGeneration,
       cancelEpoch: candidate.cancelEpoch,
@@ -1601,7 +1601,7 @@ describe('location recommendation coordination helpers', () => {
     await vi.advanceTimersByTimeAsync(LOCATION_RECOMMENDATION_STATUS_INTERVAL_MS);
     await recovery;
 
-    expect(getLocationRecommendationStatus.mock.calls.map(([id]) => id)).toEqual([
+    expect(vi.mocked(getLocationRecommendationStatus).mock.calls.map(([id]) => id)).toEqual([
       grant.operationUUID,
       requestId,
     ]);
@@ -1626,7 +1626,11 @@ describe('location recommendation coordination helpers', () => {
       cancelEpoch: 2,
       remainingTtlMs: 0,
     });
-    vi.mocked(cancelLocationRecommendation).mockResolvedValue(undefined);
+    vi.mocked(cancelLocationRecommendation).mockResolvedValue({
+      status: 'CANCELLED',
+      scopeGeneration,
+      cancelEpoch: 3,
+    });
     const coordinator = new LocationRecommendationCoordinator('auth-epoch', () => undefined);
     const internals = coordinator as unknown as {
       activeGrant: WorkerGrant | null;

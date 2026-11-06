@@ -55,6 +55,7 @@
 
 .location-recommendation-carousel__slide--previous,
 .location-recommendation-carousel__slide--next {
+  width: min(52%, 230px, 15dvh);
   border-radius: 22px;
 }
 
@@ -245,6 +246,7 @@
   }
   .location-recommendation-carousel__slide--previous,
   .location-recommendation-carousel__slide--next {
+    width: min(52%, 190px, 15dvh);
     border-radius: 16px;
   }
   .location-recommendation-carousel__copy {

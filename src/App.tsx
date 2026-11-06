@@ -96,6 +96,7 @@ function AppContent() {
   const pathname = routeLocation.pathname;
   const [initialAuthRestoreState] = useState(() => getAuthRestoreState());
   const [authStatus, setAuthStatus] = useState<AuthStatus>('restoring');
+  useLocationRecommendationAuthState(authStatus === 'authenticated');
   const [authCapability] = useState(() =>
     isDirectAuthEnabled() ? ({ supported: true } as const) : probeAuthCapabilities(),
   );

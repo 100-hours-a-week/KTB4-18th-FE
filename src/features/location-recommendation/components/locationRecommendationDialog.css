@@ -30,7 +30,7 @@
   max-height: 100%;
   min-height: 0;
   overflow: hidden;
-  padding: clamp(20px, 2.5vh, 32px) clamp(18px, 4vw, 40px);
+  padding: clamp(16px, 2vh, 30px) clamp(18px, 4vw, 40px);
   border: 1px solid rgb(255 255 255 / 76%);
   border-radius: clamp(30px, 7vw, 64px);
   background: linear-gradient(138deg, #17221f 0%, #414541 54%, #131d19 100%);
@@ -115,7 +115,7 @@
 
 @media (max-width: 520px) {
   .location-recommendation-dialog {
-    padding: 20px 18px 22px;
+    padding: 16px 18px 18px;
     border-radius: 28px;
   }
   .location-recommendation-dialog__header {
