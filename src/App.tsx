@@ -1,4 +1,8 @@
-import { DIRECT_AUTH_RECHECK_EVENT } from './features/auth-login/api/directAuthSessionState';
+import {
+  DIRECT_AUTH_RECHECK_EVENT,
+  getDirectAccessToken,
+  isDirectAuthRecoveryUnavailable,
+} from './features/auth-login/api/directAuthSessionState';
 import { isDirectAuthEnabled } from './features/auth-login/api/authProtocolMode';
 import { useAppAuthSession } from './app/auth/useAppAuthSession';
 import { lazy, useCallback, useEffect, useRef, useState } from 'react';
@@ -115,12 +119,22 @@ function AppContent() {
     setAuthIntentVersion(authIntent.current);
   };
   const isProtectedRoute =
+    pathname === '/' ||
     pathname === CHATBOT_PATH ||
     pathname === CHAT_PATH ||
     pathname === MY_PATH ||
     pathname === MUSIC_RECORDS_PATH ||
     pathname === MUSIC_RECORD_CREATE_PATH ||
     /^\/music-records\/([1-9]\d*)$/.test(pathname);
+  const hasUsableAccessToken = isDirectAuthEnabled()
+    ? Boolean(getDirectAccessToken())
+    : Boolean(getAccessToken());
+  const canUseLocationRecommendation =
+    authStatus === 'authenticated' ||
+    (authStatus === 'retryable-error' &&
+      hasUsableAccessToken &&
+      (!isDirectAuthEnabled() || !isDirectAuthRecoveryUnavailable()));
+  useLocationRecommendationAuthState(canUseLocationRecommendation);
 
   useEffect(() => {
     const updateLocation = () => setRouteLocation(readRouteLocation());
@@ -218,7 +232,10 @@ function AppContent() {
   }, [pathname, routeLocation.search, authStatus]);
 
   useEffect(() => {
-    if (!isProtectedRoute || authStatus !== 'guest') return;
+    const shouldRequireLogin =
+      authStatus === 'guest' ||
+      (pathname === '/' && authStatus === 'retryable-error' && !hasUsableAccessToken);
+    if (!isProtectedRoute || !shouldRequireLogin) return;
     if (
       authIntentVersion !== authIntent.current ||
       window.location.pathname !== routeLocation.pathname ||
@@ -228,7 +245,14 @@ function AppContent() {
       return;
     }
     replaceRoute(loginHref(routeLocation));
-  }, [authIntentVersion, authStatus, isProtectedRoute, routeLocation]);
+  }, [
+    authIntentVersion,
+    authStatus,
+    hasUsableAccessToken,
+    isProtectedRoute,
+    pathname,
+    routeLocation,
+  ]);
 
   useEffect(() => {
     if (isDirectAuthEnabled() || authStatus !== 'authenticated') return;
@@ -472,7 +496,12 @@ function AppContent() {
       </main>
     );
   }
-  if (isProtectedRoute && authStatus === 'retryable-error' && !getAccessToken()) {
+  if (
+    isProtectedRoute &&
+    authStatus === 'retryable-error' &&
+    !(pathname === '/' && !hasUsableAccessToken) &&
+    (!getAccessToken() || (isDirectAuthEnabled() && isDirectAuthRecoveryUnavailable()))
+  ) {
     return (
       <main className="auth-status-page" role="alert">
         <p>
@@ -481,21 +510,16 @@ function AppContent() {
             : getAuthCapabilityMessage(authCapability.reason)}
         </p>
         {manualLogoutError && <p>{manualLogoutError}</p>}
-        <button
-          type="button"
-          onClick={() => {
-            setManualLogoutError('');
-            void restore();
-          }}
-        >
-          다시 시도
-        </button>
         <a href={loginHref(routeLocation)}>로그인</a>
         <a href="/">음악 지도로 돌아가기</a>
       </main>
     );
   }
-  if (isProtectedRoute && authStatus === 'guest') {
+  if (
+    isProtectedRoute &&
+    (authStatus === 'guest' ||
+      (pathname === '/' && authStatus === 'retryable-error' && !hasUsableAccessToken))
+  ) {
     return (
       <main role="status" aria-live="polite">
         로그인 페이지로 이동하고 있어요.

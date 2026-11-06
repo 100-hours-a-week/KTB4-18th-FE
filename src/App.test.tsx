@@ -221,6 +221,27 @@ async function renderAuthenticatedMyPage() {
 }
 
 describe('탭 간 인증 세션 복구', () => {
+  it('로그인 페이지에 남은 브라우저 세션을 복구하면 기본 경로인 메인 지도로 이동한다', async () => {
+    const restored = accessTokenWithExpiration(Date.now() + 60 * 60 * 1000);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL) =>
+        Promise.resolve(
+          String(input).endsWith('/token/csrf')
+            ? Response.json({ data: { csrf_token: 'csrf' } })
+            : Response.json({ data: { access_token: restored } }),
+        ),
+      ),
+    );
+    window.history.replaceState(null, '', '/login');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: '음악 지도' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
+    expect(getAccessToken()).toBe(restored);
+  });
+
   it('로그인 URL의 새 탭은 refresh 성공 뒤 원래 보호 경로로 돌아간다', async () => {
     const restored = accessTokenWithExpiration(Date.now() + 60 * 60 * 1000);
     const fetcher = vi.fn((input: string | URL) =>
@@ -953,6 +974,48 @@ describe('로그인과 회원가입 화면 연결', () => {
       expect(window.location.pathname).toBe('/login');
       expect(window.location.search).toBe('');
     });
+  });
+
+  it('로그아웃 상태에서 메인 지도에 접근하면 로그인으로 보내고 원래 경로를 보존한다', async () => {
+    resetAuthSessionForTests();
+    sessionStorage.clear();
+    localStorage.removeItem('meomuneum:auth-epoch');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith('/token/csrf')) {
+          return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+        }
+        if (url.endsWith('/token/refresh')) {
+          return Promise.resolve(
+            Response.json({ message: 'unauthorized', data: null }, { status: 401 }),
+          );
+        }
+        return Promise.resolve(Response.json({ data: null }));
+      }),
+    );
+    window.history.replaceState(null, '', '/');
+
+    render(<App />);
+
+    expect(await screen.findByLabelText('이메일')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/login');
+    expect(new URLSearchParams(window.location.search).get('returnTo')).toBe('/');
+    expect(screen.queryByRole('heading', { name: '음악 지도' })).not.toBeInTheDocument();
+  });
+
+  it('브라우저에 유효한 로그인 정보가 있으면 메인 지도에 접근할 수 있다', async () => {
+    resetAuthSessionForTests();
+    sessionStorage.clear();
+    setAccessToken(accessTokenWithExpiration(Date.now() + 60 * 60 * 1000));
+    window.history.replaceState(null, '', '/');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: '음악 지도' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
+    expect(screen.queryByLabelText('이메일')).not.toBeInTheDocument();
   });
 
   it('인증된 사용자는 보호 경로에서 로그인 화면으로 이동하지 않는다', async () => {

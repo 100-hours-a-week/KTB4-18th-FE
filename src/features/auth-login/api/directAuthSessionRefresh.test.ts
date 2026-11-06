@@ -72,6 +72,37 @@ it('keeps a server-valid token across a peer refresh without producing another P
   expect(test.state.getDirectAccessToken()).toBe(token);
   expect(test.fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
 });
+it('proactively rotates the cookie-backed direct-v2 session without waiting for access expiry', async () => {
+  const test = await setup();
+  const initialFlow = {
+    flowId,
+    flowEpoch: '2',
+    revision: '3',
+    lifecycle: 'AUTHENTICATED',
+    authenticated: true,
+    proofState: 'ACTIVE',
+  } as const;
+  test.state.installDirectSession(
+    test.state.beginDirectAuthIntent(),
+    'still-valid-access',
+    '3600',
+    initialFlow,
+  );
+
+  await expect(test.api.restoreVerifiedDirectSession({ forceRefresh: true })).resolves.toBe(
+    'REFRESHED',
+  );
+
+  expect(test.state.getDirectAccessToken()).toBe('memory-3');
+  expect(test.fetcher.mock.calls.some(([input]) => String(input).endsWith('/users/me'))).toBe(
+    false,
+  );
+  const [, refreshInit] = test.fetcher.mock.calls.find(
+    ([input, init]) => String(input).endsWith('/token/refresh') && init?.method === 'POST',
+  )!;
+  expect(refreshInit?.credentials).toBe('include');
+  expect(refreshInit?.body).toBeUndefined();
+});
 it('renews after client TTL expiry on a new canonical generation and coalesces repeated observations', async () => {
   vi.useFakeTimers();
   const test = await setup();
@@ -94,6 +125,43 @@ it('keeps an existing copied tuple GET-only even on a new observation', async ()
   );
   await test.api.restoreVerifiedDirectSession();
   expect(test.fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+});
+
+it('clears only the local refresh marker after the server explicitly rejects the session', async () => {
+  const test = await setup();
+  const initialFlow = {
+    flowId,
+    flowEpoch: '2',
+    revision: '3',
+    lifecycle: 'AUTHENTICATED',
+    authenticated: true,
+    proofState: 'ACTIVE',
+  } as const;
+  test.state.installDirectSession(
+    test.state.beginDirectAuthIntent(),
+    'expired-access',
+    '3600',
+    initialFlow,
+  );
+  test.fetcher.mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.endsWith('/users/me')) return new Response(null, { status: 401 });
+    if (url.endsWith('/token/csrf'))
+      return Response.json({ message: 'csrf token issued', data: { csrf_token: 'csrf' } });
+    if (url.endsWith('/token/refresh') && init?.method === 'POST')
+      return Response.json({ message: 'AUTH_SESSION_INVALID', data: null }, { status: 401 });
+    if (url.endsWith('/flow/current-operation'))
+      return Response.json({
+        message: 'current auth operation',
+        data: { flow: initialFlow, operation: null },
+      });
+    throw new Error(`Unexpected request: ${url}`);
+  });
+
+  await expect(test.api.restoreVerifiedDirectSession()).rejects.toMatchObject({ status: 401 });
+
+  expect(test.state.getDirectAccessToken()).toBeNull();
+  expect(test.store.readDirectAuthOperation('REFRESH')).toBeNull();
 });
 
 it.each(['network', '503'] as const)(
@@ -130,7 +198,7 @@ it('does not consume a canonical boundary after pre-dispatch intent cancellation
     }
     return actual(input, init);
   });
-  await expect(test.api.restoreVerifiedDirectSession()).rejects.toThrow();
+  await expect(test.api.restoreVerifiedDirectSession()).resolves.toBe('SUPERSEDED');
   expect(test.store.readDirectAuthOperation('REFRESH')).toBeNull();
   await test.api.restoreVerifiedDirectSession();
   expect(test.fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);

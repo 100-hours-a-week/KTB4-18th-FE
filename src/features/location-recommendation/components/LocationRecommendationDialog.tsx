@@ -35,7 +35,7 @@ export function LocationRecommendationDialog({
     const inertSiblings: { element: HTMLElement; wasInert: boolean }[] = [];
     let branch: HTMLElement | null = portalTarget;
     while (branch?.parentElement) {
-      const parent: HTMLElement = branch.parentElement;
+      const parent = branch.parentElement;
       Array.from(parent.children).forEach((sibling) => {
         if (sibling === branch || !(sibling instanceof HTMLElement)) return;
         inertSiblings.push({ element: sibling, wasInert: sibling.inert });
@@ -206,10 +206,6 @@ export function LocationRecommendationDialog({
         />
         <p className="location-recommendation-dialog__message">
           지역에 어울리는 추천곡을 준비했어요. 곡을 넘겨보고 미리 들어보세요.
-        </p>
-        <p className="location-recommendation-dialog__footnote">
-          미리 듣기는 직접 누르면 최대 30초 동안 재생돼요. 추천은 음악 기록에 자동 저장되지 않아요.
-          미리 듣기·앨범 아트 제공: iTunes.
         </p>
       </section>
     </div>,

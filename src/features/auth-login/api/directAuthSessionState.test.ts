@@ -4,6 +4,7 @@ import {
   clearDirectSession,
   directAuthenticatedFetch,
   getDirectAccessToken,
+  getDirectAccessTokenRefreshAt,
   installDirectSession,
 } from './directAuthSessionState';
 const flow = {
@@ -30,7 +31,13 @@ it('keeps credentials in memory and fences late login results', () => {
   expect(sessionStorage.length).toBe(0);
   expect(localStorage.length).toBe(0);
 });
-it('never refreshes or retries protected requests on missing token or 401', async () => {
+it('schedules direct-v2 refresh before access-token expiry', () => {
+  vi.useFakeTimers();
+  const now = Date.now();
+  installDirectSession(beginDirectAuthIntent(), 'current', '3600', flow);
+  expect(getDirectAccessTokenRefreshAt()).toBe(now + 3600_000 - 600_000);
+});
+it('keeps a token until the auth-session recovery layer handles a protected 401', async () => {
   const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
   vi.stubGlobal('fetch', fetcher);
   await expect(directAuthenticatedFetch('/api/v1/users/me')).rejects.toThrow();
@@ -38,7 +45,7 @@ it('never refreshes or retries protected requests on missing token or 401', asyn
   installDirectSession(beginDirectAuthIntent(), 'current', '60', flow);
   expect((await directAuthenticatedFetch('/api/v1/users/me')).status).toBe(401);
   expect(fetcher).toHaveBeenCalledOnce();
-  expect(getDirectAccessToken()).toBeNull();
+  expect(getDirectAccessToken()).toBe('current');
 });
 it('rejects a protected response arriving after logout intent', async () => {
   let complete!: (response: Response) => void;

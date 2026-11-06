@@ -80,28 +80,68 @@ describe('location recommendation previews', () => {
     expect(result.current.isPlaying).toBe(false);
   });
 
-  it('DEV discards AI media and exposes only the exact iTunes result', async () => {
+  it('uses the supplied local mock media without calling the iTunes Search API', () => {
     vi.stubEnv('DEV', true);
     vi.stubEnv('PROD', false);
-    vi.mocked(resolveItunesTrack).mockResolvedValueOnce({
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const localMockTrack = {
       ...recommendationTrack,
       previewUrl: 'https://audio-ssl.itunes.apple.com/preview.m4a',
-      artworkUrl: 'https://is1-ssl.mzstatic.com/artwork/600x600bb.jpg',
+      artworkUrl: 'https://is1-ssl.mzstatic.com/artwork/680x680bb.jpg',
       storeUrl: 'https://music.apple.com/kr/song/example/1',
-    });
+    };
 
-    renderCarousel();
+    render(
+      <LocationRecommendationTrackCarousel
+        tracks={[localMockTrack]}
+        isPreviewAllowed
+        preview={{
+          activeTrack: null,
+          isPlaying: false,
+          isLoading: false,
+          error: '',
+          toggle: vi.fn().mockResolvedValue(undefined),
+          stop: vi.fn(),
+        }}
+      />,
+    );
 
-    expect(resolveItunesTrack).toHaveBeenCalledWith(recommendationTrack, expect.any(AbortSignal));
-    expect(screen.getByRole('button', { name: '미리 듣기: 노래' })).toBeDisabled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    const previewButton = screen.getByRole('button', { name: '미리 듣기: 노래' });
+    expect(previewButton).toBeEnabled();
+    expect(previewButton.querySelector('img')).toHaveAttribute(
+      'src',
+      '/icons/location-recommendation/play.svg',
+    );
     expect(screen.queryByRole('link', { name: 'Apple Music에서 보기' })).not.toBeInTheDocument();
-    expect(await screen.findByRole('link', { name: 'Apple Music에서 보기' })).toHaveAttribute(
-      'href',
-      'https://music.apple.com/kr/song/example/1',
+    expect(screen.queryByText('iTunes에서 제공')).not.toBeInTheDocument();
+  });
+
+  it('uses the saved stop icon while a preview is playing', () => {
+    render(
+      <LocationRecommendationTrackCarousel
+        tracks={[recommendationTrack]}
+        isPreviewAllowed
+        preview={{
+          activeTrack: 'track-1',
+          isPlaying: true,
+          isLoading: false,
+          error: '',
+          toggle: vi.fn().mockResolvedValue(undefined),
+          stop: vi.fn(),
+        }}
+      />,
+    );
+
+    const stopButton = screen.getByRole('button', { name: '미리 듣기 중지: 노래' });
+    expect(stopButton.querySelector('img')).toHaveAttribute(
+      'src',
+      '/icons/location-recommendation/stop.svg',
     );
   });
 
-  it('production keeps AI HTTPS media and never performs an iTunes lookup', () => {
+  it('production keeps the AI-provided media URLs', () => {
     vi.stubEnv('DEV', false);
     vi.stubEnv('PROD', true);
 

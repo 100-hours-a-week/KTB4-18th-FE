@@ -183,10 +183,11 @@ export function MainPage({ onChat }: MainPageProps) {
   const isIntro =
     route.destination === 'map' && !isCompleted && !prefersReducedMotion && !hasSettledWithoutGrid;
   const isMapReady = mapState.status !== 'loading' && mapState.gridDots.length > 0;
+  const canRequestLocationRecommendation = route.destination === 'map' && isCompleted && isMapReady;
   const isMorphReady = isIntro && isMapReady;
   useLocationRecommendationMapEligibility(
     route.destination === 'map',
-    route.destination === 'map' && isCompleted && isMapReady,
+    canRequestLocationRecommendation,
   );
 
   useEffect(() => {

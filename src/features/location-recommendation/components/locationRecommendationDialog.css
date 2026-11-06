@@ -1,7 +1,10 @@
 .location-recommendation-portal-root {
   position: fixed;
+  top: 0;
+  left: var(--app-left, 0px);
+  width: var(--app-width, 100vw);
+  height: 100dvh;
   z-index: 1100;
-  inset: 0;
   pointer-events: none;
 }
 
@@ -98,21 +101,10 @@
   max-width: 560px;
   margin: clamp(8px, 1.4vh, 14px) 0 0;
   color: #f1f3f1;
-  font-size: clamp(14px, 1.8vh, 18px);
+  font-size: 16px;
   line-height: 1.45;
   text-align: center;
   word-break: keep-all;
-}
-
-.location-recommendation-dialog__footnote {
-  align-self: center;
-  flex: 0 0 auto;
-  max-width: 560px;
-  margin: 8px 0 0;
-  color: #c5cdc8;
-  font-size: 11px;
-  line-height: 1.4;
-  text-align: center;
 }
 
 .location-recommendation-dialog button:focus-visible,
