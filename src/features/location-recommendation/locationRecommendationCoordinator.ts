@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect } from 'react';
+import { createContext, useContext, useLayoutEffect } from 'react';
 import { ACCESS_TOKEN_CHANGED_EVENT } from '../auth-login/api/authSession';
 import {
   cancelLocationRecommendation,
@@ -42,6 +42,22 @@ export function isLocalLocationRecommendationTestHost(hostname: string): boolean
 export type CoordinatorView = {
   noticeOpen: boolean;
   candidate: LocationRecommendationCandidate | null;
+};
+
+export type LocationRecommendationRuntimeStatus = {
+  permission: PermissionState | 'not-read' | 'unsupported';
+  mapRoute: boolean;
+  mapReady: boolean;
+  serviceRoute: boolean;
+  tabActive: boolean;
+  noticeAcknowledged: boolean;
+  coordinatorStarted: boolean;
+  disabled: boolean;
+  authorizationPaused: boolean;
+  workerStatus: LocationRecommendationState['status'] | 'not-connected';
+  workerPhase: LocationRecommendationState['phase'] | null;
+  popupVisible: boolean;
+  waitingFor: string | null;
 };
 
 type LocationSample = {
@@ -302,6 +318,8 @@ export class LocationRecommendationCoordinator {
   private currentTrigger: 'SESSION_START' | 'RESUME' = 'SESSION_START';
   private activeGrant: WorkerGrant | null = null;
   private currentState: LocationRecommendationState | null = null;
+  private hasReceivedWorkerState = false;
+  private waitingForWorkerState = false;
   private displayedCandidate: LocationRecommendationCandidate | null = null;
   private cachedSample: CachedSample | null = null;
   private accessContextController: AbortController | null = null;
@@ -325,6 +343,78 @@ export class LocationRecommendationCoordinator {
     this.loadStoredTimeoutCleanupMarkers();
   }
 
+  async readRuntimeStatus(): Promise<LocationRecommendationRuntimeStatus> {
+    let permission: LocationRecommendationRuntimeStatus['permission'] = 'unsupported';
+    try {
+      const permissionStatus = await navigator.permissions?.query({ name: 'geolocation' });
+      if (permissionStatus) {
+        permission = permissionStatus.state;
+        if (permissionStatus !== this.locationPermissionStatus) {
+          this.locationPermissionStatus?.removeEventListener(
+            'change',
+            this.handleLocationPermissionChange,
+          );
+          this.locationPermissionStatus = permissionStatus;
+          permissionStatus.addEventListener('change', this.handleLocationPermissionChange);
+        }
+      }
+    } catch {
+      permission = 'unsupported';
+    }
+
+    const tabActive = this.isActuallyActive();
+    const state = this.currentState;
+    const waitingFor = !this.started
+      ? 'COORDINATOR_NOT_STARTED'
+      : this.isDisabled
+        ? 'RECOMMENDATION_UNAVAILABLE'
+        : this.authorizationPaused
+          ? 'AUTHORIZATION_REQUIRED'
+          : !this.serviceRoute
+            ? 'SERVICE_ROUTE_REQUIRED'
+            : !this.isMapRoute
+              ? 'MAP_ROUTE_REQUIRED'
+              : !this.isMapEligible
+                ? 'MAP_NOT_READY'
+                : !tabActive
+                  ? 'SERVICE_TAB_NOT_ACTIVE'
+                  : !this.noticeAcknowledged
+                    ? 'LOCATION_NOTICE_REQUIRED'
+                    : permission === 'denied'
+                      ? 'LOCATION_PERMISSION_DENIED'
+                      : !this.hasReceivedWorkerState
+                        ? 'WORKER_STATE_PENDING'
+                        : state?.status === 'READY'
+                          ? null
+                          : state?.status === 'PROCESSING'
+                            ? 'AI_REQUEST_PROCESSING'
+                            : state?.status === 'EMPTY'
+                              ? 'NO_RECOMMENDATION_TRACKS'
+                              : state?.status === 'FAILED'
+                                ? 'RECOMMENDATION_FAILED'
+                                : state?.status
+                                  ? `REQUEST_${state.status}`
+                                  : state?.phase && state.phase !== 'NOT_STARTED'
+                                    ? state.phase
+                                    : 'READY_TO_REQUEST';
+
+    return {
+      permission,
+      mapRoute: this.isMapRoute,
+      mapReady: this.isMapEligible,
+      serviceRoute: this.serviceRoute,
+      tabActive,
+      noticeAcknowledged: this.noticeAcknowledged,
+      coordinatorStarted: this.started,
+      disabled: this.isDisabled,
+      authorizationPaused: this.authorizationPaused,
+      workerStatus: state?.status ?? 'not-connected',
+      workerPhase: state?.phase ?? null,
+      popupVisible: this.displayedCandidate !== null,
+      waitingFor,
+    };
+  }
+
   start(): void {
     if (this.started || this.isDisabled) return;
     this.started = true;
@@ -334,7 +424,7 @@ export class LocationRecommendationCoordinator {
     }
     const tabId = getTabId();
     this.client = new LocationRecommendationWorkerClient(tabId, this.authEpoch, {
-      onState: (state, isInitial) => this.handleWorkerState(state, isInitial),
+      onState: (state) => this.handleWorkerState(state),
       onGrant: (grant) => {
         this.activeGrant = grant;
       },
@@ -382,6 +472,9 @@ export class LocationRecommendationCoordinator {
       this.handleLocationPermissionChange,
     );
     this.locationPermissionStatus = null;
+    this.currentState = null;
+    this.hasReceivedWorkerState = false;
+    this.waitingForWorkerState = false;
     if (resetAuth) {
       this.client?.resetAuth();
       this.requestControllers.forEach((controller) => controller.abort());
@@ -427,11 +520,15 @@ export class LocationRecommendationCoordinator {
       this.mapEligibilityRevision,
     );
     if (nextEligible) {
+      const accessEventBeforeMapReady = this.currentAccessEventId;
+      if (!wasMapEligible) this.startMapAccessIfReady(true);
       if (
         !wasMapEligible &&
         this.hasEnteredReadyMap &&
+        this.hasReceivedWorkerState &&
         isLocalLocationRecommendationTestHost(window.location.hostname) &&
-        this.isActuallyActive()
+        this.isActuallyActive() &&
+        this.currentAccessEventId === accessEventBeforeMapReady
       ) {
         this.beginAccessEvent();
       }
@@ -439,6 +536,16 @@ export class LocationRecommendationCoordinator {
     }
     if (this.isMapEligible) void this.tryDisplayCandidate();
     if (previousMapRoute !== isMapRoute) this.scheduleActivityCheck();
+  }
+
+  handleMapPageEntry(): void {
+    if (!this.started || !this.serviceRoute || !this.isMapRoute || !this.isMapEligible) return;
+    if (this.currentState?.status === 'PROCESSING') return;
+    if (!this.isActive) {
+      this.scheduleActivityCheck();
+      return;
+    }
+    this.startMapAccessIfReady(true);
   }
 
   acknowledgeNotice(): void {
@@ -574,6 +681,8 @@ export class LocationRecommendationCoordinator {
   private readonly handleAuthorizationChange = () => {
     if (!this.authorizationPaused) return;
     this.authorizationPaused = false;
+    this.currentAccessEventId = null;
+    this.currentOperationUUID = null;
     this.scheduleActivityCheck();
   };
 
@@ -658,7 +767,10 @@ export class LocationRecommendationCoordinator {
       typeof document.hasFocus === 'function' &&
       document.hasFocus();
     if (active === this.lastActive) {
-      if (active) void this.reconcilePendingMarkers();
+      if (active) {
+        this.startMapAccessIfReady();
+        void this.reconcilePendingMarkers();
+      }
       return;
     }
     this.lastActive = active;
@@ -679,12 +791,38 @@ export class LocationRecommendationCoordinator {
     void this.reconcilePendingMarkers();
     this.timeoutCleanupMarkers.forEach((marker) => void this.sendTimeoutCancellation(marker));
     this.dismissedForActivation = false;
+    if (!this.isMapRoute || !this.isMapEligible) return;
+    this.startMapAccessIfReady(true);
+  }
+
+  private startMapAccessIfReady(forceNewAccessEvent = false): void {
+    if (!this.isActuallyActive() || !this.isMapRoute || !this.isMapEligible) return;
     if (!this.noticeAcknowledged) {
+      if (this.dismissedForActivation || this.noticeOpen) return;
       this.noticeOpen = true;
       this.publishView();
       return;
     }
-    this.beginAccessEvent();
+    if (!this.hasReceivedWorkerState) {
+      this.waitingForWorkerState = true;
+      return;
+    }
+    const state = this.currentState;
+    const candidate = state?.candidate;
+    if (
+      state?.status === 'READY' &&
+      candidate &&
+      state.accessEventId === this.currentAccessEventId &&
+      state.operationUUID === this.currentOperationUUID &&
+      state.cancelMarker === null &&
+      !this.hasPendingCancellation(candidate)
+    ) {
+      if (state.displayGrantedTabId === null || state.displayGrantedTabId === this.client?.tabId) {
+        void this.tryDisplayCandidate();
+      }
+      return;
+    }
+    if (forceNewAccessEvent || this.currentAccessEventId === null) this.beginAccessEvent();
   }
 
   private beginAccessEvent(trigger?: 'SESSION_START' | 'RESUME'): void {
@@ -693,7 +831,9 @@ export class LocationRecommendationCoordinator {
       !this.started ||
       !this.client ||
       this.isDisabled ||
-      !this.noticeAcknowledged
+      !this.noticeAcknowledged ||
+      !this.isMapRoute ||
+      !this.isMapEligible
     ) {
       return;
     }
@@ -1065,7 +1205,7 @@ export class LocationRecommendationCoordinator {
       !this.isMapEligible ||
       !this.isActuallyActive() ||
       state?.status !== 'READY' ||
-      state.displayGrantedTabId !== null ||
+      (state.displayGrantedTabId !== null && state.displayGrantedTabId !== client.tabId) ||
       state.cancelMarker !== null ||
       candidate.accessEventId !== this.currentAccessEventId ||
       candidate.operationUUID !== this.currentOperationUUID ||
@@ -1076,14 +1216,32 @@ export class LocationRecommendationCoordinator {
     if (this.displayedCandidate?.requestId === candidate.requestId) return;
     const currentStateRevision = state.stateRevision;
     const mapRevision = this.mapEligibilityRevision;
-    if (!(await this.verifyStatus(candidate, true))) return;
+    const accessEventId = candidate.accessEventId;
+    const operationUUID = candidate.operationUUID;
+    if (!(await this.verifyStatus(candidate, true))) {
+      this.startFreshAccessAfterStaleCandidate(
+        candidate,
+        currentStateRevision,
+        mapRevision,
+        accessEventId,
+        operationUUID,
+      );
+      return;
+    }
     if (
       !this.isActuallyActive() ||
       !this.isMapEligible ||
       this.currentState?.stateRevision !== currentStateRevision ||
       this.mapEligibilityRevision !== mapRevision ||
+      this.currentAccessEventId !== accessEventId ||
+      this.currentOperationUUID !== operationUUID ||
       this.hasPendingCancellation(candidate)
     ) {
+      return;
+    }
+    if (state.displayGrantedTabId === client.tabId) {
+      this.displayedCandidate = { ...candidate };
+      this.publishView();
       return;
     }
     let claim;
@@ -1101,6 +1259,10 @@ export class LocationRecommendationCoordinator {
       !claim ||
       !this.isActuallyActive() ||
       !this.isMapEligible ||
+      this.currentState?.stateRevision !== currentStateRevision ||
+      this.mapEligibilityRevision !== mapRevision ||
+      this.currentAccessEventId !== accessEventId ||
+      this.currentOperationUUID !== operationUUID ||
       this.hasPendingCancellation(candidate)
     ) {
       return;
@@ -1120,6 +1282,10 @@ export class LocationRecommendationCoordinator {
       !grantState ||
       !this.isActuallyActive() ||
       !this.isMapEligible ||
+      this.currentState?.stateRevision !== currentStateRevision ||
+      this.mapEligibilityRevision !== mapRevision ||
+      this.currentAccessEventId !== accessEventId ||
+      this.currentOperationUUID !== operationUUID ||
       grantState.candidate?.requestId !== candidate.requestId ||
       grantState.displayGrantedTabId !== client.tabId ||
       this.hasPendingCancellation(candidate)
@@ -1130,7 +1296,33 @@ export class LocationRecommendationCoordinator {
     this.publishView();
   }
 
-  private handleWorkerState(state: LocationRecommendationState, isInitial: boolean): void {
+  private startFreshAccessAfterStaleCandidate(
+    candidate: LocationRecommendationCandidate,
+    stateRevision: number,
+    mapRevision: number,
+    accessEventId: string,
+    operationUUID: string,
+  ): void {
+    const state = this.currentState;
+    if (
+      !this.isActuallyActive() ||
+      !this.isMapEligible ||
+      this.mapEligibilityRevision !== mapRevision ||
+      !state ||
+      state.stateRevision !== stateRevision ||
+      state.candidate?.requestId !== candidate.requestId ||
+      this.currentAccessEventId !== accessEventId ||
+      this.currentOperationUUID !== operationUUID ||
+      this.hasPendingCancellation(candidate)
+    ) {
+      return;
+    }
+    this.currentAccessEventId = null;
+    this.currentOperationUUID = null;
+    this.beginAccessEvent();
+  }
+
+  private handleWorkerState(state: LocationRecommendationState): void {
     if (state.authEpoch !== this.authEpoch) return;
     if (
       this.isActuallyActive() &&
@@ -1147,6 +1339,10 @@ export class LocationRecommendationCoordinator {
       return;
     }
     this.currentState = state;
+    this.hasReceivedWorkerState = true;
+    const continueAfterWorkerState =
+      this.waitingForWorkerState && this.isActuallyActive() && this.isMapEligible;
+    this.waitingForWorkerState = false;
     if (
       state.accessEventId &&
       state.accessEventId !== this.currentAccessEventId &&
@@ -1179,7 +1375,9 @@ export class LocationRecommendationCoordinator {
       this.cancelMarkers.set(state.cancelMarker.cancellationUUID, state.cancelMarker);
     }
     if (state.candidate) {
-      if (this.isMapEligible && !isInitial) void this.tryDisplayCandidate();
+      if (this.isMapEligible) void this.tryDisplayCandidate();
+    } else if (continueAfterWorkerState) {
+      this.startMapAccessIfReady(true);
     }
     this.publishView();
   }
@@ -1426,7 +1624,7 @@ export class LocationRecommendationCoordinator {
 
 export function useLocationRecommendationAuthState(isAuthenticated: boolean): void {
   const context = useContext(CoordinatorContext);
-  useEffect(() => context.setAuthenticated(isAuthenticated), [context, isAuthenticated]);
+  useLayoutEffect(() => context.setAuthenticated(isAuthenticated), [context, isAuthenticated]);
 }
 
 export function useLocationRecommendationMapEligibility(
@@ -1434,7 +1632,7 @@ export function useLocationRecommendationMapEligibility(
   isMapReady: boolean,
 ): void {
   const context = useContext(LocationRecommendationViewContext);
-  useEffect(
+  useLayoutEffect(
     () => context.reportMapState(isMapRoute, isMapReady),
     [context, isMapReady, isMapRoute],
   );
