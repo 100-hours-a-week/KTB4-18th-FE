@@ -1,10 +1,8 @@
-import { act, cleanup, render, renderHook, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LocationRecommendationTrackCarousel } from './components/LocationRecommendationTrackCarousel';
-import { resolveItunesTrack } from './api/itunesTrackSearch';
+import type { LocationRecommendationTrack } from './locationRecommendationTypes';
 import { useMusicPreview } from '../music-record/hooks/useMusicPreview';
-
-vi.mock('./api/itunesTrackSearch', () => ({ resolveItunesTrack: vi.fn() }));
 
 class TestAudio {
   static latest: TestAudio | null = null;
@@ -41,21 +39,23 @@ const recommendationTrack = {
   storeUrl: 'https://ai.example.com/store',
 };
 
-function renderCarousel() {
-  return render(
+function renderCarousel(track: LocationRecommendationTrack = recommendationTrack) {
+  const toggle = vi.fn().mockResolvedValue(undefined);
+  const result = render(
     <LocationRecommendationTrackCarousel
-      tracks={[recommendationTrack]}
+      tracks={[track]}
       isPreviewAllowed
       preview={{
         activeTrack: null,
         isPlaying: false,
         isLoading: false,
         error: '',
-        toggle: vi.fn().mockResolvedValue(undefined),
+        toggle,
         stop: vi.fn(),
       }}
     />,
   );
+  return { ...result, toggle };
 }
 
 describe('location recommendation previews', () => {
@@ -92,24 +92,17 @@ describe('location recommendation previews', () => {
       storeUrl: 'https://music.apple.com/kr/song/example/1',
     };
 
-    render(
-      <LocationRecommendationTrackCarousel
-        tracks={[localMockTrack]}
-        isPreviewAllowed
-        preview={{
-          activeTrack: null,
-          isPlaying: false,
-          isLoading: false,
-          error: '',
-          toggle: vi.fn().mockResolvedValue(undefined),
-          stop: vi.fn(),
-        }}
-      />,
-    );
+    const { container, toggle } = renderCarousel(localMockTrack);
 
     expect(fetchMock).not.toHaveBeenCalled();
     const previewButton = screen.getByRole('button', { name: '미리 듣기: 노래' });
     expect(previewButton).toBeEnabled();
+    expect(container.querySelector('.location-recommendation-carousel__artwork')).toHaveAttribute(
+      'src',
+      localMockTrack.artworkUrl,
+    );
+    fireEvent.click(previewButton);
+    expect(toggle).toHaveBeenCalledWith(localMockTrack.trackId, localMockTrack.previewUrl);
     expect(previewButton.querySelector('img')).toHaveAttribute(
       'src',
       '/icons/location-recommendation/play.svg',
@@ -145,29 +138,30 @@ describe('location recommendation previews', () => {
     vi.stubEnv('DEV', false);
     vi.stubEnv('PROD', true);
 
-    renderCarousel();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { container, toggle } = renderCarousel();
 
-    expect(resolveItunesTrack).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: '미리 듣기: 노래' })).toBeEnabled();
-    expect(screen.getByRole('link', { name: 'Apple Music에서 보기' })).toHaveAttribute(
-      'href',
-      'https://ai.example.com/store',
+    expect(container.querySelector('.location-recommendation-carousel__artwork')).toHaveAttribute(
+      'src',
+      recommendationTrack.artworkUrl,
     );
+    fireEvent.click(screen.getByRole('button', { name: '미리 듣기: 노래' }));
+    expect(toggle).toHaveBeenCalledWith(
+      recommendationTrack.trackId,
+      recommendationTrack.previewUrl,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('DEV lookup failure leaves AI media unavailable without fallback', async () => {
-    vi.stubEnv('DEV', true);
-    vi.stubEnv('PROD', false);
-    vi.mocked(resolveItunesTrack).mockResolvedValueOnce({
+  it('disables previews when the supplied track has no preview URL', () => {
+    const { toggle } = renderCarousel({
       ...recommendationTrack,
       previewUrl: null,
-      artworkUrl: null,
-      storeUrl: null,
     });
-
-    renderCarousel();
-
-    expect(await screen.findByRole('button', { name: '미리 듣기: 노래' })).toBeDisabled();
-    expect(screen.queryByRole('link', { name: 'Apple Music에서 보기' })).not.toBeInTheDocument();
+    const previewButton = screen.getByRole('button', { name: '미리 듣기: 노래' });
+    expect(previewButton).toBeDisabled();
+    fireEvent.click(previewButton);
+    expect(toggle).not.toHaveBeenCalled();
   });
 });
