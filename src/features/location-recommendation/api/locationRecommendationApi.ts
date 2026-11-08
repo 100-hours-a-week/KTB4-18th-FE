@@ -186,12 +186,17 @@ function parseRecommendation(value: unknown): LocationRecommendationResult | nul
   if (!Number.isSafeInteger(remainingTtlMs) || (remainingTtlMs as number) < 0) {
     return null;
   }
+  const recommendationMessage =
+    value.status === 'READY' && typeof value.recommendationMessage === 'string'
+      ? value.recommendationMessage.trim()
+      : '';
   return {
     requestId: value.requestId,
     status: value.status,
     reason: value.reason,
     region,
     tracks: parsedTracks as LocationRecommendationTrack[],
+    ...(recommendationMessage && { recommendationMessage }),
     scopeGeneration: value.scopeGeneration,
     cancelEpoch: value.cancelEpoch as number,
     remainingTtlMs: remainingTtlMs as number,
