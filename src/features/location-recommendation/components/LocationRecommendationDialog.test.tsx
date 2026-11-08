@@ -76,11 +76,22 @@ afterEach(() => {
 });
 
 describe('LocationRecommendationDialog', () => {
+  it('renders the AI recommendation message as plain text in the popup body', () => {
+    const message = '잔잔한 공원 산책에 어울리는 곡을 골랐어요. <b>산책</b>';
+    renderDialog({ ...candidate, recommendationMessage: message });
+
+    const body = screen.getByText(message);
+    expect(body).toHaveClass('location-recommendation-dialog__message');
+    expect(body.querySelector('b')).toBeNull();
+    expect(screen.queryByText(/지역에 어울리는 추천곡을 준비했어요/)).not.toBeInTheDocument();
+  });
+
   it('renders a single featured song and starts preview only after the user clicks', async () => {
     renderDialog();
 
     expect(screen.getByText('새로운 지역에서 음악을 발견했어요!')).toBeInTheDocument();
     expect(screen.getByText('서울특별시 종로구')).toBeInTheDocument();
+    expect(screen.getByText(/지역에 어울리는 추천곡을 준비했어요/)).toBeInTheDocument();
     expect(screen.getByText('노래 1')).toBeInTheDocument();
     expect(screen.queryByText(/추천은 음악 기록에 자동 저장되지 않아요/)).not.toBeInTheDocument();
     expect(screen.queryByText(/앨범 아트 제공: iTunes/)).not.toBeInTheDocument();

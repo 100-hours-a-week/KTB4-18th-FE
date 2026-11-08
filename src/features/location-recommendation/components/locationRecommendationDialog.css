@@ -105,6 +105,7 @@
   line-height: 1.45;
   text-align: center;
   word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .location-recommendation-dialog button:focus-visible,
