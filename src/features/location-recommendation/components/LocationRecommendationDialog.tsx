@@ -205,7 +205,8 @@ export function LocationRecommendationDialog({
           preview={preview}
         />
         <p className="location-recommendation-dialog__message">
-          지역에 어울리는 추천곡을 준비했어요. 곡을 넘겨보고 미리 들어보세요.
+          {candidate.recommendationMessage ||
+            '지역에 어울리는 추천곡을 준비했어요. 곡을 넘겨보고 미리 들어보세요.'}
         </p>
       </section>
     </div>,
