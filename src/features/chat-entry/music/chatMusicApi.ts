@@ -4,6 +4,7 @@ import {
   musicId,
   musicObject,
   parseMusicQueue,
+  parsePlayback,
   parseRequestableMusic,
   type ChatMusicSession,
   type MusicQueuePage,
@@ -26,6 +27,11 @@ export class ChatMusicError extends Error {
   }
 }
 export function musicErrorMessage(status: number | null, code: string): string {
+  if (code === 'QUEUE_EMPTY') return '대기 중인 곡이 없어요. 먼저 곡을 신청해 주세요.';
+  if (code === 'TRACK_FINISHED' || code === 'INVALID_PLAYBACK_STATE')
+    return '재생 상태가 바뀌었어요. 최신 상태를 확인해 주세요.';
+  if (code === 'MUSIC_UNAVAILABLE')
+    return '현재 영상을 재생할 수 없어요. 다른 곡으로 건너뛰어 주세요.';
   if (code === 'MUSIC_NOT_REQUESTABLE')
     return '지금은 신청할 수 없는 곡이에요. 검색 결과를 다시 확인해 주세요.';
   if (code === 'QUEUE_FULL') return '대기열이 가득 찼어요. 곡이 재생된 뒤 다시 신청해 주세요.';
@@ -124,7 +130,16 @@ export async function fetchMusicQueue(
   if (!result) throw new ChatMusicError(502, 'INVALID_RESPONSE');
   return result;
 }
+export type PlaybackAction = 'PLAY' | 'PAUSE' | 'RESUME' | 'SKIP';
 export type MusicMutation =
+  | {
+      id: string;
+      kind: 'playback';
+      action: PlaybackAction;
+      queueItemId: number | null;
+      expectedVersion: number;
+      label: string;
+    }
   | { id: string; kind: 'add'; musicId: number; label: string }
   | { id: string; kind: 'cancel'; queueItemId: number; expectedVersion: number; label: string };
 export async function mutateMusicQueue(
@@ -133,6 +148,27 @@ export async function mutateMusicQueue(
   signal: AbortSignal,
 ) {
   const headers = { 'Idempotency-Key': mutation.id, 'Content-Type': 'application/json' };
+  if (mutation.kind === 'playback') {
+    const data = await request(
+      session,
+      'playback/commands',
+      {},
+      {
+        method: 'POST',
+        headers,
+        signal,
+        body: JSON.stringify({
+          action: mutation.action,
+          queue_item_id: mutation.queueItemId,
+          expected_version: mutation.expectedVersion,
+        }),
+      },
+      true,
+    );
+    if (!parsePlayback(data)) throw new ChatMusicError(502, 'INVALID_RESPONSE', 0, true);
+    // A replay returns its original snapshot. Read fresh state instead of applying it.
+    return null;
+  }
   if (mutation.kind === 'cancel') {
     await request(
       session,
