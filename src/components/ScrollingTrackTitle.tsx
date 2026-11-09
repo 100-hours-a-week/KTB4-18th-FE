@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 
-type LocationRecommendationTrackTitleProps = {
+import './scrollingTrackTitle.css';
+
+type ScrollingTrackTitleProps = {
   title: string;
+  className: string;
 };
 
-export function LocationRecommendationTrackTitle({ title }: LocationRecommendationTrackTitleProps) {
+export function ScrollingTrackTitle({ title, className }: ScrollingTrackTitleProps) {
   const viewportRef = useRef<HTMLParagraphElement>(null);
   const trackRef = useRef<HTMLSpanElement>(null);
   const [overflowDistance, setOverflowDistance] = useState(0);
@@ -33,9 +36,9 @@ export function LocationRecommendationTrackTitle({ title }: LocationRecommendati
   } as CSSProperties;
 
   return (
-    <p className="location-recommendation-carousel__title" ref={viewportRef} title={title}>
+    <p className={`scrolling-track-title ${className}`} ref={viewportRef} title={title}>
       <span
-        className={`location-recommendation-carousel__title-track${overflowDistance > 0 ? ' location-recommendation-carousel__title-track--moving' : ''}`}
+        className={`scrolling-track-title__track${overflowDistance > 0 ? ' scrolling-track-title__track--moving' : ''}`}
         ref={trackRef}
         style={style}
       >

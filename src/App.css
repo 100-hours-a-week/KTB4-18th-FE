@@ -399,10 +399,6 @@
   outline-offset: 2px;
 }
 
-.mypage-recommendations {
-  gap: 0;
-}
-
 .mypage-recommendations > h2,
 .mypage-recommendations > .mypage-notice,
 .mypage-recommendations > .mypage-loading,
@@ -412,31 +408,6 @@
 
 .mypage-recommendations > h2:first-child {
   margin-top: 0;
-}
-
-.mypage-recommendation-item {
-  display: flex;
-  min-height: 4.5rem;
-  align-items: center;
-  border-bottom: 1px solid var(--color-border-tertiary);
-}
-
-.mypage-recommendation-item > div:first-child {
-  display: grid;
-  gap: 0.2rem;
-}
-
-.mypage-recommendation-item span,
-.mypage-recommendation-item small {
-  color: var(--color-text-secondary);
-}
-
-.mypage-recommendation-item span {
-  font-size: var(--text-body3-normal);
-}
-
-.mypage-recommendation-item small {
-  font-size: var(--text-caption);
 }
 
 .mypage-text-button {
@@ -1063,7 +1034,8 @@
 }
 
 .mypage-recommendations {
-  gap: 0.5rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
 }
 
 .mypage-recommendations > h2 {
@@ -1081,11 +1053,17 @@
 
 .mypage-recommendation-item {
   position: relative;
-  min-height: 4.625rem;
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
-  padding: 0.75rem;
-  border: 1px solid var(--color-border-tertiary);
-  border-radius: 0.5rem;
+  padding-block: 0.5rem;
+}
+
+.mypage-recommendation-item > div[aria-hidden='true'] {
+  position: absolute;
+  inset-block-end: 0;
+  width: 1px;
+  height: 1px;
 }
 
 .mypage-recommendation-cover {
@@ -1100,24 +1078,22 @@
   display: flex;
   flex: 1 0 0%;
   flex-direction: column;
-  align-items: flex-start;
   min-width: 0;
   gap: 0.1875rem;
   white-space: nowrap;
 }
 
-.mypage-recommendation-item strong {
-  overflow: hidden;
+.mypage-recommendation-title {
   color: var(--color-text-primary);
   font-size: 1rem;
   font-weight: 600;
   line-height: 1.5rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.mypage-recommendation-item span {
-  color: var(--color-text-tertiary);
+.mypage-recommendation-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-secondary);
   font-size: 0.8125rem;
   line-height: 1.125rem;
 }
