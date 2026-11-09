@@ -389,3 +389,71 @@ HTTP만 합성 대역이며 320×568·390×844·1280×900에서 검색·이웃 �
   실제 React와 합성 HTTP를 사용하며 실제 OAuth·YouTube·물리기기·운영 부하 검증은 아니다.
 - 수정 전·중간·최종 JSON과 요약은 로컬 `node_modules/.tmp/fe-existing-failures-verification/`에 보존한다.
   서버·브라우저 증빙은 기존 `node_modules/.tmp/chat-music-request-verification/`을 사용한다.
+
+## 공동 재생 8단계 YouTube 플레이어·기본 위치 보정 (2026-11-09)
+
+지역 채팅의 현재 곡을 공식 YouTube IFrame API로 재생하고, 모든 활성 참여자에게 방 전체 재생/일시정지/재개/다음 곡 조작을 제공한다.
+`feature/chat-music-player`의 시작 HEAD는 cc55c92(7단계 병합)다. BE 원본·DB·외부 문서·운영 설정은 변경하지 않았다.
+
+`VITE_CHAT_MUSIC_QUEUE_ENABLED=true`와 새 `VITE_CHAT_MUSIC_PLAYER_ENABLED=true`가 모두 필요하다.
+두 플래그는 기본 false다. BE의 음악 큐·재생·이벤트 및 기존 참여/전파 의존성도 먼저 준비한다.
+SDK는 현재 곡이 있을 때만 로드하며 별도 YouTube API key나 사용자 토큰을 전달하지 않는다.
+중앙 오디오 추출/중계가 아니라 각 브라우저가 공식 영상 플레이어로 같은 서버 상태를 따른다.
+
+- `ChatMusicQueueController`가 조회/음악 이벤트의 재생 snapshot과 수신 시점 `performance.now()`를 관리한다.
+  `(연결 세대, epoch, version)`을 확인하며 같은 version의 새 server_time SYNC도 수용한다.
+  오래된 큐 조회나 원 UUID 재현 응답으로 최신 재생 상태를 되돌리지 않는다.
+- `chatMusicPlayer.ts`는 `position_seconds + (server_time - state_changed_at) + 수신 후 단조 시계 경과`로 PLAYING 목표 위치를 계산한다.
+  PAUSED 위치는 동결하고 고정 길이로 상한을 둔다. 기기 벽시계 변경을 사용하지 않는다.
+  새 곡은 고정 `source_video_id`를 목표 위치에 로드하고, PAUSED 입장은 cue만 한다.
+  1초마다 확인해 2초 초과 오차를 보정하되 반복 seek는 최소5초 간격으로 제한한다. 정지는 즉시 반영한다.
+  첫 네트워크 전달 지연·광고·YouTube 버퍼링·기기 차이는 제거하지 못하므로 무오차 동시 재생 보장은 아니다.
+- `ChatMusicPlayerView`는 플레이어·곡/가수·공통 상태와 내 기기의 상태·목표 위치를 구분한다.
+  공식 iframe/컨트롤을 가리거나 소리를 추출하지 않고 최소200×200 크기를 유지한다.
+  작은 높이에서는 플레이어 영역을 스크롤해 채팅 입력을 유지한다. 로컬 iframe 탐색/정지는 서버 상태를 변경하지 않는다.
+- 공통 명령은 POST `playback/commands`에 `action`, `queue_item_id`, `expected_version`과 원 UUID를 보낸다.
+  sid/member/view 고정, 중복 입력/계정 속도 제한·충돌/불확실한 요청의 명시적 확인은7단계 저장소를 공유한다.
+  응답을 낙관적으로 적용하지 않고 fresh 조회/이벤트를 따른다. 재생 중 다음 곡은 SKIP이며 대기 곡 취소와 구분한다.
+- 내 음량(초기70%)·음소거는 현재 참여/탭 메모리 설정이다. 재연결에는 유지하고 새 방/계정/새로고침에는 초기화한다.
+  서버 명령·다른 참여자의 볼륨에 영향이 없다. 청취 시작/중지 선택 기능은 없다.
+- `onAutoplayBlocked`에서는 정상 재생으로 표시하지 않고 ‘브라우저 재생 허용’ 버튼으로 현재 위치에서 다시 시도한다.
+  이 버튼은 서버 재생 명령을 보내지 않는다. 삭제/임베드 불가·153/네트워크·SDK/iframe 준비15초 상한은 오류/재시도 안내로 처리한다.
+  클라이언트 ENDED/영상 오류는 자동 SKIP이나 방 상태 전이를 발생시키지 않는다. 서버가 다음 곡을 결정한다.
+  연결 상실·IDLE·퇴장/문맥 변경 시 플레이어와 타이머를 정리하고 이전 SDK 콜백을 무시한다.
+  추가 입장/누락/장애 복구는9단계다.
+
+공식 근거: [IFrame API](https://developers.google.com/youtube/iframe_api_reference),
+[플레이어 매개변수](https://developers.google.com/youtube/player_parameters).
+운영에서 CSP의 YouTube script/frame 허용·실제 origin/Referer·자동재생 정책을 확인해야 한다.
+이번에 운영 헤더/클라우드 설정을 변경하지 않았다.
+
+재현 명령:
+
+```sh
+npm run format:check
+npm run lint
+npm run verify:chat:types
+npm test -- --maxWorkers=4
+npm run build
+npm run verify:chat:music:player:browser
+npm run verify:chat:music:player:browser -- --live
+npm run verify:chat:music:player:integration
+```
+
+기본 브라우저 시험은 실제 React/Chrome에 합성 HTTP·YT SDK를 주입해 세 화면 크기의 공통 조작·음량 격리·차단·seek·오류·정리를 검증한다.
+`--live`는 실제 YouTube SDK/embed와 공식 API 데모 영상만 사용하는 별도 smoke check이며 카탈로그 곡을 등록하지 않는다.
+이 환경에서는 SDK/iframe/재생 이벤트를 확인했고 자동재생 차단은 발생하지 않았다. 차단 경로는 합성 시험에서 확인한다.
+실제 음악 카탈로그·물리 모바일·동시 기기 정밀도·운영 로그인/라우팅을 검증한 것은 아니다.
+
+통합 시험은7단계 하네스에 PAUSE/RESUME/SKIP·고정 영상/길이·저장 위치 재개 검증을 추가한다.
+BE 커밋 HEAD의 임시 사본에 test-only bridge를 주입하고 실제 MySQL/Redis·HTTPS Core·두 Chat JAR와
+FE ChatParticipation/STOMP/API를 연결한다. REST Task A/WS Task B, 합성 인증 저장소/GPS·곡 데이터를 사용한다.
+원본 BE를 수정하지 않으며 합성 token config·자식/시험 컨테이너를 정리한다.
+증빙 `node_modules/.tmp/chat-music-player-verification/`의 JSON·로그·browser screenshot 및 harness-path의 임시 BE 시험 결과를 따른다.
+커밋·push·PR·배포/운영 활성화는 수행하지 않았다.
+
+최종 검증: 전체983개 중976통과·7조건부 제외·실패0, 채팅186개 중182통과·4조건부 제외·실패0.
+포맷·린트·전용 타입·프로덕션 빌드 통과. 실제 Core/두 Chat 통합과 Chrome320/390/1280px 시험 통과.
+추가300px 높이에서 입력창 경계를 확인했고, 최초 보정5초 간격과 검증 대기시간의 차이·작은 높이의 입력창 밀림은
+대기시간/음악 영역 스크롤·대화 여백을 보완한 뒤 재검증했다. 실제 YouTube SDK/embed·공식 데모의 PLAYING도 관측했다.
+이 결과는 물리 모바일/운영 음악 카탈로그·전체9~10단계 완료를 뜻하지 않는다.
