@@ -1545,6 +1545,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
     const place = await screen.findByRole('textbox', { name: '장소 이름' });
     fireEvent.change(place, { target: { value: '홍대' } });
+    await screen.findByDisplayValue('서울특별시 마포구');
     fireEvent.click(screen.getByRole('button', { name: '저장' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('저장 결과를 확인하지 못했습니다');

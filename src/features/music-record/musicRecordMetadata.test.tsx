@@ -111,6 +111,7 @@ describe('긴 아티스트명의 저장 및 오류 복구', () => {
     fireEvent.click(await screen.findByRole('button', { name: title + artist }));
     fireEvent.click(screen.getByRole('button', { name: '선택하기' }));
     await screen.findByRole('region', { name: '음악 기록 입력' });
+    await waitFor(() => expect(screen.getByRole('button', { name: '저장' })).toBeEnabled());
     expect(screen.getByText(artist)).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: '장소 이름' }), {
       target: { value: '산책길' },

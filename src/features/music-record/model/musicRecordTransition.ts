@@ -119,9 +119,8 @@ function transitionCard({ source, open, destination, beforeCapture }: CardTransi
   });
 
   void transition.ready.catch(() => undefined);
-  const updated = transition.updateCallbackDone.catch(() => undefined);
-  void transition.finished.then(cleanup, cleanup);
-  return updated;
+  void transition.updateCallbackDone.catch(() => undefined);
+  return transition.finished.then(cleanup, cleanup);
 }
 
 export function openMusicRecordDetail(

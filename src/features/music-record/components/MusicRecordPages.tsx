@@ -482,7 +482,9 @@ export function MusicRecordCreatePage() {
   const backButton = useRef<HTMLButtonElement>(null);
   const location = useLocation();
   const { acquire: acquireLocation, isLocating } = location;
-  const hasRequestedEntryLocation = useRef(false);
+  const [hasStartedEntryLocation, setHasStartedEntryLocation] = useState(false);
+  const isLocationPending = !hasStartedEntryLocation || isLocating;
+  const locationError = isLocationPending ? '' : location.error;
   const isSearchSkeletonVisible = useDelayedPending(
     isSearching && query.trim().length >= 2 && !hasInvalidReplacementParam,
     pendingSearchId,
@@ -668,13 +670,20 @@ export function MusicRecordCreatePage() {
   }, [step]);
 
   useEffect(() => {
-    if (step !== 'form' || hasRequestedEntryLocation.current) return;
-    hasRequestedEntryLocation.current = true;
-    void acquireLocation().catch(() => undefined);
-  }, [step, acquireLocation]);
+    if (step !== 'form' || isConfirming || isLocating || hasStartedEntryLocation) return;
+
+    // Leave a paint between showing the form and opening the browser's location prompt.
+    let frame = window.requestAnimationFrame(() => {
+      frame = window.requestAnimationFrame(() => {
+        setHasStartedEntryLocation(true);
+        void acquireLocation().catch(() => undefined);
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [step, isConfirming, isLocating, hasStartedEntryLocation, acquireLocation]);
 
   const save = async () => {
-    if (!selected || isSaving || isLocating) return;
+    if (!selected || isSaving || isLocationPending) return;
     setIsSaving(true);
     setSaveResultUnclear(false);
     setError('');
@@ -767,12 +776,6 @@ export function MusicRecordCreatePage() {
     try {
       const initialDraft =
         replacementRecordId === null ? null : readReplacementDraft(replacementRecordId);
-      if (replacementRecordId === null) {
-        hasRequestedEntryLocation.current = true;
-        if (!isLocating && (!location.location || location.isExpired())) {
-          void acquireLocation().catch(() => undefined);
-        }
-      }
       const confirmedMusic =
         selected.music_id !== null &&
         Number.isSafeInteger(selected.music_id) &&
@@ -819,6 +822,7 @@ export function MusicRecordCreatePage() {
           () => {
             if (!isCurrent()) return;
             setFormEnteredAt(new Date());
+            setHasStartedEntryLocation(false);
             setStep('form');
           },
           0,
@@ -1076,23 +1080,23 @@ export function MusicRecordCreatePage() {
           </label>
           <div className="music-location-field">
             <label htmlFor="music-save-location">저장 장소</label>
-            <div className="music-location-control" aria-busy={isLocating}>
+            <div className="music-location-control" aria-busy={isLocationPending}>
               <input
                 id="music-save-location"
                 readOnly
                 aria-readonly="true"
                 value={
-                  location.location
+                  !isLocationPending && location.location
                     ? `${location.location.region.sido.name} ${location.location.region.sigungu.name}`
                     : ''
                 }
-                placeholder={isLocating ? '현재 위치 확인 중…' : '현재 위치를 확인해 주세요'}
+                placeholder={isLocationPending ? '현재 위치 확인 중…' : '현재 위치를 확인해 주세요'}
               />
               <button
                 type="button"
                 className="music-location-retry"
                 aria-label="현재 위치 다시 확인"
-                disabled={isLocating || isSaving}
+                disabled={isLocationPending || isSaving}
                 onClick={() => void acquireLocation().catch(() => undefined)}
               >
                 <img src="/icons/Retry.svg" alt="" width={24} height={24} />
@@ -1123,9 +1127,9 @@ export function MusicRecordCreatePage() {
               {memo.length}/500
             </span>
           </label>
-          {(location.error || error) && (
+          {(locationError || error) && (
             <div role="alert" className="music-error">
-              <p>{location.error || error}</p>
+              <p>{locationError || error}</p>
               {saveResultUnclear && (
                 <button type="button" onClick={() => navigate(listPath)}>
                   음악 기록 목록에서 확인
@@ -1136,7 +1140,7 @@ export function MusicRecordCreatePage() {
           <button
             type="button"
             className="music-primary-button"
-            disabled={isSaving || isLocating}
+            disabled={isSaving || isLocationPending}
             onClick={() => void save()}
           >
             {isSaving ? '저장 중…' : '저장'}
