@@ -118,19 +118,31 @@ it('never treats a copied persisted tuple as a fresh unsent operation', async ()
   expect(test.storage.readDirectAuthOperation('REFRESH')).toEqual(source);
 });
 
-it.each([
-  ['AUTH_SESSION_INVALID', 'DirectAuthApiError'],
-  ['REFRESH_INVALID_TOKEN', 'DirectAuthProtocolError'],
-] as const)(
-  'retains the original on 401 %s without accepting undeclared codes',
-  async (failureCode, errorName) => {
-    const test = await setup({ enabled: true, failureCode });
-    await expect(test.restoreVerifiedDirectSession()).rejects.toHaveProperty('name', errorName);
-    const source = test.storage.readDirectAuthOperation('REFRESH');
-    expect(source).not.toBeNull();
-    await test.restoreVerifiedDirectSession();
-    expect(test.storage.readDirectAuthOperation('REFRESH')).toEqual(source);
-    expect(test.state.getDirectAccessToken()).toBeNull();
-    expect(test.fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
-  },
-);
+it('releases the local marker on explicit session rejection without retrying the same boundary', async () => {
+  const test = await setup({ enabled: true, failureCode: 'AUTH_SESSION_INVALID' });
+  await expect(test.restoreVerifiedDirectSession()).rejects.toHaveProperty(
+    'name',
+    'DirectAuthApiError',
+  );
+  expect(test.storage.readDirectAuthOperation('REFRESH')).toBeNull();
+  expect(test.state.getDirectAccessToken()).toBeNull();
+  await test.restoreVerifiedDirectSession();
+  expect(test.storage.readDirectAuthOperation('REFRESH')).toBeNull();
+  expect(test.state.getDirectAccessToken()).toBeNull();
+  expect(test.fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+});
+
+it('retains the original on an undeclared 401 code without another POST', async () => {
+  const failureCode = 'REFRESH_INVALID_TOKEN';
+  const test = await setup({ enabled: true, failureCode });
+  await expect(test.restoreVerifiedDirectSession()).rejects.toHaveProperty(
+    'name',
+    'DirectAuthProtocolError',
+  );
+  const source = test.storage.readDirectAuthOperation('REFRESH');
+  expect(source).not.toBeNull();
+  await test.restoreVerifiedDirectSession();
+  expect(test.storage.readDirectAuthOperation('REFRESH')).toEqual(source);
+  expect(test.state.getDirectAccessToken()).toBeNull();
+  expect(test.fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+});

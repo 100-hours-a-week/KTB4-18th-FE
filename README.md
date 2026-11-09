@@ -316,3 +316,76 @@ build/core-auth-integration 및 build/test-results/chatControlEventsTest다.
 최종 시험은 초기 복구 실패가 실제 HTTP503인 경우에만 명시적 재시도를1회 허용하고 그 여부를 결과에 남기며,
 그 외 초기 오류는 실패로 처리한다. 최종 결과와 최초 full 결과 모두 summary.json·각 JSON에 보존한다.
 이 검증은 운영 세션·모바일·부하 승인이나 BE 전역 복구 완료를 뜻하지 않는다.
+
+## 공동 재생 7단계 `/신청`·검색·대기열 UI (2026-11-09)
+
+FE `feature/chat-music-request`에서 BE 2~6단계 계약에 맞춰 구현했다.
+`VITE_CHAT_MUSIC_QUEUE_ENABLED=false`가 기본값이며, 활성화하려면 BE의 음악 큐·재생·이벤트와
+기존 분산 참여·메시지 relay 의존성이 준비돼야 한다. 이 플래그는 비밀이나 서버 권한을 대신하지 않는다.
+운영 설정은 변경하지 않았다. YouTube 플레이어·재생 조작·개인 음량은 8단계, 추가 복구는 9단계다.
+
+- `/신청` 또는 `/신청 검색어`는 일반 메시지로 보내지 않고 검색 창을 연다. 일반 채팅·한글 조합 Enter는 유지한다.
+- 지역 공개/본인 기록·본인 추천에서 검수된 신청 가능 곡만 검색한다. 검색 300ms 대기·20곡 페이지·출처·빈 결과·오류 재시도를 제공한다.
+- 현재 곡과 WAITING 대기열을 분리한다. 신청자와 관계없이 모든 활성 참여자가 대기 곡을 취소한다.
+  재생 중 곡에는 취소 버튼을 두지 않으며, 건너뛰기는 8단계에서 연결한다. 전원 퇴장 정리는 BE 책임이다.
+- 네이티브 dialog에 이름·초기 포커스·Escape 닫기·원래 포커스 복원·모바일 스크롤을 적용한다.
+  신청/취소 중 중복 입력을 막고, 요청 결과를 모르면 같은 UUID·본문·expected_version으로 명시적으로 확인한다.
+  자동 재전송이나 로컬 낙관적 큐 변경은 없다. 미확정 명령은 해당 계정/sid/방/member/view의 메모리에서만 유지한다.
+  같은 문맥의 재연결은 유지하고 다른 문맥·새로고침에서는 폐기한다.
+- API는 기존 `chatSessionFetch`로 소유 계정/sid에 고정하고 같은 sid의 토큰 회전을 허용한다.
+  시작/반영 시 소유권·연결 세대·요청 순서를 검사하고 늦은 응답을 버린다. 재연결 ready 이후 새 목록을 읽는다.
+- 음악 이벤트는 기존 topic/parser/receipt·recovery 흐름을 사용한다. 방·epoch·최대 version을 검사하며
+  같은 version의 두 유형은 허용한다. 더 높은 version이면 200ms로 조회를 합치고, 같은 version SYNC는 재조회하지 않는다.
+  페이지 간 version 충돌·만료 cursor는 첫 페이지로 한 번 재조회한다. 서버 snapshot이 기준이며 전체 인원 동시 수신 보장은 아니다.
+- API·런타임 타입, 명령/목록 상태, React 화면을 `src/features/chat-entry/music/`로 나눴다.
+  로딩·연결 중·429·버전 충돌·불확실한 응답·이미지 실패를 처리하며 토큰/원문/실제 곡을 로그나 fixture에 추가하지 않는다.
+
+검증 명령:
+
+```sh
+npm test -- src/features/chat-entry src/api/chatRooms.test.ts --maxWorkers=4
+npm run lint
+npm run verify:chat:types
+npm run build
+npm run verify:chat:music:browser
+npm run verify:chat:music:integration
+```
+
+브라우저 명령은 설치된 Chrome(선택 `CHAT_BROWSER_CHANNEL`)·Playwright로 실제 React 화면을 검증한다.
+HTTP만 합성 대역이며 320×568·390×844·1280×900에서 검색·이웃 곡 취소·UUID 재확인·재연결 차단·포커스·overflow를 확인한다.
+실제 음악·로그인·물리 모바일 시험은 아니다. 증빙은 `node_modules/.tmp/chat-music-request-verification/browser/`다.
+
+통합 명령은 Docker·JDK·Node·Git/tar와 선행 BE 커밋이 필요하다.
+`CHAT_BACKEND_DIR`(기본 `../meomuneum-backend`)의 커밋된 HEAD를 임시 복사해 test-only bridge를 주입한다.
+원본 BE는 수정하지 않는다. 실제 MySQL/Redis·HTTPS Core·두 Chat JAR와 FE ChatParticipation/STOMP/API를 연결한다.
+인증 저장소/GPS 입력만 합성이며 REST Task A / WS Task B에서 24곡 페이지, 첫 신청 자동 재생,
+서버 commit 후 응답 유실→원 UUID 확인·중복 없음, 음악 이벤트·대기 곡 취소를 검증했다.
+합성 토큰 config는 종료 시 삭제하고 자식/시험 컨테이너를 정리한다. 운영 DB/Redis/YouTube/배포·1000연결 검증이 아니다.
+증빙 `node_modules/.tmp/chat-music-request-verification/process-result.json`, `harness-path.txt`가 가리키는
+임시 BE의 `build/core-auth-integration/`·`build/test-results/chatMusicEventsProcessTest/`를 따른다.
+
+전체 시험은 964개 중 913통과·44실패·7조건부 제외다. 시작 HEAD의 임시 사본에서도 942개 중
+892통과·동일한 44개 실패·6제외를 재현했으며 추가 실패는 없다. 기존 인증/음악 기록/마이페이지
+기대 문구·동작 불일치를 이번 범위에서 바꾸지 않았다. 원본 결과와 baseline JSON을 함께 보존한다.
+전체 포맷 검사는 기존 `locationRecommendationCoordinator.ts` 한 곳으로 실패하며 이번 변경 파일은 별도 검사한다.
+린트·전용 타입 검사는 통과했다. 전체 green이나 운영 활성화 완료로 표시하지 않는다.
+
+### 기존 검증 실패 후속 수정 (2026-11-09)
+
+위 44건 실패·포맷 오류는 최초 7단계 검증 이력이며, 후속 수정으로 해소했다.
+전체 재실행에서 동일한 44건을 재현한 뒤 변경 이력을 대조했다.
+음악 기록·마이페이지 테스트는 현재 버튼·검색·빈 목록·메뉴·뒤로가기 이름과 달랐고,
+인증 테스트는 복구 실패 시 로그인 경로 안내 및 명시적 세션 무효 응답의 로컬 표식 해제와 달랐다.
+현재 동작에 맞춰 요소 조회·기대 결과를 수정하고, 미확정 요청 보존·중복 POST 방지·입력 보존·
+500자 제한·삭제·지역 유지 검증은 유지했다. 생성 폼과 상세 화면의 메모 라벨도 구분했다.
+제품 동작·API 계약은 변경하지 않았으며 추천 조정기의 중복 빈 줄 두 곳만 별도 포맷 커밋으로 정리했다.
+
+- 수정 대상296건 전부 통과. 최종 전체964건 중957통과·7조건부 제외·실패0.
+  테스트 삭제나 제외 추가는 없다. 기본 실행의7건은 실제 서버 환경이 필요한 기존 통합 테스트다.
+- `npm run format:check`, `npm run lint`, `npm run verify:chat:types`, `npm run build` 통과.
+- `npm run verify:chat:music:integration`으로 실제 MySQL/Redis·Core·두 Chat 프로세스의
+  검색·신청·응답 유실 후 원UUID 확인·이벤트·취소를 별도 검증했다. 합성 인증·곡을 사용하는 격리 환경이다.
+- `npm run verify:chat:music:browser`의 Chromium320/390/1280px 검증도 통과했다.
+  실제 React와 합성 HTTP를 사용하며 실제 OAuth·YouTube·물리기기·운영 부하 검증은 아니다.
+- 수정 전·중간·최종 JSON과 요약은 로컬 `node_modules/.tmp/fe-existing-failures-verification/`에 보존한다.
+  서버·브라우저 증빙은 기존 `node_modules/.tmp/chat-music-request-verification/`을 사용한다.

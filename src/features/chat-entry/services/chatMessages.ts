@@ -1,3 +1,5 @@
+import { parseMusicEvent, type ChatMusicEvent } from '../music/chatMusicTypes';
+
 export interface ChatMessage {
   messageId: number;
   clientMessageId: string;
@@ -8,6 +10,7 @@ export interface ChatMessage {
   createdAt: string;
 }
 export type ChatEvent =
+  | ChatMusicEvent
   | {
       type: 'CHAT_READY';
       roomId: number;
@@ -72,6 +75,8 @@ export function parseChatEvent(body: string): ChatEvent | null {
     const event: unknown = JSON.parse(body);
     if (!object(event) || !object(event.data)) return null;
     const data = event.data;
+    if (['QUEUE_UPDATED', 'PLAYBACK_UPDATED', 'PLAYBACK_SYNC'].includes(String(event.type)))
+      return body.length <= 16384 ? parseMusicEvent(event) : null;
     if (
       event.type === 'CHAT_READY' &&
       number(data.room_id) &&
