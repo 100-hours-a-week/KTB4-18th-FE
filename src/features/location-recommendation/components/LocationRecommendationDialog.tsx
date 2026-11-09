@@ -5,6 +5,8 @@ import { LocationRecommendationTrackCarousel } from './LocationRecommendationTra
 import type { LocationRecommendationCandidate } from '../locationRecommendationTypes';
 import './locationRecommendationDialog.css';
 
+const STATUS_RETRY_DELAY_MS = 500;
+
 type LocationRecommendationDialogProps = {
   candidate: LocationRecommendationCandidate;
   verifyStatus: (
@@ -13,6 +15,7 @@ type LocationRecommendationDialogProps = {
   ) => Promise<boolean>;
   onCancel: () => void;
   onDismiss: () => void;
+  onRefresh?: () => void;
 };
 
 export function LocationRecommendationDialog({
@@ -20,12 +23,14 @@ export function LocationRecommendationDialog({
   verifyStatus,
   onCancel,
   onDismiss,
+  onRefresh,
 }: LocationRecommendationDialogProps) {
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const portalTarget = document.querySelector<HTMLElement>('.location-recommendation-portal-root');
   const preview = useMusicPreview();
   const [isStatusVerified, setIsStatusVerified] = useState(true);
+  const [hasVerificationFailed, setHasVerificationFailed] = useState(false);
   const [escapeNotice, setEscapeNotice] = useState(false);
   const stopPreview = preview.stop;
 
@@ -106,52 +111,62 @@ export function LocationRecommendationDialog({
     let isCurrent = true;
     let isChecking = false;
     let checkGeneration = 0;
-    let shouldCheckContextOnVisible = false;
-    const checkStatus = async (verifyContext = false) => {
-      if (document.visibilityState !== 'visible') return;
-      if (isChecking) {
-        if (verifyContext) shouldCheckContextOnVisible = true;
+    let lastStartedGeneration = -1;
+    let retryTimer: number | undefined;
+    const checkStatus = async (isRetry = false) => {
+      if (
+        isChecking ||
+        document.visibilityState !== 'visible' ||
+        (!isRetry && lastStartedGeneration === checkGeneration)
+      ) {
         return;
       }
       isChecking = true;
-      const generation = ++checkGeneration;
-      const isValid = await verifyStatus(candidate, verifyContext).catch(() => false);
+      const generation = checkGeneration;
+      lastStartedGeneration = generation;
+      setHasVerificationFailed(false);
+      setIsStatusVerified(false);
+      let isValid: boolean;
+      try {
+        isValid = await verifyStatus(candidate, true);
+      } catch {
+        isValid = false;
+      }
       isChecking = false;
-      if (!isCurrent) return;
-      if (generation !== checkGeneration || document.visibilityState !== 'visible') {
-        if (document.visibilityState === 'visible' && shouldCheckContextOnVisible) {
-          shouldCheckContextOnVisible = false;
+      if (!isCurrent || document.visibilityState !== 'visible') return;
+      if (generation !== checkGeneration) {
+        void checkStatus();
+        return;
+      }
+      if (isValid) {
+        setIsStatusVerified(true);
+        return;
+      }
+      stopPreview();
+      if (!isRetry) {
+        retryTimer = window.setTimeout(() => {
+          retryTimer = undefined;
           void checkStatus(true);
-        }
-        return;
-      }
-      if (!isValid) {
-        stopPreview();
-        setIsStatusVerified(false);
-        return;
-      }
-      setIsStatusVerified(true);
-      if (shouldCheckContextOnVisible) {
-        shouldCheckContextOnVisible = false;
-        setIsStatusVerified(false);
-        void checkStatus(true);
+        }, STATUS_RETRY_DELAY_MS);
+      } else {
+        setHasVerificationFailed(true);
       }
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         checkGeneration += 1;
-        shouldCheckContextOnVisible = true;
+        window.clearTimeout(retryTimer);
+        retryTimer = undefined;
         stopPreview();
         setIsStatusVerified(false);
       } else {
-        shouldCheckContextOnVisible = true;
-        void checkStatus(true);
+        void checkStatus();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       isCurrent = false;
-      checkGeneration += 1;
+      window.clearTimeout(retryTimer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [candidate, stopPreview, verifyStatus]);
@@ -202,6 +217,7 @@ export function LocationRecommendationDialog({
           key={candidate.requestId}
           tracks={candidate.tracks}
           isPreviewAllowed={isStatusVerified}
+          onRefresh={hasVerificationFailed ? onRefresh : undefined}
           preview={preview}
         />
         <p className="location-recommendation-dialog__message">

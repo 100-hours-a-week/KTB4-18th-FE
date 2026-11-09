@@ -2,10 +2,12 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from 'react';
 import type { LocationRecommendationTrack } from '../locationRecommendationTypes';
+import { LocationRecommendationTrackTitle } from './LocationRecommendationTrackTitle';
 import './locationRecommendationTrackCarousel.css';
 
 const TRACK_SWIPE_THRESHOLD_PX = 48;
@@ -15,9 +17,8 @@ const TRACK_WHEEL_COOLDOWN_MS = 400;
 const TRACK_SELECTION_STEP_MS = 80;
 const TRACK_SELECTION_SETTLE_MS = 180;
 const MAX_DRAG_PROGRESS = 0.34;
-const SIDE_CARD_POSITION_PERCENT = 20;
-const CENTER_POSITION_PERCENT = 50;
-const SIDE_CARD_SCALE = 0.5;
+const SIDE_CARD_SCALE = 0.82;
+const SIDE_CARD_OFFSET = 0.49;
 
 type SlidePosition = 'previous' | 'current' | 'next';
 
@@ -33,12 +34,14 @@ type MusicPreviewState = {
 type LocationRecommendationTrackCarouselProps = {
   tracks: LocationRecommendationTrack[];
   isPreviewAllowed: boolean;
+  onRefresh?: () => void;
   preview: MusicPreviewState;
 };
 
 export function LocationRecommendationTrackCarousel({
   tracks,
   isPreviewAllowed,
+  onRefresh,
   preview,
 }: LocationRecommendationTrackCarouselProps) {
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(tracks[0]?.trackId ?? null);
@@ -182,7 +185,7 @@ export function LocationRecommendationTrackCarousel({
     gesture.delta += delta;
     if (Math.abs(gesture.delta) < TRACK_WHEEL_THRESHOLD_PX) return;
 
-    const direction = gesture.delta > 0 ? 1 : -1;
+    const direction = gesture.delta > 0 ? -1 : 1;
     gesture.delta = 0;
     gesture.lastChangeAt = now;
     selectTrack(selectedTrackIndex + direction);
@@ -221,27 +224,22 @@ export function LocationRecommendationTrackCarousel({
 
   const getSlideStyle = (position: SlidePosition) => {
     const dragAmount = Math.abs(dragProgress);
-    let left = CENTER_POSITION_PERCENT;
+    let offset: number;
     let scale: number;
     let zIndex = 2;
 
     if (position === 'current') {
-      left += dragProgress * (CENTER_POSITION_PERCENT - SIDE_CARD_POSITION_PERCENT);
-      scale = 1 - dragAmount * 0.28;
+      offset = dragProgress * SIDE_CARD_OFFSET;
+      scale = 1 - dragAmount * (1 - SIDE_CARD_SCALE);
     } else if (position === 'previous') {
-      left =
-        SIDE_CARD_POSITION_PERCENT +
-        Math.max(dragProgress, 0) * (CENTER_POSITION_PERCENT - SIDE_CARD_POSITION_PERCENT);
+      offset = -SIDE_CARD_OFFSET * (1 - Math.max(dragProgress, 0));
       scale =
         dragProgress > 0
           ? SIDE_CARD_SCALE + dragProgress * (1 - SIDE_CARD_SCALE)
           : SIDE_CARD_SCALE - dragAmount * 0.12;
       zIndex = dragProgress > 0 ? 3 : 1;
     } else {
-      left =
-        100 -
-        SIDE_CARD_POSITION_PERCENT +
-        Math.min(dragProgress, 0) * (CENTER_POSITION_PERCENT - SIDE_CARD_POSITION_PERCENT);
+      offset = SIDE_CARD_OFFSET * (1 + Math.min(dragProgress, 0));
       scale =
         dragProgress < 0
           ? SIDE_CARD_SCALE + dragAmount * (1 - SIDE_CARD_SCALE)
@@ -250,10 +248,11 @@ export function LocationRecommendationTrackCarousel({
     }
 
     return {
-      left: `${left}%`,
+      '--album-offset': offset,
+      '--album-scale': scale,
       transform: `translate(-50%, -50%) scale(${scale})`,
       zIndex,
-    };
+    } as CSSProperties;
   };
 
   const getArtwork = (item: LocationRecommendationTrack) =>
@@ -268,6 +267,18 @@ export function LocationRecommendationTrackCarousel({
       aria-label="지역 추천 음악. 앨범을 좌우로 드래그하거나 스크롤하고, 탐색 버튼을 눌러 곡을 넘길 수 있어요."
       aria-roledescription="carousel"
     >
+      <div className="location-recommendation-carousel__background" aria-hidden="true">
+        {mediaTracks.map((item) =>
+          item.artworkUrl && !unavailableArtworkUrls.has(item.artworkUrl) ? (
+            <img
+              key={item.trackId}
+              src={item.artworkUrl}
+              alt=""
+              data-active={item.trackId === track.trackId}
+            />
+          ) : null,
+        )}
+      </div>
       <div
         className="location-recommendation-carousel__stage"
         ref={stageRef}
@@ -302,33 +313,43 @@ export function LocationRecommendationTrackCarousel({
         ))}
       </div>
       <div className="location-recommendation-carousel__copy" aria-live="polite">
-        <p className="location-recommendation-carousel__title">{track.title}</p>
+        <LocationRecommendationTrackTitle key={track.trackId} title={track.title} />
         <p className="location-recommendation-carousel__artist">{track.artist}</p>
-        <button
-          className="location-recommendation-carousel__preview"
-          type="button"
-          disabled={!track.previewUrl || !isPreviewAllowed}
-          aria-label={`${isTrackActive && preview.isPlaying ? '미리 듣기 중지' : '미리 듣기'}: ${track.title}`}
-          onClick={() => {
-            if (track.previewUrl && isPreviewAllowed) {
-              void preview.toggle(track.trackId, track.previewUrl);
-            }
-          }}
-        >
-          {isTrackActive && (preview.isPlaying || preview.isLoading) ? (
-            <>
-              중지
-              <img src="/icons/location-recommendation/stop.svg" alt="" aria-hidden="true" />
-            </>
-          ) : track.previewUrl ? (
-            <>
-              미리 듣기
-              <img src="/icons/location-recommendation/play.svg" alt="" aria-hidden="true" />
-            </>
-          ) : (
-            '미리 듣기 없음'
-          )}
-        </button>
+        {onRefresh ? (
+          <button
+            className="location-recommendation-carousel__preview"
+            type="button"
+            onClick={onRefresh}
+          >
+            추천 다시 받기
+          </button>
+        ) : (
+          <button
+            className="location-recommendation-carousel__preview"
+            type="button"
+            disabled={!track.previewUrl || !isPreviewAllowed}
+            aria-label={`${isTrackActive && preview.isPlaying ? '미리 듣기 중지' : '미리 듣기'}: ${track.title}`}
+            onClick={() => {
+              if (track.previewUrl && isPreviewAllowed) {
+                void preview.toggle(track.trackId, track.previewUrl);
+              }
+            }}
+          >
+            {isTrackActive && (preview.isPlaying || preview.isLoading) ? (
+              <>
+                중지
+                <img src="/icons/location-recommendation/stop.svg" alt="" aria-hidden="true" />
+              </>
+            ) : track.previewUrl ? (
+              <>
+                미리 듣기
+                <img src="/icons/location-recommendation/play.svg" alt="" aria-hidden="true" />
+              </>
+            ) : (
+              '미리 듣기 없음'
+            )}
+          </button>
+        )}
       </div>
       {hasMultipleTracks && (
         <div className="location-recommendation-carousel__navigation">
