@@ -1378,8 +1378,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     expect(logout).not.toHaveBeenCalled();
   });
 
-  it('일시적인 sessionStorage 접근 오류 후 보호 경로에서 재시도해 복구한다', async () => {
-    const user = userEvent.setup();
+  it('일시적인 인증 복구 오류는 보호 경로를 열지 않고 로그인 경로를 안내한다', async () => {
     resetAuthSessionForTests();
     sessionStorage.clear();
     window.history.replaceState(null, '', '/chatbot');
@@ -1411,13 +1410,14 @@ describe('로그인과 회원가입 화면 연결', () => {
     );
     render(<App />);
 
-    const retry = await screen.findByRole('button', { name: '다시 시도' });
+    const login = await screen.findByRole('link', { name: '로그인' });
+    expect(login).toHaveAttribute('href', '/login?returnTo=%2Fchatbot');
+    expect(screen.getByRole('alert')).toHaveTextContent('인증 서버에 연결할 수 없어요.');
     expect(screen.queryByRole('heading', { name: '음악 찾기' })).not.toBeInTheDocument();
     expect(recommend).not.toHaveBeenCalled();
-    await user.click(retry);
-
-    expect(await screen.findByRole('heading', { name: '음악 찾기' })).toBeInTheDocument();
-    expect(getAccessToken()).toBe('restored-token');
+    expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument();
+    expect(csrfCount).toBe(1);
+    expect(getAccessToken()).toBeNull();
   });
 
   it('데이터 401 뒤 refresh도 401이면 메인 인증 상태를 guest로 바꾼다', async () => {
@@ -1545,8 +1545,12 @@ describe('로그인과 회원가입 화면 연결', () => {
     });
 
     expect(screen.getByRole('alert')).toHaveTextContent(message);
-    expect(screen.getByRole('button', { name: '다시 시도' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '로그인' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '로그인' })).toHaveAttribute(
+      'href',
+      '/login?returnTo=%2Fmy',
+    );
+    expect(logout).toHaveBeenCalledOnce();
     expect(screen.queryByRole('heading', { name: '내 공간' })).not.toBeInTheDocument();
   });
 });
