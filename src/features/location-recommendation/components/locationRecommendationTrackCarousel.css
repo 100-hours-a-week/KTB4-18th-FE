@@ -186,6 +186,12 @@
   text-overflow: ellipsis;
 }
 
+.location-recommendation-carousel__actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
 .location-recommendation-carousel__preview {
   display: inline-flex;
   min-width: 156px;
@@ -210,6 +216,16 @@
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
+}
+
+.location-recommendation-carousel__record {
+  min-width: 44px;
+  padding: 0;
+}
+
+.location-recommendation-carousel__record img {
+  width: 24px;
+  height: 24px;
 }
 
 .location-recommendation-carousel__preview:disabled {

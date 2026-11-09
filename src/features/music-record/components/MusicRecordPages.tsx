@@ -389,10 +389,12 @@ export function MusicRecordCreatePage() {
   const hasInvalidReplacementParam = hasReplacementParam && replacementRecordId === null;
   const preview = useMusicPreview();
   const stopPreview = preview.stop;
-  const [step, setStep] = useState<'search' | 'form'>('search');
+  const [selected, setSelected] = useState<Music | null>(() =>
+    hasReplacementParam ? null : (window.history.state?.initialMusic ?? null),
+  );
+  const [step, setStep] = useState<'search' | 'form'>(selected ? 'form' : 'search');
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<Music[]>([]);
-  const [selected, setSelected] = useState<Music | null>(null);
   const [place, setPlace] = useState('');
   const [memo, setMemo] = useState('');
   const [formEnteredAt, setFormEnteredAt] = useState<Date>(() => new Date());

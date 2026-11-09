@@ -2,7 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMusicPreview } from '../../music-record/hooks/useMusicPreview';
 import { LocationRecommendationTrackCarousel } from './LocationRecommendationTrackCarousel';
-import type { LocationRecommendationCandidate } from '../locationRecommendationTypes';
+import { navigate } from '../../../shared/navigation';
+import type { Music } from '../../music-record/api/musicRecordsApi';
+import type {
+  LocationRecommendationCandidate,
+  LocationRecommendationTrack,
+} from '../locationRecommendationTypes';
 import './locationRecommendationDialog.css';
 
 const STATUS_RETRY_DELAY_MS = 500;
@@ -33,6 +38,23 @@ export function LocationRecommendationDialog({
   const [hasVerificationFailed, setHasVerificationFailed] = useState(false);
   const [escapeNotice, setEscapeNotice] = useState(false);
   const stopPreview = preview.stop;
+
+  const recordTrack = (track: LocationRecommendationTrack) => {
+    const initialMusic: Music = {
+      music_id: null,
+      provider: 'ITUNES',
+      external_music_id: track.trackId,
+      title: track.title,
+      artist_name: track.artist,
+      album_cover_url: track.artworkUrl,
+      preview_url: track.previewUrl,
+      youtube_video_id: null,
+      is_queueable: false,
+    };
+    stopPreview();
+    onDismiss();
+    navigate('/music-records/new', { initialMusic });
+  };
 
   useEffect(() => {
     if (!portalTarget) return;
@@ -218,6 +240,7 @@ export function LocationRecommendationDialog({
           tracks={candidate.tracks}
           isPreviewAllowed={isStatusVerified}
           onRefresh={hasVerificationFailed ? onRefresh : undefined}
+          onRecordTrack={recordTrack}
           preview={preview}
         />
         <p className="location-recommendation-dialog__message">
