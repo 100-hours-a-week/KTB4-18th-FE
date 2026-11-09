@@ -1,7 +1,7 @@
                 if (System.getenv("CHAT_MUSIC_FE_DIR") != null) {
                     Path frontend = Path.of(System.getenv("CHAT_MUSIC_FE_DIR"));
                     Path fixture = evidence.resolve("music-frontend-config.json").toAbsolutePath();
-                    Path result = frontend.resolve("node_modules/.tmp/"+System.getenv("CHAT_MUSIC_FE_SUITE")+"/process-result.json");
+                    Path result = frontend.resolve("node_modules/.tmp/chat-music-request-verification/process-result.json");
                     for (int index=1; index<=24; index++) {
                         jdbc.update("INSERT INTO music(provider,external_music_id,title,artist_name,youtube_video_id) "
                                 + "VALUES ('ITUNES',? ,?,'synthetic artist','abcdefghijk')", "fe-music-"+index, "synthetic song "+index);

@@ -6,12 +6,10 @@ import {
   mutateMusicQueue,
   searchChatMusic,
   type MusicMutation,
-  type PlaybackAction,
 } from './chatMusicApi';
 import type {
   ChatMusicEvent,
   ChatMusicSession,
-  MusicPlayback,
   MusicQueueItem,
   MusicQueuePage,
   RequestableMusic,
@@ -20,7 +18,6 @@ import type {
 
 export interface MusicQueueState {
   queue: MusicQueuePage | null;
-  playback: { snapshot: MusicPlayback; receivedAt: number } | null;
   queueLoading: boolean;
   queueError: string;
   isQueueStale: boolean;
@@ -35,7 +32,6 @@ export interface MusicQueueState {
 }
 const initial = (): MusicQueueState => ({
   queue: null,
-  playback: null,
   queueLoading: false,
   queueError: '',
   isQueueStale: true,
@@ -124,7 +120,6 @@ export class ChatMusicQueueController {
     clearTimeout(this.refreshTimer);
     this.refreshTimer = undefined;
     this.update({
-      playback: null,
       queueLoading: false,
       searchLoading: false,
       isMutating: false,
@@ -155,7 +150,6 @@ export class ChatMusicQueueController {
       event.version < this.maxVersion
     )
       return;
-    this.acceptPlayback(event.playback);
     this.epoch = event.epoch;
     this.maxVersion = event.version;
     if (!this.state.queue || this.state.queue.version < event.version) {
@@ -163,39 +157,6 @@ export class ChatMusicQueueController {
       if (this.queueRequest) this.refreshAgain = true;
       else this.scheduleRefresh();
     }
-  }
-  private acceptPlayback(snapshot: MusicPlayback) {
-    const old = this.state.playback?.snapshot;
-    if (
-      snapshot.version < this.maxVersion ||
-      (old &&
-        (snapshot.version < old.version ||
-          (snapshot.version === old.version &&
-            Date.parse(snapshot.serverTime) <= Date.parse(old.serverTime))))
-    )
-      return;
-    this.update({ playback: { snapshot, receivedAt: performance.now() } });
-  }
-  control(action: PlaybackAction) {
-    const snapshot = this.state.playback?.snapshot;
-    if (!this.canMutate() || !snapshot || snapshot.version < this.maxVersion) return;
-    const allowed =
-      action === 'PLAY'
-        ? snapshot.state === 'IDLE'
-        : action === 'PAUSE'
-          ? snapshot.state === 'PLAYING'
-          : action === 'RESUME'
-            ? snapshot.state === 'PAUSED'
-            : snapshot.current !== null;
-    if (!allowed) return;
-    void this.runMutation({
-      id: crypto.randomUUID(),
-      kind: 'playback',
-      action,
-      queueItemId: snapshot.current?.queueItemId ?? null,
-      expectedVersion: snapshot.version,
-      label: '공동 재생',
-    });
   }
   private scheduleRefresh() {
     if (!this.owns() || this.refreshTimer !== undefined) return;
@@ -242,7 +203,6 @@ export class ChatMusicQueueController {
       )
         throw new ChatMusicError(502, 'INVALID_RESPONSE');
       if (cursor) this.queueCursors.add(cursor);
-      this.acceptPlayback(page);
       const isStale = page.version < this.maxVersion;
       this.update({
         queue: {
@@ -393,13 +353,11 @@ export class ChatMusicQueueController {
       this.update({
         pending: null,
         notice:
-          mutation.kind === 'playback'
-            ? '공동 재생 요청을 확인했어요.'
-            : mutation.kind === 'cancel'
-              ? '대기 곡 신청을 취소했어요.'
-              : status === 'CANCELED'
-                ? '재생할 수 없는 곡이라 신청이 취소됐어요.'
-                : '곡 신청을 확인했어요.',
+          mutation.kind === 'cancel'
+            ? '대기 곡 신청을 취소했어요.'
+            : status === 'CANCELED'
+              ? '재생할 수 없는 곡이라 신청이 취소됐어요.'
+              : '곡 신청을 확인했어요.',
       });
       this.cooldown(1);
       void this.loadQueue();

@@ -33,8 +33,6 @@ export interface MusicPlayback {
   positionSeconds: number;
   stateChangedAt: string;
   serverTime: string;
-  sourceVideoId: string | null;
-  durationMillis: number | null;
 }
 export interface MusicQueuePage extends MusicPlayback {
   items: MusicQueueItem[];
@@ -118,17 +116,6 @@ export function parsePlayback(value: unknown): MusicPlayback | null {
       : !current || current.status !== 'PLAYING'
   )
     return null;
-  const source = value.source_video_id ?? null;
-  const duration = value.duration_millis ?? null;
-  if (
-    (source !== null && (typeof source !== 'string' || !/^[A-Za-z0-9_-]{11}$/.test(source))) ||
-    (duration !== null && (!musicId(duration) || duration > 9999999999)) ||
-    (value.current_queue_item_id !== undefined &&
-      value.current_queue_item_id !== (current?.queueItemId ?? null)) ||
-    (current && source !== null && current.youtubeVideoId !== source) ||
-    (value.state === 'IDLE' && (source !== null || duration !== null))
-  )
-    return null;
   return {
     version: value.version,
     state: value.state as MusicPlayback['state'],
@@ -136,8 +123,6 @@ export function parsePlayback(value: unknown): MusicPlayback | null {
     positionSeconds: value.position_seconds,
     stateChangedAt: value.state_changed_at,
     serverTime: value.server_time,
-    sourceVideoId: source as string | null,
-    durationMillis: duration as number | null,
   };
 }
 export function parseMusicQueue(value: unknown): MusicQueuePage | null {

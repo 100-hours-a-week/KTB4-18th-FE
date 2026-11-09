@@ -7,8 +7,6 @@ import type {
 } from './chatMusicTypes';
 import { useChatMusicQueue } from './useChatMusicQueue';
 import './chatMusicPanel.css';
-import { ChatMusicPlayerView } from './ChatMusicPlayerView';
-import { chatMusicPlayerEnabled } from './chatMusicCommands';
 
 export interface MusicSearchRequest {
   sequence: number;
@@ -127,10 +125,7 @@ export function ChatMusicPanel({
     </li>
   );
   return (
-    <section
-      className={`chat-music${chatMusicPlayerEnabled() ? ' chat-music-with-player' : ''}`}
-      aria-label="이야기방 음악"
-    >
+    <section className="chat-music" aria-label="이야기방 음악">
       <div className="chat-music-bar">
         <button type="button" onClick={showSearch} disabled={!isReady}>
           ＋ 음악 신청
@@ -170,24 +165,11 @@ export function ChatMusicPanel({
             onClick={() => controller.retryMutation()}
             disabled={!isReady || state.isCoolingDown}
           >
-            {state.pending.kind === 'playback'
-              ? '재생 요청 결과 다시 확인'
-              : state.pending.kind === 'add'
-                ? '신청 결과 다시 확인'
-                : '취소 결과 다시 확인'}
+            {state.pending.kind === 'add' ? '신청 결과 다시 확인' : '취소 결과 다시 확인'}
           </button>
         )}
         {state.isMutating && <span>요청을 확인하고 있어요…</span>}
       </div>
-      {chatMusicPlayerEnabled() && (
-        <ChatMusicPlayerView
-          playback={state.playback}
-          isReady={isReady}
-          isCommandDisabled={isWriteDisabled || !state.playback}
-          onCommand={(action) => controller.control(action)}
-          onRefresh={() => void controller.loadQueue()}
-        />
-      )}
       <dialog
         ref={dialog}
         className="chat-music-dialog"
@@ -347,11 +329,7 @@ export function ChatMusicPanel({
               onClick={() => controller.retryMutation()}
               disabled={!isReady || state.isCoolingDown}
             >
-              {state.pending.kind === 'playback'
-                ? '재생 요청 결과 다시 확인'
-                : state.pending.kind === 'add'
-                  ? '신청 결과 다시 확인'
-                  : '취소 결과 다시 확인'}
+              {state.pending.kind === 'add' ? '신청 결과 다시 확인' : '취소 결과 다시 확인'}
             </button>
           )}
         </div>

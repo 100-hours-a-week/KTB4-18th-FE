@@ -6,10 +6,7 @@ import { spawn, spawnSync } from 'node:child_process';
 
 const frontend = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const backend = resolve(process.env.CHAT_BACKEND_DIR || join(frontend, '../meomuneum-backend'));
-const suite = process.argv.includes('--player')
-  ? 'chat-music-player-verification'
-  : 'chat-music-request-verification';
-const evidence = join(frontend, 'node_modules/.tmp', suite);
+const evidence = join(frontend, 'node_modules/.tmp/chat-music-request-verification');
 await mkdir(evidence, { recursive: true });
 const root = await mkdtemp(join(tmpdir(), 'meomuneum-fe-music-'));
 const archive = spawnSync('git', ['archive', '--format=tar', 'HEAD'], {
@@ -32,7 +29,7 @@ await writeFile(join(evidence, 'backend-head.txt'), head.stdout.trim());
 await writeFile(join(evidence, 'harness-path.txt'), root);
 const child = spawn('./gradlew', ['chatMusicEventsProcessTest', '--no-daemon'], {
   cwd: root,
-  env: { ...process.env, CHAT_MUSIC_FE_DIR: frontend, CHAT_MUSIC_FE_SUITE: suite },
+  env: { ...process.env, CHAT_MUSIC_FE_DIR: frontend },
   stdio: 'inherit',
 });
 child.on('error', () => {
