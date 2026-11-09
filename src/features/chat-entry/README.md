@@ -27,3 +27,11 @@ API는 계정/sid/member/view에 고정하고 재연결 이전 결과를 버린�
 명시적으로 확인하며 자동 재전송하지 않는다. 같은 version의 음악 이벤트는 허용하고 더 높은 version에서
 목록을 합쳐 재조회한다. 8단계 플레이어/재생 제어/개인 음량과 9단계 추가 복구는 후속이다.
 설정·구조·재현 명령·실제 두 Task 통합과 합성 HTTP 브라우저 검증의 구분·기존 실패는 루트 README의 7단계를 따른다.
+
+## 공동 재생 8단계 (2026-11-09)
+
+`music/ChatMusicPlayerView`와 `chatMusicPlayer.ts`가 공식 YouTube 플레이어를 서버 snapshot에 맞춰 제어한다.
+기존 큐 UI와 PLAYER 플래그를 모두 켜야 하며 기본값은 false다. 공통 명령의 버전/현재 곡·원 UUID는 큐 저장소를 공유한다.
+같은 version의 최신 SYNC를 반영하며 2초 초과 위치 차이는 최소5초 간격으로 보정한다. PAUSED·클라이언트 ENDED는 서버 상태를 임의 변경하지 않는다.
+개인 음량/음소거·브라우저 자동재생 허용은 서버 명령을 보내지 않는다. 연결 상실/퇴장에는 iframe을 정리한다.
+설정·시각 계산·범위/한계·실제 Core/두 Chat 및 YouTube smoke check는 루트 README의8단계를 따른다.
