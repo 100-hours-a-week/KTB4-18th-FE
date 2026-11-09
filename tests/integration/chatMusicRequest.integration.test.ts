@@ -224,6 +224,35 @@ it.skipIf(!bridge.path)(
       expect(
         writes.some((w) => w.method === 'DELETE' && w.path.includes('expected_version=2')),
       ).toBe(true);
+      await wait(() => !music!.getSnapshot().isCoolingDown);
+      expect(music.getSnapshot().playback?.snapshot.sourceVideoId).toBe('abcdefghijk');
+      expect(music.getSnapshot().playback?.snapshot.durationMillis).toBe(120000);
+      music.control('PAUSE');
+      await wait(
+        () =>
+          music!.getSnapshot().playback?.snapshot.state === 'PAUSED' &&
+          !music!.getSnapshot().isMutating,
+      );
+      const frozen = music.getSnapshot().playback!.snapshot.positionSeconds;
+      expect(frozen).toBeGreaterThan(0);
+      await wait(() => !music!.getSnapshot().isCoolingDown);
+      music.control('RESUME');
+      await wait(
+        () =>
+          music!.getSnapshot().playback?.snapshot.state === 'PLAYING' &&
+          !music!.getSnapshot().isMutating,
+      );
+      expect(music.getSnapshot().playback!.snapshot.positionSeconds).toBe(frozen);
+      await wait(() => !music!.getSnapshot().isCoolingDown);
+      music.control('SKIP');
+      await wait(
+        () =>
+          music!.getSnapshot().playback?.snapshot.state === 'IDLE' &&
+          !music!.getSnapshot().isMutating,
+      );
+      const controls = writes.filter((w) => w.path.includes('/playback/commands'));
+      expect(controls.map((w) => JSON.parse(w.body).action)).toEqual(['PAUSE', 'RESUME', 'SKIP']);
+      expect(new Set(controls.map((w) => w.id)).size).toBe(3);
       writeFileSync(
         config.evidence,
         JSON.stringify({
@@ -235,6 +264,9 @@ it.skipIf(!bridge.path)(
           lostResultOriginalUuid: true,
           queueEvent: true,
           cancelWaiting: true,
+          pauseResumeSkip: true,
+          pinnedSource: true,
+          resumeFrozenPosition: true,
           musicVersion: music.getSnapshot().queue!.version,
         }),
       );

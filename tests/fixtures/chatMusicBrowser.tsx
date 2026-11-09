@@ -19,6 +19,7 @@ declare global {
   interface Window {
     musicFixture: {
       hint: (version: number) => void;
+      event: (payload: unknown) => void;
       connection: (ready: boolean) => void;
       sent: string[];
     };
@@ -33,6 +34,7 @@ function Fixture() {
   const [isReady, setReady] = useState(true);
   useEffect(() => {
     window.musicFixture = {
+      event: (payload) => setEvent(parseMusicEvent(payload) ?? undefined),
       hint: (version) => setEvent(parseMusicEvent(musicEvent(version))!),
       connection: (ready) => {
         setSession((s) => ({ ...s, generation: s.generation + 1 }));
