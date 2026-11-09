@@ -369,3 +369,23 @@ HTTP만 합성 대역이며 320×568·390×844·1280×900에서 검색·이웃 �
 기대 문구·동작 불일치를 이번 범위에서 바꾸지 않았다. 원본 결과와 baseline JSON을 함께 보존한다.
 전체 포맷 검사는 기존 `locationRecommendationCoordinator.ts` 한 곳으로 실패하며 이번 변경 파일은 별도 검사한다.
 린트·전용 타입 검사는 통과했다. 전체 green이나 운영 활성화 완료로 표시하지 않는다.
+
+### 기존 검증 실패 후속 수정 (2026-11-09)
+
+위 44건 실패·포맷 오류는 최초 7단계 검증 이력이며, 후속 수정으로 해소했다.
+전체 재실행에서 동일한 44건을 재현한 뒤 변경 이력을 대조했다.
+음악 기록·마이페이지 테스트는 현재 버튼·검색·빈 목록·메뉴·뒤로가기 이름과 달랐고,
+인증 테스트는 복구 실패 시 로그인 경로 안내 및 명시적 세션 무효 응답의 로컬 표식 해제와 달랐다.
+현재 동작에 맞춰 요소 조회·기대 결과를 수정하고, 미확정 요청 보존·중복 POST 방지·입력 보존·
+500자 제한·삭제·지역 유지 검증은 유지했다. 생성 폼과 상세 화면의 메모 라벨도 구분했다.
+제품 동작·API 계약은 변경하지 않았으며 추천 조정기의 중복 빈 줄 두 곳만 별도 포맷 커밋으로 정리했다.
+
+- 수정 대상296건 전부 통과. 최종 전체964건 중957통과·7조건부 제외·실패0.
+  테스트 삭제나 제외 추가는 없다. 기본 실행의7건은 실제 서버 환경이 필요한 기존 통합 테스트다.
+- `npm run format:check`, `npm run lint`, `npm run verify:chat:types`, `npm run build` 통과.
+- `npm run verify:chat:music:integration`으로 실제 MySQL/Redis·Core·두 Chat 프로세스의
+  검색·신청·응답 유실 후 원UUID 확인·이벤트·취소를 별도 검증했다. 합성 인증·곡을 사용하는 격리 환경이다.
+- `npm run verify:chat:music:browser`의 Chromium320/390/1280px 검증도 통과했다.
+  실제 React와 합성 HTTP를 사용하며 실제 OAuth·YouTube·물리기기·운영 부하 검증은 아니다.
+- 수정 전·중간·최종 JSON과 요약은 로컬 `node_modules/.tmp/fe-existing-failures-verification/`에 보존한다.
+  서버·브라우저 증빙은 기존 `node_modules/.tmp/chat-music-request-verification/`을 사용한다.
