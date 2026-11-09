@@ -224,16 +224,31 @@ describe('음악 기록 지역 필터 목록', () => {
     expect(screen.getByRole('button', { name: '새 지역' })).toBeInTheDocument();
   });
 
-  it('삭제 선택 중 전환을 잠그고 마지막 지역 삭제 성공 후 전국으로 복귀한다', async () => {
+  it('삭제 모드에서 지역을 바꾸면 선택을 초기화하고 현재 지역의 선택만 삭제한다', async () => {
     render(<MusicRecordListPage />);
     const nationwide = await ready();
-    fireEvent.click(screen.getByRole('button', { name: '인천' }));
     fireEvent.click(screen.getByRole('button', { name: '삭제할 기록 선택' }));
-    expect(nationwide).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '노래 1 기록 선택' }));
     fireEvent.click(nationwide);
-    expect(screen.getByRole('button', { name: '인천' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '노래 1 기록 선택' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    const incheon = screen.getByRole('button', { name: '인천' });
+    fireEvent.click(incheon);
+    expect(incheon).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('삭제할 음악 기록 0곡')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '노래 1 기록 선택' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '노래 3 기록 선택' }));
+    fireEvent.click(nationwide);
+    expect(nationwide).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('삭제할 음악 기록 0곡')).toBeInTheDocument();
+    fireEvent.click(incheon);
     fireEvent.click(screen.getByRole('button', { name: '노래 3 기록 선택' }));
     fireEvent.click(screen.getByRole('button', { name: '선택한 기록 삭제 확인' }));
+    expect(nationwide).toBeDisabled();
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '확인' })));
     await waitFor(() => expect(nationwide).toBeEnabled());
     expect(deletedIds).toEqual([3]);
@@ -291,9 +306,8 @@ describe('음악 기록 지역 필터 목록', () => {
     fireEvent.click(screen.getByRole('button', { name: '목록 새로고침' }));
     expect(nationwide).toBeDisabled();
     await act(async () => pending.resolve(pages.flat()));
-    expect(nationwide).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: '삭제 선택 종료' }));
     expect(nationwide).toBeEnabled();
+    expect(screen.getByRole('button', { name: '삭제 선택 종료' })).toBeInTheDocument();
   });
 
   it('snapshot 후속 페이지 인증 실패의 부분 결과를 노출하지 않는다', async () => {

@@ -74,19 +74,10 @@ const ChatEntryPage = lazy(() =>
 const MyPage = lazy(() =>
   import('./features/mypage/components/MyPage').then(({ MyPage }) => ({ default: MyPage })),
 );
-const MusicRecordListPage = lazy(() =>
-  import('./features/music-record/components/MusicRecordPages').then(({ MusicRecordListPage }) => ({
-    default: MusicRecordListPage,
-  })),
-);
+const MusicRecordRoute = lazy(() => import('./features/music-record/components/MusicRecordRoute'));
 const MusicRecordCreatePage = lazy(() =>
   import('./features/music-record/components/MusicRecordPages').then(
     ({ MusicRecordCreatePage }) => ({ default: MusicRecordCreatePage }),
-  ),
-);
-const MusicRecordDetailPage = lazy(() =>
-  import('./features/music-record/components/MusicRecordDetailPage').then(
-    ({ MusicRecordDetailPage }) => ({ default: MusicRecordDetailPage }),
   ),
 );
 const ChatbotPage = lazy(() => import('./features/chatbot/components/ChatbotPage'));
@@ -555,7 +546,7 @@ function AppContent() {
   if (pathname === MUSIC_RECORDS_PATH) {
     return (
       <RouteLoadBoundary key={pathname} variant="music-list">
-        <MusicRecordListPage />
+        <MusicRecordRoute />
       </RouteLoadBoundary>
     );
   }
@@ -563,7 +554,7 @@ function AppContent() {
   if (detailMatch) {
     return (
       <RouteLoadBoundary key={pathname} variant="music-detail">
-        <MusicRecordDetailPage recordId={Number(detailMatch[1])} />
+        <MusicRecordRoute recordId={Number(detailMatch[1])} />
       </RouteLoadBoundary>
     );
   }

@@ -102,8 +102,11 @@ body .main-header {
   min-height: 100px;
   flex-basis: 100px;
   padding: 20px 0;
-  border-bottom: 1px solid var(--color-border-tertiary);
   gap: 12px;
+}
+
+body .main-page:not(.main-page--map) .main-header {
+  border-bottom: 1px solid var(--color-border-tertiary);
 }
 
 .main-header__identity {
@@ -150,24 +153,6 @@ body .main-header {
   line-height: 18px;
   color: var(--color-text-secondary);
   letter-spacing: -0.025em;
-}
-.map-caption {
-  display: flex;
-  padding: 18px 0 8px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.map-caption h2 {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 20px;
-  letter-spacing: -0.025em;
-  color: var(--color-text-secondary);
-}
-.main-page--intro .map-caption {
-  opacity: 0;
 }
 .main-page .zone-map__canvas {
   filter: none;
@@ -553,14 +538,11 @@ body .mypage-screen .mypage-header h1 {
   background: var(--diary-tint);
   color: var(--color-text-primary);
 }
-.chat-app .music-card,
-.music-page .music-result {
+.chat-app .music-card {
   border-color: var(--color-border-secondary);
   border-radius: 8px;
   background: var(--color-bg-secondary);
   box-shadow: none;
-}
-.chat-app .music-card {
   padding: 12px 10px;
 }
 .chat-app .music-info img {
@@ -705,7 +687,7 @@ body .chat-image-entry {
 }
 
 body .music-list-content {
-  padding: 24px 20px;
+  padding: 0 20px 24px;
 }
 /* Record list reads like a streaming playlist: color header, large-cover track rows. */
 body .music-record-list-page .diary-page-intro {
@@ -728,7 +710,6 @@ body .music-record-list-page .diary-page-intro h2 {
 body .music-record-list-page .record-list-count {
   margin: 16px 0 12px;
   padding: 0 2px 10px;
-  border-bottom: 1px solid var(--color-border-tertiary);
 }
 /* Each record is an album card: the cover sits on a wash of its own colors, details follow below. */
 body .music-record-list-page .record-list {
@@ -752,15 +733,24 @@ body .music-record-list-page .record-card {
   padding: 10px 10px 12px;
   border: 0;
   border-radius: 16px;
-  background: linear-gradient(180deg, var(--color-brand-800) 0%, var(--record-black) 100%);
   box-shadow: 0 6px 16px rgb(22 32 26 / 16%);
   color: var(--record-on-black);
   transition:
     transform 160ms ease,
     box-shadow 160ms ease;
 }
+.music-record-card-background {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: inherit;
+  background: linear-gradient(180deg, var(--color-brand-800) 0%, var(--record-black) 100%);
+  pointer-events: none;
+}
 /* Scrim keeps text legible on any cover: light over the artwork, dark under the details. */
-body .music-record-list-page .record-card::before {
+body .music-record-list-page .record-card .music-record-card-background::after {
   position: absolute;
   z-index: -1;
   inset: 0;
@@ -851,7 +841,6 @@ body .music-record-list-page .record-select-indicator {
   height: 22px;
 }
 body .music-record-list-page .record-card.selected {
-  background: linear-gradient(180deg, var(--color-brand-800) 0%, var(--record-black) 100%);
   box-shadow:
     0 0 0 2px var(--color-bg-primary),
     0 0 0 4px var(--color-brand-600);
@@ -892,14 +881,6 @@ body .music-record-list-page .record-card.selected .record-select-indicator {
   background: var(--diary-paper);
 }
 body .music-page .music-selected-content {
-  padding: 16px;
-  border: 1px solid var(--color-border-secondary);
-  border-radius: 10px;
-  background: var(--diary-tint);
-  box-shadow: var(--diary-shadow);
-}
-/* Record detail opens like an album page: dark card washed with the cover's own colors. */
-body .music-detail-page .music-selected-content {
   position: relative;
   isolation: isolate;
   overflow: hidden;
@@ -907,11 +888,11 @@ body .music-detail-page .music-selected-content {
   padding: 28px 20px 20px;
   border: 0;
   border-radius: 16px;
-  background: linear-gradient(180deg, var(--color-brand-800) 0%, var(--record-black) 100%);
+  background: var(--diary-tint);
   box-shadow: 0 12px 32px rgb(22 32 26 / 18%);
   color: var(--record-on-black);
 }
-body .music-detail-page .music-selected-content::before {
+body .music-page .music-selected-content .music-record-card-background::after {
   position: absolute;
   z-index: -1;
   inset: 0;
@@ -923,7 +904,7 @@ body .music-detail-page .music-selected-content::before {
   );
   content: '';
 }
-body .music-detail-page .music-selected-content .music-hero-backdrop {
+body .music-page .music-selected-content .music-hero-backdrop {
   position: absolute;
   z-index: -2;
   top: -15%;
@@ -938,7 +919,7 @@ body .music-detail-page .music-selected-content .music-hero-backdrop {
   pointer-events: none;
 }
 body
-  .music-detail-page
+  .music-page
   .music-selected-content
   :is(img:not(.music-hero-backdrop), .music-cover-placeholder) {
   width: min(100%, 260px);
@@ -946,14 +927,14 @@ body
   border-radius: 6px;
   box-shadow: 0 10px 28px rgb(0 0 0 / 45%);
 }
-body .music-detail-page .music-selected-content .music-hero-eyebrow {
+body .music-page .music-selected-content .music-hero-eyebrow {
   margin: 0 0 2px;
   color: rgb(255 255 255 / 80%);
   font-size: 12px;
   font-weight: 600;
   line-height: 18px;
 }
-body .music-detail-page .music-selected-content strong {
+body .music-page .music-selected-content strong {
   color: var(--record-on-black);
   font-size: 28px;
   font-weight: 800;
@@ -962,12 +943,12 @@ body .music-detail-page .music-selected-content strong {
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
-body .music-detail-page .music-selected-content span {
+body .music-page .music-selected-content span {
   color: rgb(255 255 255 / 72%);
   font-size: 14px;
   line-height: 20px;
 }
-body .music-detail-page .music-change-button {
+body .music-page .music-change-button {
   align-self: end;
   min-height: 36px;
   padding: 7px 14px;
@@ -978,10 +959,10 @@ body .music-detail-page .music-change-button {
   font-size: 13px;
   font-weight: 600;
 }
-body .music-detail-page .music-change-button:disabled {
+body .music-page .music-change-button:disabled {
   opacity: 0.45;
 }
-body .music-detail-page .music-change-button:focus-visible {
+body .music-page .music-change-button:focus-visible {
   outline: 2px solid var(--record-on-black);
   outline-offset: 2px;
 }
@@ -1338,9 +1319,6 @@ body .mypage-screen .mypage-navigation {
     min-height: 68px;
     flex-basis: 68px;
     padding-block: 8px;
-  }
-  .map-caption {
-    padding-block: 8px 4px;
   }
   body .chatbot-floating-button {
     width: 124px;
