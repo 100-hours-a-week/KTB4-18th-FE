@@ -1,0 +1,39 @@
+                if (System.getenv("CHAT_MUSIC_FE_DIR") != null) {
+                    Path frontend = Path.of(System.getenv("CHAT_MUSIC_FE_DIR"));
+                    Path fixture = evidence.resolve("music-frontend-config.json").toAbsolutePath();
+                    Path result = frontend.resolve("node_modules/.tmp/chat-music-request-verification/process-result.json");
+                    for (int index=1; index<=24; index++) {
+                        jdbc.update("INSERT INTO music(provider,external_music_id,title,artist_name,youtube_video_id) "
+                                + "VALUES ('ITUNES',? ,?,'synthetic artist','abcdefghijk')", "fe-music-"+index, "synthetic song "+index);
+                        long track=jdbc.queryForObject("SELECT id FROM music WHERE external_music_id=?",Long.class,"fe-music-"+index);
+                        jdbc.update("""
+                                INSERT INTO music_playback_sources(music_id,youtube_video_id,channel_id,channel_kind,review_reference,
+                                  reviewed_by,status,duration_millis,playback_country,verified_at,valid_until,version)
+                                VALUES (?,'abcdefghijk','synthetic','ARTIST','synthetic','test','VERIFIED',120000,'KR',
+                                  TIMESTAMPADD(HOUR,-1,UTC_TIMESTAMP(6)),TIMESTAMPADD(HOUR,1,UTC_TIMESTAMP(6)),1)
+                                """,track);
+                        String conversation="fe-music-"+index;
+                        jdbc.update("INSERT INTO recommendation_sessions(user_id,region_id,trigger_type,input_type,conversation_key,status) "
+                                + "VALUES (411001,?,'CHATBOT','TEXT',?,'COMPLETED')",region,conversation);
+                        long rec=jdbc.queryForObject("SELECT id FROM recommendation_sessions WHERE conversation_key=?",Long.class,conversation);
+                        jdbc.update("INSERT INTO recommendation_items(recommendation_session_id,music_id,rank_no) VALUES (?,?,1)",rec,track);
+                    }
+                    Files.writeString(fixture,json.writeValueAsString(Map.of("taskA",polling.base(),"taskB",subscribed.base(),
+                            "token",token(revokedSid),"location",location(revokedSid,region),"region",region,"evidence",result.toString())));
+                    Process child = null;
+                    try {
+                        var runner=new ProcessBuilder("node","node_modules/vitest/vitest.mjs","run",
+                                "tests/integration/chatMusicRequest.integration.test.ts","--reporter=json",
+                                "--outputFile="+evidence.resolve("music-frontend-results.json").toAbsolutePath())
+                                .directory(frontend.toFile()).redirectErrorStream(true)
+                                .redirectOutput(evidence.resolve("music-frontend.log").toFile());
+                        runner.environment().put("CHAT_MUSIC_FE_CONFIG",fixture.toString());
+                        child=runner.start();
+                        if (!child.waitFor(90,TimeUnit.SECONDS)) throw new AssertionError("frontend music deadline");
+                        assertEquals(0,child.exitValue(),"inspect music-frontend.log");
+                    } finally {
+                        if(child!=null) child.destroyForcibly();
+                        Files.deleteIfExists(fixture);
+                    }
+                    return;
+                }

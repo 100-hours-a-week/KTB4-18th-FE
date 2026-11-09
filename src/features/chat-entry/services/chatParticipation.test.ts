@@ -1,3 +1,5 @@
+import { parseMusicEvent } from '../music/chatMusicTypes';
+import { musicEvent } from '../music/chatMusicTestHelpers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -99,6 +101,25 @@ describe('지역 채팅 메시지 처리', () => {
     expect(connectChatRoom).not.toHaveBeenCalled();
     expect(leaveChatRoom).toHaveBeenCalledWith(membership, expect.any(String));
     expect(states.at(-1)?.isReady).toBe(false);
+  });
+
+  it('음악 메타데이터를 현재 방·epoch·단조 버전에 고정하고 같은 버전 두 유형을 유지한다', async () => {
+    const { event, status } = await ready();
+    const first = states.at(-1)!.musicSession!;
+    expect(first.roomId).toBe(700);
+    event(parseMusicEvent(musicEvent(2, 'QUEUE_UPDATED'))!);
+    expect(states.at(-1)?.musicEvent?.type).toBe('QUEUE_UPDATED');
+    event(parseMusicEvent(musicEvent(2, 'PLAYBACK_UPDATED'))!);
+    expect(states.at(-1)?.musicEvent?.type).toBe('PLAYBACK_UPDATED');
+    event(parseMusicEvent(musicEvent(1))!);
+    event(parseMusicEvent(musicEvent(9, 'QUEUE_UPDATED', 2))!);
+    const foreign = parseMusicEvent(musicEvent(9))!;
+    event({ ...foreign, roomId: 701 });
+    expect(states.at(-1)?.musicEvent?.version).toBe(2);
+    status('reconnecting', '연결 중');
+    expect(states.at(-1)?.musicEvent).toBeUndefined();
+    expect(states.at(-1)?.musicSession?.key).toBe(first.key);
+    expect(states.at(-1)!.musicSession!.generation).toBeGreaterThan(first.generation);
   });
 
   const saved = {
