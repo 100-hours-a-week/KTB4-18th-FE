@@ -15,6 +15,37 @@
   cursor: default;
 }
 
+.location-recommendation-carousel__background {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.location-recommendation-carousel__background img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  mix-blend-mode: plus-lighter;
+  filter: blur(34px) brightness(0.69);
+  transform: scale(1.18);
+}
+
+.location-recommendation-carousel__background img[data-active='true'] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .location-recommendation-carousel__background img {
+    transition: opacity 360ms ease-in-out;
+  }
+}
+
 .location-recommendation-carousel--dragging .location-recommendation-carousel__stage {
   cursor: grabbing;
 }
@@ -24,10 +55,12 @@
   flex: 0 0 auto;
   cursor: grab;
   touch-action: pan-y;
-  width: min(100%, 680px, max(0px, calc(100dvh - 460px)));
+  --album-height-limit: clamp(0px, 100dvh - 460px, 280px);
+  --album-side-space: 64px;
+  --album-size: min(max(0px, 100% - var(--album-side-space)), var(--album-height-limit));
+  width: min(100%, 680px, calc(var(--album-height-limit) + var(--album-side-space)));
   max-width: 680px;
-  height: min(300px, max(0px, calc(100dvh - 460px)));
-  max-height: min(300px, max(0px, calc(100dvh - 460px)));
+  height: var(--album-height-limit);
   overflow: visible;
   isolation: isolate;
 }
@@ -35,12 +68,13 @@
 .location-recommendation-carousel__slide {
   position: absolute;
   top: 50%;
+  left: calc(50% + var(--album-size) * var(--album-offset) / 2);
   display: block;
   box-sizing: border-box;
-  width: min(100%, 300px, max(0px, calc(100dvh - 460px)));
+  width: var(--album-size);
   aspect-ratio: 1;
   overflow: hidden;
-  border-radius: 28px;
+  border-radius: calc(24px / var(--album-scale));
   background: #26322e;
   box-shadow: 0 16px 38px rgb(0 0 0 / 23%);
   opacity: 0.82;
@@ -48,15 +82,10 @@
   transition:
     left 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
     transform 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    border-radius 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
     filter 220ms ease,
     opacity 220ms ease;
   will-change: left, transform;
-}
-
-.location-recommendation-carousel__slide--previous,
-.location-recommendation-carousel__slide--next {
-  width: min(52%, 230px, 15dvh);
-  border-radius: 22px;
 }
 
 .location-recommendation-carousel__slide--current {
@@ -69,7 +98,7 @@
 }
 
 .location-recommendation-carousel--stepping .location-recommendation-carousel__slide {
-  transition-duration: 180ms, 180ms, 180ms, 180ms;
+  transition-duration: 180ms;
 }
 
 .location-recommendation-carousel__artwork {
@@ -90,24 +119,71 @@
 
 .location-recommendation-carousel__title,
 .location-recommendation-carousel__artist {
-  max-width: 100%;
   overflow: hidden;
   margin: 0;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .location-recommendation-carousel__title {
+  max-width: min(300px, calc(100% - clamp(36px, 8vw, 80px)));
   font-family: inherit;
   font-size: 22px;
   font-weight: 700;
   line-height: 1.35;
+  text-align: start;
+}
+
+.location-recommendation-carousel__title-track {
+  display: block;
+  width: max-content;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .location-recommendation-carousel__title:has(
+    > .location-recommendation-carousel__title-track--moving
+  ) {
+    --title-edge-fade: 12px;
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 var(--title-edge-fade),
+      #000 calc(100% - var(--title-edge-fade)),
+      transparent
+    );
+  }
+
+  .location-recommendation-carousel__title-track--moving {
+    animation: location-recommendation-title-marquee var(--title-marquee-duration) linear 900ms
+      infinite backwards;
+  }
+}
+
+@keyframes location-recommendation-title-marquee {
+  0%,
+  12% {
+    transform: translateX(var(--title-edge-fade));
+  }
+  88%,
+  100% {
+    transform: translateX(calc(-1 * (var(--title-marquee-distance) + var(--title-edge-fade))));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .location-recommendation-carousel__title {
+    text-overflow: ellipsis;
+  }
+  .location-recommendation-carousel__title-track {
+    display: inline;
+  }
 }
 
 .location-recommendation-carousel__artist {
+  max-width: 100%;
   margin-top: 6px;
   color: #e1e4e2;
   font-size: 16px;
+  text-overflow: ellipsis;
 }
 
 .location-recommendation-carousel__preview {
@@ -238,17 +314,6 @@
 }
 
 @media (max-width: 520px) {
-  .location-recommendation-carousel__stage {
-    width: min(100%, 680px, max(0px, calc(100dvh - 460px)));
-  }
-  .location-recommendation-carousel__slide {
-    border-radius: 20px;
-  }
-  .location-recommendation-carousel__slide--previous,
-  .location-recommendation-carousel__slide--next {
-    width: min(52%, 190px, 15dvh);
-    border-radius: 16px;
-  }
   .location-recommendation-carousel__copy {
     margin-top: 10px;
   }
@@ -263,9 +328,6 @@
 }
 
 @media (max-height: 700px) {
-  .location-recommendation-carousel__stage {
-    width: min(100%, 680px, max(0px, calc(100dvh - 460px)));
-  }
   .location-recommendation-carousel__artist {
     margin-top: 2px;
   }

@@ -53,6 +53,7 @@ const renderDialog = (
   nextCandidate = candidate,
   onCancel = vi.fn(),
   verifyStatus = vi.fn().mockResolvedValue(true),
+  onRefresh?: () => void,
 ) =>
   render(
     <LocationRecommendationDialog
@@ -60,8 +61,17 @@ const renderDialog = (
       verifyStatus={verifyStatus}
       onCancel={onCancel}
       onDismiss={vi.fn()}
+      onRefresh={onRefresh}
     />,
   );
+
+const mockVisibility = () => {
+  const visibility = vi.spyOn(document, 'visibilityState', 'get');
+  return (state: DocumentVisibilityState) => {
+    visibility.mockReturnValue(state);
+    fireEvent(document, new Event('visibilitychange'));
+  };
+};
 
 beforeEach(() => {
   const portalRoot = document.createElement('div');
@@ -73,6 +83,8 @@ afterEach(() => {
   cleanup();
   document.querySelector('.location-recommendation-portal-root')?.remove();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe('LocationRecommendationDialog', () => {
@@ -166,10 +178,13 @@ describe('LocationRecommendationDialog', () => {
     if (!currentSlide || !previousSlide || !nextSlide || !stage) {
       throw new Error('carousel side cards were not rendered');
     }
-    expect(Number(previousSlide.style.transform.match(/scale\(([^)]+)\)/)?.[1])).toBe(0.5);
-    expect(Number(nextSlide.style.transform.match(/scale\(([^)]+)\)/)?.[1])).toBe(0.5);
+    expect(Number(previousSlide.style.transform.match(/scale\(([^)]+)\)/)?.[1])).toBe(0.82);
+    expect(Number(nextSlide.style.transform.match(/scale\(([^)]+)\)/)?.[1])).toBe(0.82);
     Object.defineProperty(stage, 'clientWidth', { configurable: true, value: 400 });
-    const initialNextLeft = Number.parseFloat(nextSlide.style.left);
+    expect(previousSlide.style.getPropertyValue('--album-offset')).toBe('-0.49');
+    expect(currentSlide.style.getPropertyValue('--album-offset')).toBe('0');
+    const initialNextOffset = Number(nextSlide.style.getPropertyValue('--album-offset'));
+    expect(initialNextOffset).toBe(0.49);
     const initialNextScale = Number(nextSlide.style.transform.match(/scale\(([^)]+)\)/)?.[1]);
     Object.defineProperty(stage, 'setPointerCapture', {
       configurable: true,
@@ -192,7 +207,9 @@ describe('LocationRecommendationDialog', () => {
     });
     const currentScale = Number(currentSlide.style.transform.match(/scale\(([^)]+)\)/)?.[1]);
     const nextScale = Number(nextSlide.style.transform.match(/scale\(([^)]+)\)/)?.[1]);
-    expect(Number.parseFloat(nextSlide.style.left)).toBeLessThan(initialNextLeft);
+    expect(Number(nextSlide.style.getPropertyValue('--album-offset'))).toBeLessThan(
+      initialNextOffset,
+    );
     expect(nextScale).toBeGreaterThan(initialNextScale);
     expect(currentScale).toBeLessThan(1);
     fireEvent.pointerUp(stage, {
@@ -296,8 +313,19 @@ describe('LocationRecommendationDialog', () => {
     expect(screen.getByText('1 / 5')).toBeInTheDocument();
 
     fireEvent.wheel(currentSlide, { deltaY: 60 });
-    expect(screen.getByText('2 / 5')).toBeInTheDocument();
+    expect(screen.getByText('5 / 5')).toBeInTheDocument();
     fireEvent.wheel(currentSlide, { deltaY: -60 });
+    expect(screen.getByText('5 / 5')).toBeInTheDocument();
+  });
+
+  it('moves to the next track on a negative horizontal scroll over the album', () => {
+    renderDialog({ ...candidate, tracks: [1, 2, 3, 4, 5].map(makeTrack) });
+    const currentSlide = screen
+      .getByRole('group', { name: /지역 추천 음악/ })
+      .querySelector('.location-recommendation-carousel__slide--current');
+    if (!currentSlide) throw new Error('current album slide was not rendered');
+
+    fireEvent.wheel(currentSlide, { deltaX: -60 });
     expect(screen.getByText('2 / 5')).toBeInTheDocument();
   });
 
@@ -357,7 +385,7 @@ describe('LocationRecommendationDialog', () => {
   });
 
   it('rechecks status after returning from a tab switch while an earlier check is pending', async () => {
-    const visibilityDescriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+    const setVisibility = mockVisibility();
     let resolveBeforeHide!: (isValid: boolean) => void;
     let resolveOnReturn!: (isValid: boolean) => void;
     const beforeHide = new Promise<boolean>((resolve) => {
@@ -367,49 +395,99 @@ describe('LocationRecommendationDialog', () => {
       resolveOnReturn = resolve;
     });
     const verifyStatus = vi.fn().mockReturnValueOnce(beforeHide).mockReturnValueOnce(onReturn);
-    Object.defineProperty(document, 'visibilityState', {
-      configurable: true,
-      value: 'visible',
-    });
 
-    try {
+    renderDialog(candidate, vi.fn(), verifyStatus);
+    const previewButton = screen.getByRole('button', { name: '미리 듣기: 노래 1' });
+    setVisibility('visible');
+    expect(verifyStatus).toHaveBeenCalledOnce();
+
+    setVisibility('hidden');
+    expect(previewButton).toBeDisabled();
+    setVisibility('visible');
+    setVisibility('visible');
+    expect(verifyStatus).toHaveBeenCalledOnce();
+
+    await act(async () => resolveBeforeHide(true));
+    expect(verifyStatus).toHaveBeenCalledTimes(2);
+    expect(previewButton).toBeDisabled();
+
+    await act(async () => resolveOnReturn(true));
+    expect(previewButton).toBeEnabled();
+    expect(verifyStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([true, false])(
+    'retries a failed return check only once when retry returns %s',
+    async (isValid) => {
+      vi.useFakeTimers();
+      const setVisibility = mockVisibility();
+      const verifyStatus = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('status unavailable'))
+        .mockResolvedValue(isValid);
       renderDialog(candidate, vi.fn(), verifyStatus);
       const previewButton = screen.getByRole('button', { name: '미리 듣기: 노래 1' });
-      fireEvent(document, new Event('visibilitychange'));
-      expect(verifyStatus).toHaveBeenCalledOnce();
 
-      Object.defineProperty(document, 'visibilityState', {
-        configurable: true,
-        value: 'hidden',
-      });
-      fireEvent(document, new Event('visibilitychange'));
+      setVisibility('hidden');
+      await act(async () => setVisibility('visible'));
+      expect(verifyStatus).toHaveBeenCalledExactlyOnceWith(candidate, true);
       expect(previewButton).toBeDisabled();
 
-      Object.defineProperty(document, 'visibilityState', {
-        configurable: true,
-        value: 'visible',
-      });
-      fireEvent(document, new Event('visibilitychange'));
+      setVisibility('visible');
+      await act(async () => vi.advanceTimersByTimeAsync(499));
       expect(verifyStatus).toHaveBeenCalledOnce();
 
-      await act(async () => {
-        resolveBeforeHide(true);
-        await beforeHide;
-      });
-      expect(verifyStatus).toHaveBeenCalledTimes(2);
-      expect(previewButton).toBeDisabled();
-
-      await act(async () => {
-        resolveOnReturn(true);
-        await onReturn;
-      });
-      await waitFor(() => expect(previewButton).toBeEnabled());
-    } finally {
-      if (visibilityDescriptor) {
-        Object.defineProperty(document, 'visibilityState', visibilityDescriptor);
+      await act(async () => vi.advanceTimersByTimeAsync(1));
+      expect(verifyStatus).toHaveBeenNthCalledWith(2, candidate, true);
+      if (isValid) {
+        expect(previewButton).toBeEnabled();
       } else {
-        Reflect.deleteProperty(document, 'visibilityState');
+        expect(previewButton).toBeDisabled();
       }
-    }
+
+      await act(async () => vi.advanceTimersByTimeAsync(5_000));
+      expect(verifyStatus).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('offers a fresh local recommendation after preview verification fails twice', async () => {
+    vi.useFakeTimers();
+    const setVisibility = mockVisibility();
+    const onRefresh = vi.fn();
+    renderDialog(candidate, vi.fn(), vi.fn().mockResolvedValue(false), onRefresh);
+
+    setVisibility('hidden');
+    await act(async () => setVisibility('visible'));
+    expect(screen.queryByRole('button', { name: '추천 다시 받기' })).not.toBeInTheDocument();
+
+    await act(async () => vi.advanceTimersByTimeAsync(500));
+    fireEvent.click(screen.getByRole('button', { name: '추천 다시 받기' }));
+    expect(onRefresh).toHaveBeenCalledOnce();
+    expect(previewMocks.toggle).not.toHaveBeenCalled();
   });
+
+  it.each(['hidden', 'unmounted'])(
+    'clears the pending retry when the dialog becomes %s',
+    async (exit) => {
+      vi.useFakeTimers();
+      const setVisibility = mockVisibility();
+      const verifyStatus = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
+      const { unmount } = renderDialog(candidate, vi.fn(), verifyStatus);
+
+      setVisibility('hidden');
+      await act(async () => setVisibility('visible'));
+      expect(verifyStatus).toHaveBeenCalledOnce();
+
+      if (exit === 'hidden') {
+        setVisibility('hidden');
+        await act(async () => setVisibility('visible'));
+        expect(screen.getByRole('button', { name: '미리 듣기: 노래 1' })).toBeEnabled();
+      } else {
+        unmount();
+      }
+
+      await act(async () => vi.advanceTimersByTimeAsync(500));
+      expect(verifyStatus).toHaveBeenCalledTimes(exit === 'hidden' ? 2 : 1);
+    },
+  );
 });

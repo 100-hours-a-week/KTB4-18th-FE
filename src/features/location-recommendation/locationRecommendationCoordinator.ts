@@ -593,6 +593,20 @@ export class LocationRecommendationCoordinator {
     this.publishView();
   }
 
+  refreshLocalRecommendation(): void {
+    if (
+      !isLocalLocationRecommendationTestHost(window.location.hostname) ||
+      !this.displayedCandidate ||
+      !this.isMapRoute ||
+      !this.isMapEligible ||
+      !this.isActuallyActive()
+    ) {
+      return;
+    }
+    this.dismissDialog();
+    this.beginAccessEvent('RESUME');
+  }
+
   async verifyStatus(
     candidate: LocationRecommendationCandidate,
     verifyContext = false,

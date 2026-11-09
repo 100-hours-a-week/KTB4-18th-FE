@@ -20,6 +20,7 @@ import {
   CoordinatorContext,
   LocationRecommendationViewContext,
   LocationRecommendationCoordinator,
+  isLocalLocationRecommendationTestHost,
   type CoordinatorView,
   type LocationRecommendationRuntimeStatus,
 } from '../locationRecommendationCoordinator';
@@ -128,6 +129,10 @@ export function LocationRecommendationProvider({ children }: { children: ReactNo
   const dismissNotice = useCallback(() => coordinatorRef.current?.dismissNotice(), []);
   const cancelCurrent = useCallback(() => coordinatorRef.current?.cancelCurrent(), []);
   const dismissDialog = useCallback(() => coordinatorRef.current?.dismissDialog(), []);
+  const refreshLocalRecommendation = useCallback(
+    () => coordinatorRef.current?.refreshLocalRecommendation(),
+    [],
+  );
   const verifyStatus = useCallback(
     (candidate: LocationRecommendationCandidate, verifyContext?: boolean) =>
       coordinatorRef.current?.verifyStatus(candidate, verifyContext) ?? Promise.resolve(false),
@@ -160,10 +165,16 @@ export function LocationRecommendationProvider({ children }: { children: ReactNo
         )}
         {view.candidate && (
           <LocationRecommendationDialog
+            key={view.candidate.requestId}
             candidate={view.candidate}
             verifyStatus={verifyStatus}
             onCancel={cancelCurrent}
             onDismiss={dismissDialog}
+            onRefresh={
+              isLocalLocationRecommendationTestHost(window.location.hostname)
+                ? refreshLocalRecommendation
+                : undefined
+            }
           />
         )}
       </LocationRecommendationViewContext.Provider>

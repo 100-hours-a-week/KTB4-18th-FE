@@ -23,6 +23,7 @@
 
 .location-recommendation-dialog {
   position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -33,7 +34,7 @@
   padding: clamp(16px, 2vh, 30px) clamp(18px, 4vw, 40px);
   border: 1px solid rgb(255 255 255 / 76%);
   border-radius: clamp(30px, 7vw, 64px);
-  background: linear-gradient(138deg, #17221f 0%, #414541 54%, #131d19 100%);
+  background: linear-gradient(138deg, #202d29 0%, #494e49 54%, #1c2823 100%);
   color: #fff;
   box-shadow: 0 24px 80px rgb(0 0 0 / 28%);
   text-align: center;
