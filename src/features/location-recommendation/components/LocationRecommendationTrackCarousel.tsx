@@ -35,6 +35,7 @@ type LocationRecommendationTrackCarouselProps = {
   tracks: LocationRecommendationTrack[];
   isPreviewAllowed: boolean;
   onRefresh?: () => void;
+  onRecordTrack: (track: LocationRecommendationTrack) => void;
   preview: MusicPreviewState;
 };
 
@@ -42,6 +43,7 @@ export function LocationRecommendationTrackCarousel({
   tracks,
   isPreviewAllowed,
   onRefresh,
+  onRecordTrack,
   preview,
 }: LocationRecommendationTrackCarouselProps) {
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(tracks[0]?.trackId ?? null);
@@ -315,41 +317,51 @@ export function LocationRecommendationTrackCarousel({
       <div className="location-recommendation-carousel__copy" aria-live="polite">
         <LocationRecommendationTrackTitle key={track.trackId} title={track.title} />
         <p className="location-recommendation-carousel__artist">{track.artist}</p>
-        {onRefresh ? (
+        <div className="location-recommendation-carousel__actions">
+          {onRefresh ? (
+            <button
+              className="location-recommendation-carousel__preview"
+              type="button"
+              onClick={onRefresh}
+            >
+              추천 다시 받기
+            </button>
+          ) : (
+            <button
+              className="location-recommendation-carousel__preview"
+              type="button"
+              disabled={!track.previewUrl || !isPreviewAllowed}
+              aria-label={`${isTrackActive && preview.isPlaying ? '미리 듣기 중지' : '미리 듣기'}: ${track.title}`}
+              onClick={() => {
+                if (track.previewUrl && isPreviewAllowed) {
+                  void preview.toggle(track.trackId, track.previewUrl);
+                }
+              }}
+            >
+              {isTrackActive && (preview.isPlaying || preview.isLoading) ? (
+                <>
+                  중지
+                  <img src="/icons/location-recommendation/stop.svg" alt="" aria-hidden="true" />
+                </>
+              ) : track.previewUrl ? (
+                <>
+                  미리 듣기
+                  <img src="/icons/location-recommendation/play.svg" alt="" aria-hidden="true" />
+                </>
+              ) : (
+                '미리 듣기 없음'
+              )}
+            </button>
+          )}
           <button
-            className="location-recommendation-carousel__preview"
+            className="location-recommendation-carousel__preview location-recommendation-carousel__record"
             type="button"
-            onClick={onRefresh}
+            aria-label="이 곡으로 음악 기록 작성"
+            onClick={() => onRecordTrack(track)}
           >
-            추천 다시 받기
+            <img src="/icons/location-recommendation/write.svg" alt="" />
           </button>
-        ) : (
-          <button
-            className="location-recommendation-carousel__preview"
-            type="button"
-            disabled={!track.previewUrl || !isPreviewAllowed}
-            aria-label={`${isTrackActive && preview.isPlaying ? '미리 듣기 중지' : '미리 듣기'}: ${track.title}`}
-            onClick={() => {
-              if (track.previewUrl && isPreviewAllowed) {
-                void preview.toggle(track.trackId, track.previewUrl);
-              }
-            }}
-          >
-            {isTrackActive && (preview.isPlaying || preview.isLoading) ? (
-              <>
-                중지
-                <img src="/icons/location-recommendation/stop.svg" alt="" aria-hidden="true" />
-              </>
-            ) : track.previewUrl ? (
-              <>
-                미리 듣기
-                <img src="/icons/location-recommendation/play.svg" alt="" aria-hidden="true" />
-              </>
-            ) : (
-              '미리 듣기 없음'
-            )}
-          </button>
-        )}
+        </div>
       </div>
       {hasMultipleTracks && (
         <div className="location-recommendation-carousel__navigation">

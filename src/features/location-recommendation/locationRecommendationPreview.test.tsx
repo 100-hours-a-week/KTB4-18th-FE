@@ -43,6 +43,7 @@ function renderCarousel(track: LocationRecommendationTrack = recommendationTrack
   const toggle = vi.fn().mockResolvedValue(undefined);
   const result = render(
     <LocationRecommendationTrackCarousel
+      onRecordTrack={vi.fn()}
       tracks={[track]}
       isPreviewAllowed
       preview={{
@@ -114,6 +115,7 @@ describe('location recommendation previews', () => {
   it('uses the saved stop icon while a preview is playing', () => {
     render(
       <LocationRecommendationTrackCarousel
+        onRecordTrack={vi.fn()}
         tracks={[recommendationTrack]}
         isPreviewAllowed
         preview={{

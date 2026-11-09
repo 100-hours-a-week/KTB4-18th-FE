@@ -17,6 +17,8 @@ import {
 } from './api/musicRecordsApi';
 import { MusicRecordCreatePage, MusicRecordListPage } from './components/MusicRecordPages';
 import { MusicRecordDetailPage } from './components/MusicRecordDetailPage';
+import { LocationRecommendationDialog } from '../location-recommendation/components/LocationRecommendationDialog';
+import type { LocationRecommendationCandidate } from '../location-recommendation/locationRecommendationTypes';
 import { clearAccessToken, setAccessToken } from '../auth-login/api/authSession';
 import { forgetAuthFlowForTests, primeAuthFlowForTests } from '../auth-login/api/authFlow';
 import { invalidateMapDotsCache } from '../mainMap/mapApi';
@@ -1126,6 +1128,93 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     completeSearch(Response.json({ data: { items: [music], next_cursor: null, has_next: false } }));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(screen.queryByRole('button', { name: /^밤편지아이유$/ })).not.toBeInTheDocument();
+  });
+
+  it('중앙 추천곡으로 작성 화면을 열고 저장할 때 같은 곡의 ID를 전송한다', async () => {
+    const resolveLocation = {
+      map_dot: { map_dot_id: 5, code: 'dot-5' },
+      region,
+      location_resolution_token: 'location-token',
+      expires_in: 300,
+    };
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: (success: PositionCallback) =>
+          success({
+            coords: { latitude: 37.55, longitude: 126.92, accuracy: 30 },
+          } as GeolocationPosition),
+      },
+    });
+    const fetchMock = vi.mocked(fetch);
+    const originalFetch = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation((input, init) =>
+      String(input).endsWith('/api/v1/locations/resolve')
+        ? Promise.resolve(Response.json({ data: resolveLocation }))
+        : originalFetch(input, init),
+    );
+
+    const portal = document.createElement('div');
+    portal.className = 'location-recommendation-portal-root';
+    document.body.append(portal);
+    const onDismiss = vi.fn();
+    const onCancel = vi.fn();
+    const recommendedTrack = (trackId: string, title: string) => ({
+      trackId,
+      title,
+      artist: '아이유',
+      artworkUrl: null,
+      previewUrl: null,
+      storeUrl: null,
+    });
+    const candidate: LocationRecommendationCandidate = {
+      authEpoch: 'epoch',
+      accessEventId: 'access',
+      operationUUID: 'operation',
+      accessSequence: 1,
+      leaderEpoch: 1,
+      requestId: 'recommendation',
+      region: { regionId: 2, code: '11440', name: '마포구', sidoName: '서울특별시' },
+      tracks: [recommendedTrack('123', '첫 곡'), recommendedTrack('456', '중앙 곡')],
+      scopeGeneration: 'scope',
+      cancelEpoch: 0,
+      remainingTtlMs: 60_000,
+      receivedAt: Date.now(),
+      sourceWorkerInstanceId: 'worker',
+      sourceStateRevision: 1,
+    };
+
+    try {
+      const popup = render(
+        <LocationRecommendationDialog
+          candidate={candidate}
+          verifyStatus={async () => true}
+          onCancel={onCancel}
+          onDismiss={onDismiss}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: '다음 추천곡' }));
+      fireEvent.click(screen.getByRole('button', { name: '이 곡으로 음악 기록 작성' }));
+      expect(window.location.pathname).toBe('/music-records/new');
+      expect(onDismiss).toHaveBeenCalledOnce();
+      expect(onCancel).not.toHaveBeenCalled();
+      expect(recordWrites()).toHaveLength(0);
+      popup.unmount();
+
+      render(<MusicRecordCreatePage />);
+      expect(screen.getByRole('heading', { name: '음악 기록' })).toBeInTheDocument();
+      expect(screen.getByText('중앙 곡')).toBeInTheDocument();
+      expect(screen.queryByRole('textbox', { name: '음악 검색' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '저장' }));
+      await waitFor(() => expect(window.location.pathname).toBe('/music-records'));
+      expect(recordWrites()).toHaveLength(1);
+      expect(JSON.parse(String(recordWrites()[0][1]?.body))).toMatchObject({
+        music: { provider: 'ITUNES', external_music_id: '456' },
+        location_resolution_token: 'location-token',
+      });
+    } finally {
+      portal.remove();
+    }
   });
 
   it('생성 폼 뒤로가기 취소는 입력을 보존하고 확인만 메인으로 이동한다', async () => {
