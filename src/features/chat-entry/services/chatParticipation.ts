@@ -1,3 +1,4 @@
+import type { ChatMusicSession, ChatMusicEvent } from '../music/chatMusicTypes';
 import {
   getRegionChatRoom,
   joinChatRoom,
@@ -55,6 +56,8 @@ export interface ChatParticipationState {
   showDisconnectToast?: boolean;
   gaps?: ChatGap[];
   restoredThroughMessageId?: number;
+  musicSession?: ChatMusicSession;
+  musicEvent?: ChatMusicEvent;
 }
 
 // Serialize REST transitions across StrictMode, rapid tab changes, and late join responses.
@@ -96,6 +99,10 @@ export class ChatParticipation {
   private expirationTimer: number | undefined;
   private startingAccountId: number | null = null;
   private startingAuthContext: ChatAuthContext | null = null;
+  private musicGeneration = 0;
+  private musicSession: ChatMusicSession | undefined;
+  private musicEvent: ChatMusicEvent | undefined;
+  private musicEpoch: number | undefined;
 
   private readonly publish: (state: ChatParticipationState) => void;
 
@@ -122,6 +129,8 @@ export class ChatParticipation {
         showDisconnectToast: this.disconnectToastTimer !== undefined,
         gaps: [...this.gaps],
         restoredThroughMessageId: this.restoredThroughMessageId,
+        musicSession: this.musicSession,
+        musicEvent: this.musicEvent,
       });
   }
 
@@ -168,6 +177,7 @@ export class ChatParticipation {
       const token = getAccessToken();
       if (
         this.isStopped ||
+        !token ||
         chatAccountId(token) !== this.startingAccountId ||
         !sameChatAuthContext(this.startingAuthContext, chatAuthContext(token))
       ) {
@@ -176,6 +186,17 @@ export class ChatParticipation {
       }
       this.active = { room, membership };
       this.token = token;
+      const owner = chatAuthContext(token)!;
+      this.musicSession = {
+        key: `${owner.userId}:${owner.sessionId}:${room.roomId}:${membership.membershipId}:${membership.viewSessionId}`,
+        ownerToken: token,
+        roomId: room.roomId,
+        membershipId: membership.membershipId,
+        viewSessionId: membership.viewSessionId,
+        generation: ++this.musicGeneration,
+      };
+      this.musicEvent = undefined;
+      this.musicEpoch = undefined;
       this.currentUserId = chatAccountId(token);
       this.clearMessages();
       if (this.currentUserId !== null) {
@@ -188,6 +209,16 @@ export class ChatParticipation {
       this.closeConnection = connectChatRoom(
         membership,
         (status, message) => {
+          if (
+            status === 'connecting' ||
+            status === 'reconnecting' ||
+            status === 'recovery-failed'
+          ) {
+            if (this.musicSession)
+              this.musicSession = { ...this.musicSession, generation: ++this.musicGeneration };
+            this.musicEvent = undefined;
+            this.musicEpoch = undefined;
+          }
           if (
             status === 'connecting' ||
             status === 'reconnecting' ||
@@ -250,6 +281,9 @@ export class ChatParticipation {
     this.clearMessages();
     const active = this.active;
     this.active = null;
+    this.musicSession = undefined;
+    this.musicEvent = undefined;
+    this.musicEpoch = undefined;
     const token = this.token;
     this.token = null;
     this.currentUserId = null;
@@ -308,6 +342,23 @@ export class ChatParticipation {
     const membership = this.active?.membership;
     if (!membership) return;
     if (event.type === 'CHAT_READY') return;
+    if (
+      event.type === 'QUEUE_UPDATED' ||
+      event.type === 'PLAYBACK_UPDATED' ||
+      event.type === 'PLAYBACK_SYNC'
+    ) {
+      if (
+        !this.ownsSession() ||
+        event.roomId !== membership.roomId ||
+        (this.musicEpoch !== undefined && event.epoch !== this.musicEpoch) ||
+        (this.musicEvent && event.version < this.musicEvent.version)
+      )
+        return;
+      this.musicEpoch = event.epoch;
+      this.musicEvent = event;
+      this.update(this.status, this.statusMessage);
+      return;
+    }
     if (event.type === 'CHAT_HISTORY') {
       this.messages = retainActiveChatMessages(event.messages);
       this.messages.forEach((message) => this.confirmPending(message));
