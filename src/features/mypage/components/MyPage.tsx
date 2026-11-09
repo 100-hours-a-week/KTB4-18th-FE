@@ -38,6 +38,7 @@ import {
   MyPageSettingsSkeleton,
   MyPageTermsListSkeleton,
 } from '../../../components/RouteLoadSkeleton';
+import { ScrollingTrackTitle } from '../../../components/ScrollingTrackTitle';
 import { useDelayedPending } from '../../../hooks/useDelayedPending';
 
 type MyPageProps = {
@@ -1107,8 +1108,8 @@ function RecommendationPage({ back }: { back: () => void }) {
                 alt=""
               />
               <div>
-                <strong>{song.title}</strong>
-                <span>{song.artist_name}</span>
+                <ScrollingTrackTitle className="mypage-recommendation-title" title={song.title} />
+                <span className="mypage-recommendation-artist">{song.artist_name}</span>
               </div>
               <button
                 className="mypage-recommendation-play"

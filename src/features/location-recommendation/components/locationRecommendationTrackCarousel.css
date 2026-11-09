@@ -117,7 +117,6 @@
   margin-top: clamp(8px, 1.2vh, 14px);
 }
 
-.location-recommendation-carousel__title,
 .location-recommendation-carousel__artist {
   overflow: hidden;
   margin: 0;
@@ -131,51 +130,6 @@
   font-weight: 700;
   line-height: 1.35;
   text-align: start;
-}
-
-.location-recommendation-carousel__title-track {
-  display: block;
-  width: max-content;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .location-recommendation-carousel__title:has(
-    > .location-recommendation-carousel__title-track--moving
-  ) {
-    --title-edge-fade: 12px;
-    mask-image: linear-gradient(
-      to right,
-      transparent,
-      #000 var(--title-edge-fade),
-      #000 calc(100% - var(--title-edge-fade)),
-      transparent
-    );
-  }
-
-  .location-recommendation-carousel__title-track--moving {
-    animation: location-recommendation-title-marquee var(--title-marquee-duration) linear 900ms
-      infinite backwards;
-  }
-}
-
-@keyframes location-recommendation-title-marquee {
-  0%,
-  12% {
-    transform: translateX(var(--title-edge-fade));
-  }
-  88%,
-  100% {
-    transform: translateX(calc(-1 * (var(--title-marquee-distance) + var(--title-edge-fade))));
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .location-recommendation-carousel__title {
-    text-overflow: ellipsis;
-  }
-  .location-recommendation-carousel__title-track {
-    display: inline;
-  }
 }
 
 .location-recommendation-carousel__artist {

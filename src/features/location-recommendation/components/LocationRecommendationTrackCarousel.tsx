@@ -7,7 +7,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from 'react';
 import type { LocationRecommendationTrack } from '../locationRecommendationTypes';
-import { LocationRecommendationTrackTitle } from './LocationRecommendationTrackTitle';
+import { ScrollingTrackTitle } from '../../../components/ScrollingTrackTitle';
 import './locationRecommendationTrackCarousel.css';
 
 const TRACK_SWIPE_THRESHOLD_PX = 48;
@@ -315,7 +315,11 @@ export function LocationRecommendationTrackCarousel({
         ))}
       </div>
       <div className="location-recommendation-carousel__copy" aria-live="polite">
-        <LocationRecommendationTrackTitle key={track.trackId} title={track.title} />
+        <ScrollingTrackTitle
+          key={track.trackId}
+          className="location-recommendation-carousel__title"
+          title={track.title}
+        />
         <p className="location-recommendation-carousel__artist">{track.artist}</p>
         <div className="location-recommendation-carousel__actions">
           {onRefresh ? (
