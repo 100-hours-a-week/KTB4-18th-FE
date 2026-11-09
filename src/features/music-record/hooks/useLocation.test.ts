@@ -86,6 +86,71 @@ describe('위치 판정 토큰', () => {
     );
   });
 
+  it('첫 좌표가 부정확하면 정밀 좌표를 기다린 뒤 지역을 판정한다', async () => {
+    const coarse = {
+      coords: { latitude: 37.5, longitude: 127, accuracy: 450 },
+    } as GeolocationPosition;
+    const precise = { coords: { ...coarse.coords, accuracy: 35 } } as GeolocationPosition;
+    let sendPosition!: PositionCallback;
+    const clearWatch = vi.fn();
+    const watchPosition = vi.fn((success: PositionCallback) => {
+      sendPosition = success;
+      return 7;
+    });
+    vi.stubGlobal(
+      'navigator',
+      Object.assign(Object.create(navigator), {
+        geolocation: {
+          getCurrentPosition: (success: PositionCallback) => success(coarse),
+          watchPosition,
+          clearWatch,
+        },
+      }),
+    );
+    vi.mocked(resolveLocation).mockResolvedValue(resolved);
+
+    const { result } = renderHook(() => useLocation());
+    let request!: Promise<Location>;
+    act(() => {
+      request = result.current.acquire();
+    });
+    await waitFor(() => expect(watchPosition).toHaveBeenCalledOnce());
+    sendPosition(coarse);
+    expect(resolveLocation).not.toHaveBeenCalled();
+
+    await act(async () => {
+      sendPosition(precise);
+      await request;
+    });
+    expect(resolveLocation).toHaveBeenCalledExactlyOnceWith(37.5, 127, 35);
+    expect(result.current.location).toEqual(resolved);
+    expect(clearWatch).toHaveBeenCalledExactlyOnceWith(7);
+  });
+
+  it('위치 권한이 차단되면 재시도 없이 권한 설정을 안내한다', async () => {
+    const getCurrentPosition = vi.fn(
+      (_success: PositionCallback, failure: PositionErrorCallback) => {
+        failure({ code: 1, message: 'permission denied' } as GeolocationPositionError);
+      },
+    );
+    vi.stubGlobal(
+      'navigator',
+      Object.assign(Object.create(navigator), {
+        geolocation: { getCurrentPosition },
+      }),
+    );
+
+    const { result } = renderHook(() => useLocation());
+    await act(async () => {
+      await expect(result.current.acquire()).rejects.toThrow('위치 권한이 차단되어 있습니다.');
+    });
+
+    expect(result.current.error).toContain('브라우저와 기기 설정');
+    expect(result.current.isLocating).toBe(false);
+    expect(getCurrentPosition).toHaveBeenCalledOnce();
+    expect(resolveLocation).not.toHaveBeenCalled();
+  });
+
   it('100m 정확도를 얻지 못하면 10초 timeout 설정으로 최대 3회, 요청 사이 3초 간격 후 수동 재시도를 안내한다', async () => {
     vi.useFakeTimers();
     const getCurrentPosition = vi.fn(

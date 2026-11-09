@@ -1201,6 +1201,7 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
       expect(screen.getByRole('heading', { name: '음악 기록' })).toBeInTheDocument();
       expect(screen.getByText('중앙 곡')).toBeInTheDocument();
       expect(screen.queryByRole('textbox', { name: '음악 검색' })).not.toBeInTheDocument();
+      await screen.findByDisplayValue('서울특별시 마포구');
       fireEvent.click(screen.getByRole('button', { name: '저장' }));
       await waitFor(() => expect(window.location.pathname).toBe('/music-records'));
       expect(recordWrites()).toHaveLength(1);
@@ -1340,12 +1341,11 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
     const place = await screen.findByRole('textbox', { name: '장소 이름' });
     fireEvent.change(place, { target: { value: '홍대' } });
-    fireEvent.click(screen.getByRole('button', { name: '저장' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(
       '현재 위치에 해당하는 지역을 찾지 못했습니다',
     );
     expect(place).toHaveValue('홍대');
-    expect(screen.getByRole('button', { name: '현재 위치 확인' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '현재 위치 다시 확인' })).toBeEnabled();
     expect(
       vi
         .mocked(fetch)
@@ -1476,7 +1476,6 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     fireEvent.change(screen.getByRole('textbox', { name: '지금 느끼는 것 기록' }), {
       target: { value: '공연을 기다리는 중' },
     });
-    fireEvent.click(await screen.findByRole('button', { name: '현재 위치 확인' }));
     await screen.findByDisplayValue('서울특별시 마포구');
     fireEvent.click(screen.getByRole('button', { name: '저장' }));
 
@@ -1611,8 +1610,6 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
-    await screen.findByRole('button', { name: '현재 위치 확인' });
-    fireEvent.click(screen.getByRole('button', { name: '현재 위치 확인' }));
     await screen.findByDisplayValue('서울특별시 마포구');
     clearAccessToken();
     fireEvent.click(screen.getByRole('button', { name: '저장' }));
@@ -1685,7 +1682,6 @@ describe('원본 API 계약의 음악 기록 흐름', () => {
     });
     fireEvent.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '선택하기' })));
-    fireEvent.click(await screen.findByRole('button', { name: '현재 위치 확인' }));
     await screen.findByDisplayValue('서울특별시 마포구');
     fireEvent.click(screen.getByRole('button', { name: '저장' }));
     await waitFor(() => expect(screen.getByRole('button', { name: '뒤로가기' })).toBeDisabled());

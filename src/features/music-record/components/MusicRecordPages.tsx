@@ -24,12 +24,19 @@ import { useMusicPreview } from '../hooks/useMusicPreview';
 import { formatMusicRecordDate } from '../model/formatMusicRecordDate';
 import { musicRecordFilterPath, readMusicRecordSidoCode } from '../model/musicRecordFilterPath';
 import { formatMusicRecordTime } from '../model/formatMusicRecordTime';
+import {
+  getMusicRecordListTransitionPreview,
+  openMusicRecordDetail,
+  transitionMusicRecordEntry,
+} from '../model/musicRecordTransition';
 import { UnsavedChangesDialog } from './UnsavedChangesDialog';
 import { MusicRecordDeleteDialog } from './MusicRecordDeleteDialog';
+import { MusicRecordHero } from './MusicRecordHero';
 
 const replacementDraftKey = (recordId: number) => `music-record-replacement-draft:${recordId}`;
 
 export function MusicRecordListPage() {
+  const [returnPreview] = useState(getMusicRecordListTransitionPreview);
   const [items, setItems] = useState<MusicRecord[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasNext, setHasNext] = useState(false);
@@ -42,9 +49,20 @@ export function MusicRecordListPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const regionFilter = useMusicRecordRegionFilter();
-  const visibleItems =
-    regionFilter.selectedSidoCode === null ? items : regionFilter.filteredSnapshot;
-  const isFilterDisabled = isSelecting || isDeleting || isLoading || regionFilter.isSnapshotLoading;
+  const showReturnPreview =
+    !!returnPreview &&
+    !error &&
+    !regionFilter.snapshotError &&
+    (isLoading || (regionFilter.selectedSidoCode !== null && regionFilter.isSnapshotLoading));
+  const visibleItems = showReturnPreview
+    ? returnPreview.items
+    : regionFilter.selectedSidoCode === null
+      ? items
+      : regionFilter.filteredSnapshot;
+  const visibleRegions = showReturnPreview ? returnPreview.regions : regionFilter.regions;
+  const loadedPageCount = useRef(0);
+  const isFilterDisabled =
+    isDeleteOpen || isDeleting || isLoading || regionFilter.isSnapshotLoading;
   const mutationPending = useRef(false);
   const requestGeneration = useRef(0);
   const isListSkeletonVisible = useDelayedPending(isLoading, loadingRequestId);
@@ -86,16 +104,26 @@ export function MusicRecordListPage() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  const load = useCallback(async (next?: string | null) => {
+  const load = useCallback(async (next?: string | null, pagesToLoad = 1) => {
     const generation = ++requestGeneration.current;
     setIsLoading(true);
     setLoadingRequestId(generation);
     setError('');
     try {
-      const page = await getMusicRecords(next);
-      if (!active.current || generation !== requestGeneration.current) return;
+      const isCurrent = () => active.current && generation === requestGeneration.current;
+      let page = await getMusicRecords(next);
+      if (!isCurrent()) return;
+      const loaded = [...page.items];
+      let pageCount = 1;
+      while (pageCount < pagesToLoad && page.has_next && page.next_cursor) {
+        page = await getMusicRecords(page.next_cursor);
+        if (!isCurrent()) return;
+        loaded.push(...page.items);
+        pageCount += 1;
+      }
       if (!next) setSelectedIds([]);
-      setItems((old) => (next ? [...old, ...page.items] : page.items));
+      loadedPageCount.current = next ? loadedPageCount.current + pageCount : pageCount;
+      setItems((old) => (next ? [...old, ...loaded] : loaded));
       setCursor(page.next_cursor);
       setHasNext(page.has_next);
     } catch (caught) {
@@ -108,13 +136,13 @@ export function MusicRecordListPage() {
   useEffect(() => {
     active.current = true;
     queueMicrotask(() => {
-      if (active.current) void load();
+      if (active.current) void load(null, returnPreview?.pageCount);
     });
     return () => {
       active.current = false;
       requestGeneration.current += 1;
     };
-  }, [load]);
+  }, [load, returnPreview]);
 
   const removeSelected = async () => {
     if (!selectedIds.length || mutationPending.current) return;
@@ -205,6 +233,19 @@ export function MusicRecordListPage() {
             />
           </svg>
         </button>
+        <MusicRecordRegionFilter
+          regions={visibleRegions}
+          selectedSidoCode={regionFilter.selectedSidoCode}
+          isDisabled={isFilterDisabled}
+          isSkeletonVisible={!showReturnPreview && regionFilter.isSnapshotSkeletonVisible}
+          error={regionFilter.snapshotError}
+          onSelect={(code) => {
+            if (isFilterDisabled || code === regionFilter.selectedSidoCode) return;
+            setSelectedIds([]);
+            setDeleteError('');
+            regionFilter.setSelectedSidoCode(code);
+          }}
+        />
       </header>
       <div className="music-list-content">
         {missingNotice && (
@@ -236,25 +277,16 @@ export function MusicRecordListPage() {
             목록 새로고침
           </button>
         )}
-        <MusicRecordRegionFilter
-          regions={regionFilter.regions}
-          selectedSidoCode={regionFilter.selectedSidoCode}
-          isDisabled={isFilterDisabled}
-          isSkeletonVisible={regionFilter.isSnapshotSkeletonVisible}
-          error={regionFilter.snapshotError}
-          onSelect={(code) => {
-            if (!isFilterDisabled) regionFilter.setSelectedSidoCode(code);
-          }}
-        />
-        {!isSelecting && !isLoading && visibleItems.length > 0 && (
+        {!isSelecting && (!isLoading || showReturnPreview) && visibleItems.length > 0 && (
           <div className="record-list-count">검색 결과 {visibleItems.length}곡</div>
         )}
         <section
           className={`record-list${isSelecting ? ' selecting' : ''}`}
           aria-label="음악 기록 목록"
-          aria-busy={isLoading}
+          aria-busy={isLoading || showReturnPreview}
+          inert={showReturnPreview}
         >
-          {isListSkeletonVisible && !items.length && !error ? (
+          {!showReturnPreview && isListSkeletonVisible && !items.length && !error ? (
             <MusicRecordListSkeleton />
           ) : (
             visibleItems.map((record) => {
@@ -265,22 +297,32 @@ export function MusicRecordListPage() {
               const coverUrl = getHighResolutionArtworkUrl(record.music.album_cover_url);
               const content = (
                 <>
+                  <span
+                    className="music-record-card-background"
+                    data-music-record-part="background"
+                    aria-hidden="true"
+                  >
+                    {coverUrl && <img className="record-card-backdrop" src={coverUrl} alt="" />}
+                  </span>
                   {coverUrl ? (
-                    <>
-                      <img
-                        className="record-card-backdrop"
-                        src={coverUrl}
-                        alt=""
-                        aria-hidden="true"
-                      />
-                      <img className="record-cover" src={coverUrl} alt="" />
-                    </>
+                    <img
+                      className="record-cover"
+                      data-music-record-part="artwork"
+                      src={coverUrl}
+                      alt=""
+                    />
                   ) : (
-                    <span className="record-cover-placeholder" aria-hidden="true" />
+                    <span
+                      className="record-cover-placeholder"
+                      data-music-record-part="artwork"
+                      aria-hidden="true"
+                    />
                   )}
                   <div className="record-card-copy">
-                    <h2>{record.music.title}</h2>
-                    <p className="record-artist">{record.music.artist_name}</p>
+                    <h2 data-music-record-part="title">{record.music.title}</h2>
+                    <p className="record-artist" data-music-record-part="artist">
+                      {record.music.artist_name}
+                    </p>
                     <p className="record-location">{placeName}</p>
                     <div className="record-card-meta-row">
                       <time dateTime={record.created_at}>
@@ -317,19 +359,29 @@ export function MusicRecordListPage() {
               return (
                 <a
                   className="record-card"
+                  data-music-record-card={record.record_id}
                   key={record.record_id}
                   href={musicRecordFilterPath(
                     `/music-records/${record.record_id}`,
                     regionFilter.selectedSidoCode,
                   )}
                   onClick={(event) => {
+                    if (
+                      event.defaultPrevented ||
+                      event.button !== 0 ||
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.shiftKey ||
+                      event.altKey
+                    ) {
+                      return;
+                    }
                     event.preventDefault();
-                    navigate(
-                      musicRecordFilterPath(
-                        `/music-records/${record.record_id}`,
-                        regionFilter.selectedSidoCode,
-                      ),
-                    );
+                    openMusicRecordDetail(event.currentTarget, record, {
+                      items: visibleItems,
+                      regions: visibleRegions,
+                      pageCount: loadedPageCount.current,
+                    });
                   }}
                   aria-label={`${record.music.title} 기록 상세 보기`}
                 >
@@ -338,7 +390,7 @@ export function MusicRecordListPage() {
               );
             })
           )}
-          {isListSkeletonVisible && items.length > 0 && !error && (
+          {!showReturnPreview && isListSkeletonVisible && items.length > 0 && !error && (
             <MusicRecordListSkeleton count={2} />
           )}
         </section>
@@ -424,10 +476,13 @@ export function MusicRecordCreatePage() {
   const hasScrolledSinceLoad = useRef(false);
   const isSentinelVisible = useRef(false);
   const sentinel = useRef<HTMLDivElement>(null);
+  const searchScrollTop = useRef(0);
   const queryInput = useRef<HTMLInputElement>(null);
   const placeInput = useRef<HTMLInputElement>(null);
   const backButton = useRef<HTMLButtonElement>(null);
   const location = useLocation();
+  const { acquire: acquireLocation, isLocating } = location;
+  const hasRequestedEntryLocation = useRef(false);
   const isSearchSkeletonVisible = useDelayedPending(
     isSearching && query.trim().length >= 2 && !hasInvalidReplacementParam,
     pendingSearchId,
@@ -608,21 +663,25 @@ export function MusicRecordCreatePage() {
   }, [step, cursor, hasNext, items.length, loadNextPage]);
 
   useEffect(() => {
-    if (step === 'form') placeInput.current?.focus();
-    else queryInput.current?.focus();
+    if (step === 'form') backButton.current?.focus({ preventScroll: true });
+    else queryInput.current?.focus({ preventScroll: true });
   }, [step]);
 
+  useEffect(() => {
+    if (step !== 'form' || hasRequestedEntryLocation.current) return;
+    hasRequestedEntryLocation.current = true;
+    void acquireLocation().catch(() => undefined);
+  }, [step, acquireLocation]);
+
   const save = async () => {
-    if (!selected || isSaving) return;
+    if (!selected || isSaving || isLocating) return;
     setIsSaving(true);
     setSaveResultUnclear(false);
     setError('');
     let createRequestStarted = false;
     try {
-      if (location.location && location.isExpired()) {
-        throw new Error('위치 확인 시간이 만료됐어요. 현재 위치 확인 버튼으로 다시 시도해 주세요.');
-      }
-      const resolved = location.location ?? (await location.acquire());
+      const resolved =
+        location.location && !location.isExpired() ? location.location : await acquireLocation();
       createRequestStarted = true;
       await createMusicRecord(selected, resolved.location_resolution_token, place, memo);
       navigate(listPath);
@@ -708,6 +767,12 @@ export function MusicRecordCreatePage() {
     try {
       const initialDraft =
         replacementRecordId === null ? null : readReplacementDraft(replacementRecordId);
+      if (replacementRecordId === null) {
+        hasRequestedEntryLocation.current = true;
+        if (!isLocating && (!location.location || location.isExpired())) {
+          void acquireLocation().catch(() => undefined);
+        }
+      }
       const confirmedMusic =
         selected.music_id !== null &&
         Number.isSafeInteger(selected.music_id) &&
@@ -748,8 +813,16 @@ export function MusicRecordCreatePage() {
         }
         navigate(musicRecordFilterPath(`/music-records/${replacementRecordId}`, selectedSidoCode));
       } else {
-        setFormEnteredAt(new Date());
-        setStep('form');
+        searchScrollTop.current = window.scrollY;
+        await transitionMusicRecordEntry(
+          'form',
+          () => {
+            if (!isCurrent()) return;
+            setFormEnteredAt(new Date());
+            setStep('form');
+          },
+          0,
+        );
       }
     } catch (caught) {
       if (!isCurrent()) return;
@@ -838,25 +911,27 @@ export function MusicRecordCreatePage() {
         </section>
       ) : step === 'search' || replacementRecordId !== null ? (
         <>
-          <form className="music-search" onSubmit={(event) => event.preventDefault()}>
-            <label className="sr-only" htmlFor="music-query">
-              음악 검색
-            </label>
-            <span className="music-search-icon" aria-hidden="true">
-              <svg viewBox="0 0 16 16" focusable="false">
-                <circle cx="6.75" cy="6.75" r="4.75" />
-                <path d="m10.25 10.25 3.25 3.25" />
-              </svg>
-            </span>
-            <input
-              ref={queryInput}
-              id="music-query"
-              autoComplete="off"
-              value={query}
-              onChange={(event) => handleQueryChange(event.target.value)}
-              placeholder="곡 제목, 아티스트 검색"
-            />
-          </form>
+          <div className="music-search-bar">
+            <form className="music-search" onSubmit={(event) => event.preventDefault()}>
+              <label className="sr-only" htmlFor="music-query">
+                음악 검색
+              </label>
+              <span className="music-search-icon" aria-hidden="true">
+                <svg viewBox="0 0 16 16" focusable="false">
+                  <circle cx="6.75" cy="6.75" r="4.75" />
+                  <path d="m10.25 10.25 3.25 3.25" />
+                </svg>
+              </span>
+              <input
+                ref={queryInput}
+                id="music-query"
+                autoComplete="off"
+                value={query}
+                onChange={(event) => handleQueryChange(event.target.value)}
+                placeholder="곡 제목, 아티스트 검색"
+              />
+            </form>
+          </div>
           {query.trim().length === 1 && (
             <p className="music-search-count">두 글자 이상 입력해 주세요.</p>
           )}
@@ -889,14 +964,19 @@ export function MusicRecordCreatePage() {
                       {music.album_cover_url ? (
                         <img
                           src={getHighResolutionArtworkUrl(music.album_cover_url) ?? ''}
+                          data-music-record-part="artwork"
                           alt=""
                         />
                       ) : (
-                        <span className="music-cover-placeholder" aria-hidden="true" />
+                        <span
+                          className="music-cover-placeholder"
+                          data-music-record-part="artwork"
+                          aria-hidden="true"
+                        />
                       )}
                       <span>
-                        <strong>{music.title}</strong>
-                        <small>{music.artist_name}</small>
+                        <strong data-music-record-part="title">{music.title}</strong>
+                        <small data-music-record-part="artist">{music.artist_name}</small>
                       </span>
                     </button>
                     <button
@@ -973,44 +1053,52 @@ export function MusicRecordCreatePage() {
         </>
       ) : (
         <section className="music-form" aria-label="음악 기록 입력">
-          <article className="music-selected-content">
-            {selected?.album_cover_url ? (
-              <img src={getHighResolutionArtworkUrl(selected.album_cover_url) ?? ''} alt="" />
-            ) : (
-              <span className="music-cover-placeholder" aria-hidden="true" />
-            )}
-            <div className="music-track-info">
-              <strong>{selected?.title}</strong>
-              <span>{selected?.artist_name}</span>
-            </div>
-            <button
-              type="button"
-              className="music-change-button"
-              onClick={() => {
+          {selected && (
+            <MusicRecordHero
+              music={selected}
+              onChange={() => {
                 stopPreview();
-                setStep('search');
+                if (items.some((item) => item.external_music_id === selected.external_music_id)) {
+                  void transitionMusicRecordEntry(
+                    'search',
+                    () => setStep('search'),
+                    searchScrollTop.current,
+                  );
+                } else {
+                  setStep('search');
+                }
               }}
-            >
-              음악 변경
-            </button>
-          </article>
+            />
+          )}
           <label>
             저장 날짜
             <input value={entryDate} readOnly aria-readonly="true" />
           </label>
-          <label>
-            저장 장소
-            <input
-              readOnly
-              aria-readonly="true"
-              value={
-                location.location
-                  ? `${location.location.region.sido.name} ${location.location.region.sigungu.name}`
-                  : ''
-              }
-              placeholder="현재 위치를 확인해 주세요"
-            />
-          </label>
+          <div className="music-location-field">
+            <label htmlFor="music-save-location">저장 장소</label>
+            <div className="music-location-control" aria-busy={isLocating}>
+              <input
+                id="music-save-location"
+                readOnly
+                aria-readonly="true"
+                value={
+                  location.location
+                    ? `${location.location.region.sido.name} ${location.location.region.sigungu.name}`
+                    : ''
+                }
+                placeholder={isLocating ? '현재 위치 확인 중…' : '현재 위치를 확인해 주세요'}
+              />
+              <button
+                type="button"
+                className="music-location-retry"
+                aria-label="현재 위치 다시 확인"
+                disabled={isLocating || isSaving}
+                onClick={() => void acquireLocation().catch(() => undefined)}
+              >
+                <img src="/icons/Retry.svg" alt="" width={24} height={24} />
+              </button>
+            </div>
+          </div>
           <label>
             장소 이름
             <input
@@ -1035,16 +1123,6 @@ export function MusicRecordCreatePage() {
               {memo.length}/500
             </span>
           </label>
-          {(!location.location || location.isExpired()) && (
-            <button
-              type="button"
-              className="music-secondary-button"
-              disabled={location.isLocating}
-              onClick={() => void location.acquire().catch(() => undefined)}
-            >
-              {location.isLocating ? '현재 위치 확인 중…' : '현재 위치 확인'}
-            </button>
-          )}
           {(location.error || error) && (
             <div role="alert" className="music-error">
               <p>{location.error || error}</p>
@@ -1058,7 +1136,7 @@ export function MusicRecordCreatePage() {
           <button
             type="button"
             className="music-primary-button"
-            disabled={isSaving || location.isLocating}
+            disabled={isSaving || isLocating}
             onClick={() => void save()}
           >
             {isSaving ? '저장 중…' : '저장'}

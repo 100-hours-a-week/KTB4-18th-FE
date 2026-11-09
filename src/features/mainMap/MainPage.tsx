@@ -231,11 +231,6 @@ export function MainPage({ onChat }: MainPageProps) {
         </div>
         <span className="vinyl-disc main-header__record" aria-hidden="true" />
       </header>
-      {route.destination === 'map' && (
-        <div className="map-caption" aria-hidden={isIntro}>
-          <h2>음악으로 채워가는 지도</h2>
-        </div>
-      )}
       {route.destination === 'map' ? (
         <MapSection
           isIntro={isIntro}

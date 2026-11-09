@@ -124,12 +124,13 @@ body .main-page--map {
 }
 
 .desktop-intro {
+  --desktop-intro-width: min(352px, calc(var(--app-left) - 96px));
   display: none;
   position: fixed;
   inset-block: 0;
-  right: calc(50vw + 64px);
+  left: calc(var(--app-left) - 64px - var(--desktop-intro-width));
   box-sizing: border-box;
-  width: min(352px, calc(50vw - 96px));
+  width: var(--desktop-intro-width);
   padding-block: 48px 32px;
   flex-direction: column;
 }
