@@ -1,6 +1,7 @@
-:root[data-music-record-transition]
+:root[data-music-record-transition='']
   [data-music-record-transition-card]
-  [data-music-record-part='background'] {
+  [data-music-record-part='background'],
+:root[data-music-record-transition='detail'] [data-music-record-transition-card] {
   view-transition-name: music-record-background;
 }
 :root[data-music-record-transition]
@@ -48,4 +49,32 @@
 
 :root[data-music-record-transition]::view-transition-new(root) {
   animation: none;
+}
+
+:root[data-music-record-transition='detail']::view-transition-old(music-record-background),
+:root[data-music-record-transition='detail']::view-transition-old(music-record-artwork),
+:root[data-music-record-transition='detail']::view-transition-old(music-record-title),
+:root[data-music-record-transition='detail']::view-transition-old(music-record-artist) {
+  animation: none;
+  opacity: 0;
+}
+
+:root[data-music-record-transition='detail']::view-transition-new(music-record-background),
+:root[data-music-record-transition='detail']::view-transition-new(music-record-artwork),
+:root[data-music-record-transition='detail']::view-transition-new(music-record-title),
+:root[data-music-record-transition='detail']::view-transition-new(music-record-artist) {
+  animation: none;
+  mix-blend-mode: normal;
+  opacity: 1;
+}
+
+:root[data-music-record-transition='detail']::view-transition-new(music-record-background) {
+  height: 100%;
+}
+
+:root[data-music-record-transition='detail']::view-transition-new(music-record-title),
+:root[data-music-record-transition='detail']::view-transition-new(music-record-artist) {
+  height: 100%;
+  object-fit: contain;
+  object-position: left top;
 }
