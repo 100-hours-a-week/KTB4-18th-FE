@@ -1,14 +1,27 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ComponentPropsWithoutRef,
+  type CSSProperties,
+} from 'react';
 
 import './scrollingTrackTitle.css';
 
-type ScrollingTrackTitleProps = {
+type ScrollingTrackTitleProps = ComponentPropsWithoutRef<'strong'> & {
   title: string;
-  className: string;
+  as?: 'p' | 'strong';
+  fadeEdges?: boolean;
 };
 
-export function ScrollingTrackTitle({ title, className }: ScrollingTrackTitleProps) {
-  const viewportRef = useRef<HTMLParagraphElement>(null);
+export function ScrollingTrackTitle({
+  title,
+  as: Tag = 'p',
+  className = '',
+  fadeEdges = true,
+  ...attributes
+}: ScrollingTrackTitleProps) {
+  const viewportRef = useRef<HTMLElement>(null);
   const trackRef = useRef<HTMLSpanElement>(null);
   const [overflowDistance, setOverflowDistance] = useState(0);
 
@@ -36,7 +49,14 @@ export function ScrollingTrackTitle({ title, className }: ScrollingTrackTitlePro
   } as CSSProperties;
 
   return (
-    <p className={`scrolling-track-title ${className}`} ref={viewportRef} title={title}>
+    <Tag
+      {...attributes}
+      className={`scrolling-track-title${fadeEdges ? ' scrolling-track-title--fade' : ''} ${className}`}
+      ref={(element) => {
+        viewportRef.current = element;
+      }}
+      title={title}
+    >
       <span
         className={`scrolling-track-title__track${overflowDistance > 0 ? ' scrolling-track-title__track--moving' : ''}`}
         ref={trackRef}
@@ -44,6 +64,6 @@ export function ScrollingTrackTitle({ title, className }: ScrollingTrackTitlePro
       >
         {title}
       </span>
-    </p>
+    </Tag>
   );
 }

@@ -4,6 +4,7 @@ import {
   MusicRecordListSkeleton,
   MusicSearchResultsSkeleton,
 } from '../../../components/RouteLoadSkeleton';
+import { ScrollingTrackTitle } from '../../../components/ScrollingTrackTitle';
 import { useDelayedPending } from '../../../hooks/useDelayedPending';
 import { navigate } from '../../../shared/navigation';
 import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
@@ -985,7 +986,12 @@ export function MusicRecordCreatePage() {
                         />
                       )}
                       <span>
-                        <strong data-music-record-part="title">{music.title}</strong>
+                        <ScrollingTrackTitle
+                          as="strong"
+                          data-music-record-part="title"
+                          fadeEdges={false}
+                          title={music.title}
+                        />
                         <small data-music-record-part="artist">{music.artist_name}</small>
                       </span>
                     </button>
