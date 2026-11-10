@@ -187,6 +187,17 @@ const deleteRecord = async (id: number) => {
 
 describe('음악 기록 지역 필터 목록', () => {
   it('전체 페이지에서 존재하는 지역을 code순으로 유일화하고 전국 pagination을 보존한다', async () => {
+    let onIntersect: IntersectionObserverCallback = () => undefined;
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          onIntersect = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
     render(<MusicRecordListPage />);
     const nationwide = await ready();
     const scrollTo = vi.mocked(window.scrollTo);
@@ -214,7 +225,18 @@ describe('음악 기록 지역 필터 목록', () => {
     expect(scrollTo).toHaveBeenNthCalledWith(3, { top: 0, behavior: 'instant' });
     expect(scrollTo).toHaveBeenCalledTimes(3);
     expect(screen.getByText('검색 결과 2곡')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '더 불러오기' }));
+    expect(screen.queryByRole('button', { name: '더 불러오기' })).not.toBeInTheDocument();
+    const priorCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(([url]) => String(url).endsWith('?cursor=1')).length;
+    await act(async () => {
+      const entries = [{ isIntersecting: true } as IntersectionObserverEntry];
+      onIntersect(entries, {} as IntersectionObserver);
+      onIntersect(entries, {} as IntersectionObserver);
+    });
+    expect(
+      vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith('?cursor=1')),
+    ).toHaveLength(priorCalls + 1);
     await screen.findByText('검색 결과 4곡');
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith('?cursor=1'))).toBe(
       true,
