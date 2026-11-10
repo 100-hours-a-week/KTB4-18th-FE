@@ -19,6 +19,7 @@ import {
 } from '../api/musicRecordsApi';
 import { useLocation } from '../hooks/useLocation';
 import { useMusicRecordRegionFilter } from '../hooks/useMusicRecordRegionFilter';
+import { useMusicRecordRegionScroll } from '../hooks/useMusicRecordRegionScroll';
 import { MusicRecordRegionFilter } from './MusicRecordRegionFilter';
 import { useMusicPreview } from '../hooks/useMusicPreview';
 import { formatMusicRecordDate } from '../model/formatMusicRecordDate';
@@ -63,6 +64,7 @@ export function MusicRecordListPage() {
   const loadedPageCount = useRef(0);
   const isFilterDisabled =
     isDeleteOpen || isDeleting || isLoading || regionFilter.isSnapshotLoading;
+  const { scrollToTop, cancelScroll } = useMusicRecordRegionScroll(isFilterDisabled);
   const mutationPending = useRef(false);
   const requestGeneration = useRef(0);
   const isListSkeletonVisible = useDelayedPending(isLoading, loadingRequestId);
@@ -240,10 +242,13 @@ export function MusicRecordListPage() {
           isSkeletonVisible={!showReturnPreview && regionFilter.isSnapshotSkeletonVisible}
           error={regionFilter.snapshotError}
           onSelect={(code) => {
-            if (isFilterDisabled || code === regionFilter.selectedSidoCode) return;
-            setSelectedIds([]);
-            setDeleteError('');
-            regionFilter.setSelectedSidoCode(code);
+            if (isFilterDisabled) return;
+            scrollToTop(() => {
+              if (code === regionFilter.selectedSidoCode) return;
+              setSelectedIds([]);
+              setDeleteError('');
+              regionFilter.setSelectedSidoCode(code);
+            });
           }}
         />
       </header>
@@ -377,6 +382,7 @@ export function MusicRecordListPage() {
                       return;
                     }
                     event.preventDefault();
+                    cancelScroll();
                     openMusicRecordDetail(event.currentTarget, record, {
                       items: visibleItems,
                       regions: visibleRegions,
