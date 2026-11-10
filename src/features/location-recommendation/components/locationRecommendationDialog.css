@@ -13,8 +13,11 @@
   inset: 0;
   box-sizing: border-box;
   display: grid;
-  overflow: hidden;
-  place-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: none;
+  place-items: safe center center;
   padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
   background: rgb(17 22 20 / 54%);
   backdrop-filter: blur(2px);
@@ -28,9 +31,6 @@
   flex-direction: column;
   box-sizing: border-box;
   width: min(100%, 720px);
-  max-height: 100%;
-  min-height: 0;
-  overflow: hidden;
   padding: clamp(16px, 2vh, 30px) clamp(18px, 4vw, 40px);
   border: 1px solid rgb(255 255 255 / 76%);
   border-radius: 24px;
@@ -63,6 +63,7 @@
 
 .location-recommendation-dialog__header h2 {
   margin: 0;
+  overflow-wrap: anywhere;
   font-size: 22px;
   font-weight: 700;
   line-height: 1.35;
