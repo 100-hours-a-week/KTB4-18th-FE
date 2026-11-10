@@ -9,6 +9,8 @@
     "tests/integration/chatMultiClient.integration.test.ts",
     "tests/integration/chatDistributedRecovery.integration.test.ts",
     "tests/fixtures/chatMusicBrowser.tsx",
-    "tests/integration/chatMusicRequest.integration.test.ts"
+    "tests/integration/chatMusicRequest.integration.test.ts",
+    "tests/fixtures/chatMusicRelease.tsx",
+    "tests/fixtures/chatMusicReleaseLocation.ts"
   ]
 }

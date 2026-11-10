@@ -242,3 +242,18 @@ it('keeps request actions disabled on permission failure and revalidates only on
       .mock.calls.filter(([, init]) => init?.method === 'POST'),
   ).toEqual([]);
 });
+
+it('does not let a late native close event dismiss a reopened music request dialog', async () => {
+  const user = userEvent.setup();
+  render(<ChatRoomScreen chat={chatState()} />);
+  const input = screen.getByRole('textbox', { name: '메시지' });
+  await user.type(input, '/신청');
+  await user.keyboard('{Enter}');
+  await user.click(openDialog().getByRole('button', { name: '음악 창 닫기' }));
+  await user.type(input, '/신청 다시');
+  await user.keyboard('{Enter}');
+  const reopened = screen.getByRole('dialog');
+  expect(reopened).toHaveAttribute('open');
+  fireEvent(reopened, new Event('close'));
+  expect(screen.getByRole('dialog')).toHaveAttribute('open');
+});
