@@ -1,5 +1,14 @@
                 if (System.getenv("CHAT_MUSIC_FE_DIR") != null) {
                     Path frontend = Path.of(System.getenv("CHAT_MUSIC_FE_DIR"));
+                    if (System.getenv("CHAT_MUSIC_FE_SUITE").contains("sync")) {
+                        String leavePath="/api/v1/chat-rooms/"+room+"/members/me?membership_id=";
+                        assertEquals(204,request(polling,"DELETE",leavePath+first.membership+"&view_session_id="+first.view,
+                                token(revokedSid),null,Map.of()).statusCode());
+                        assertEquals(204,request(polling,"DELETE",leavePath+second.membership+"&view_session_id="+second.view,
+                                token(revokedSid),null,Map.of()).statusCode());
+                        assertEquals(204,request(polling,"DELETE",leavePath+survivor.membership+"&view_session_id="+survivor.view,
+                                token(survivingSid),null,Map.of()).statusCode());
+                    }
                     Path fixture = evidence.resolve("music-frontend-config.json").toAbsolutePath();
                     Path result = frontend.resolve("node_modules/.tmp/"+System.getenv("CHAT_MUSIC_FE_SUITE")+"/process-result.json");
                     for (int index=1; index<=24; index++) {
@@ -28,6 +37,7 @@
                                 .directory(frontend.toFile()).redirectErrorStream(true)
                                 .redirectOutput(evidence.resolve("music-frontend.log").toFile());
                         runner.environment().put("CHAT_MUSIC_FE_CONFIG",fixture.toString());
+                        runner.environment().put("CHAT_MUSIC_FE_SUITE",System.getenv("CHAT_MUSIC_FE_SUITE"));
                         child=runner.start();
                         if (!child.waitFor(90,TimeUnit.SECONDS)) throw new AssertionError("frontend music deadline");
                         assertEquals(0,child.exitValue(),"inspect music-frontend.log");

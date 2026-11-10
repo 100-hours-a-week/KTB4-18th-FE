@@ -232,3 +232,11 @@
     max-height: 96dvh;
   }
 }
+
+.chat-music-recovery {
+  padding: 8px 16px;
+  font-size: 12px;
+}
+.chat-music-recovery button {
+  margin-inline-start: 8px;
+}

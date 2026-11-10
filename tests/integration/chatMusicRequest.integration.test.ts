@@ -79,7 +79,10 @@ it.skipIf(!bridge.path)(
       removeEventListener: events.removeEventListener.bind(events),
       sessionStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
     });
+    const isSyncSuite = process.env.CHAT_MUSIC_FE_SUITE === 'chat-music-sync-verification';
     let loseNextAdd = false;
+    let suppressMusicEvents = false;
+    let failQueueReads = 0;
     const writes: { id: string; body: string; method: string; path: string }[] = [];
     const sockets = new Set<import('node:stream').Duplex>();
     const requests = new Set<import('node:http').ClientRequest>();
@@ -88,6 +91,18 @@ it.skipIf(!bridge.path)(
       incoming.on('data', (chunk) => chunks.push(chunk));
       incoming.on('end', () => {
         const body = Buffer.concat(chunks);
+        if (
+          failQueueReads > 0 &&
+          incoming.method === 'GET' &&
+          incoming.url?.includes('/queue-items')
+        ) {
+          failQueueReads--;
+          outgoing.writeHead(503, { 'Content-Type': 'application/json' });
+          outgoing.end(
+            JSON.stringify({ message: 'synthetic fault', data: { code: 'CHAT_UNAVAILABLE' } }),
+          );
+          return;
+        }
         if (incoming.method === 'POST' || incoming.method === 'DELETE')
           writes.push({
             id: String(incoming.headers['idempotency-key'] ?? ''),
@@ -168,15 +183,32 @@ it.skipIf(!bridge.path)(
       await import('../../src/features/chat-entry/music/chatMusicQueueController');
     const states: ChatParticipationState[] = [];
     let music: InstanceType<typeof ChatMusicQueueController> | undefined;
+    let binding = '';
+    let returned: InstanceType<typeof ChatParticipation> | undefined;
+    let returnedMusic: InstanceType<typeof ChatMusicQueueController> | undefined;
     const participation = new ChatParticipation((state) => {
       states.push(state);
-      if (state.musicEvent) music?.hint(state.musicEvent);
+      if (isSyncSuite && music && state.musicSession) {
+        const next = `${state.musicSession.generation}:${state.isReady}`;
+        if (next !== binding) {
+          binding = next;
+          music.connect(state.musicSession, state.isReady);
+        }
+      }
+      if (state.musicEvent && !suppressMusicEvents) music?.hint(state.musicEvent);
     });
+    let stage = 'initial';
+    const phase = (value: string) => {
+      stage = value;
+      writeFileSync(config.evidence + '.phase.json', JSON.stringify({ stage }));
+    };
     const wait = async (condition: () => boolean) => {
       const end = Date.now() + 20_000;
       while (!condition()) {
         if (Date.now() > end)
-          throw Error(`music condition timed out; status=${states.at(-1)?.status}`);
+          throw Error(
+            `music condition timed out; stage=${stage}; status=${states.at(-1)?.status}; recovery=${music?.getSnapshot().recoveryStatus}; version=${music?.getSnapshot().queue?.version}; notice=${music?.getSnapshot().notice}`,
+          );
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
     };
@@ -190,6 +222,7 @@ it.skipIf(!bridge.path)(
       const session = states.at(-1)!.musicSession!;
       expect(session).toBeTruthy();
       music = new ChatMusicQueueController(session);
+      binding = `${session.generation}:true`;
       music.connect(session, true);
       await wait(() => !!music!.getSnapshot().queue);
       await music.search('synthetic');
@@ -206,10 +239,12 @@ it.skipIf(!bridge.path)(
         states.some((s) => s.musicEvent?.type === 'PLAYBACK_UPDATED' && s.musicEvent.version === 1),
       );
       await wait(() => !music!.getSnapshot().isCoolingDown);
+      phase('lost-result-retry');
       loseNextAdd = true;
       music.add(tracks[1]);
       await wait(() => !music!.getSnapshot().isMutating && !!music!.getSnapshot().pending);
       expect(music.getSnapshot().pending?.kind).toBe('add');
+      await wait(() => music!.getSnapshot().recoveryStatus === 'ready');
       music.retryMutation();
       await wait(() => !music!.getSnapshot().pending && music!.getSnapshot().queue?.version === 2);
       const adds = writes.filter((w) => w.method === 'POST' && w.path.includes('/queue-items'));
@@ -253,6 +288,91 @@ it.skipIf(!bridge.path)(
       const controls = writes.filter((w) => w.path.includes('/playback/commands'));
       expect(controls.map((w) => JSON.parse(w.body).action)).toEqual(['PAUSE', 'RESUME', 'SKIP']);
       expect(new Set(controls.map((w) => w.id)).size).toBe(3);
+      if (isSyncSuite) {
+        phase('event-loss-read-failure');
+        const { mutateMusicQueue } =
+          await import('../../src/features/chat-entry/music/chatMusicApi');
+        await wait(() => !music!.getSnapshot().isCoolingDown);
+        music.add(tracks[0]);
+        await wait(
+          () => music!.getSnapshot().queue?.state === 'PLAYING' && !music!.getSnapshot().isMutating,
+        );
+        await wait(() => !music!.getSnapshot().isCoolingDown);
+        suppressMusicEvents = true;
+        const before = music.getSnapshot().playback!.snapshot;
+        await mutateMusicQueue(
+          session,
+          {
+            id: crypto.randomUUID(),
+            kind: 'playback',
+            action: 'PAUSE',
+            queueItemId: before.current!.queueItemId,
+            expectedVersion: before.version,
+            label: 'synthetic',
+          },
+          new AbortController().signal,
+        );
+        failQueueReads = 2;
+        music.recover();
+        await wait(() => music!.getSnapshot().recoveryStatus === 'recovering');
+        expect(music.getSnapshot().playback).toBeNull();
+        await wait(
+          () =>
+            music!.getSnapshot().recoveryStatus === 'ready' &&
+            music!.getSnapshot().playback?.snapshot.state === 'PAUSED',
+        );
+        phase('socket-reconnect');
+        const generation = states.at(-1)!.musicSession!.generation;
+        for (const socket of sockets) socket.destroy();
+        await wait(() => states.at(-1)!.musicSession!.generation > generation);
+        await wait(
+          () =>
+            states.at(-1)?.status === 'ready' && music!.getSnapshot().recoveryStatus === 'ready',
+        );
+        const restored = states.at(-1)!.musicSession!;
+        expect(restored.membershipId).toBe(session.membershipId);
+        expect(restored.viewSessionId).toBe(session.viewSessionId);
+        expect(music.getSnapshot().playback?.snapshot.state).toBe('PAUSED');
+        phase('watchdog');
+        const paused = music.getSnapshot().playback!.snapshot;
+        await mutateMusicQueue(
+          restored,
+          {
+            id: crypto.randomUUID(),
+            kind: 'playback',
+            action: 'RESUME',
+            queueItemId: paused.current!.queueItemId,
+            expectedVersion: paused.version,
+            label: 'synthetic',
+          },
+          new AbortController().signal,
+        );
+        await wait(() => music!.getSnapshot().playback?.snapshot.state === 'PLAYING');
+        // All music hints remain dropped: only the15s watchdog can observe the external RESUME.
+        await wait(() => !music!.getSnapshot().isCoolingDown);
+        music.add(tracks[2]);
+        await wait(
+          () =>
+            !music!.getSnapshot().isMutating && (music!.getSnapshot().queue?.items.length ?? 0) > 0,
+        );
+        phase('last-leave-return');
+        music.pause();
+        await participation.stop();
+        let finalState: ChatParticipationState | undefined;
+        returned = new ChatParticipation((s) => {
+          finalState = s;
+        });
+        await returned.start();
+        await wait(() => finalState?.status === 'ready');
+        returnedMusic = new ChatMusicQueueController(finalState!.musicSession!);
+        returnedMusic.connect(finalState!.musicSession!, true);
+        await wait(() => returnedMusic!.getSnapshot().recoveryStatus === 'ready');
+        expect(returnedMusic.getSnapshot().queue).toMatchObject({
+          state: 'IDLE',
+          current: null,
+          items: [],
+        });
+      }
       writeFileSync(
         config.evidence,
         JSON.stringify({
@@ -264,6 +384,15 @@ it.skipIf(!bridge.path)(
           lostResultOriginalUuid: true,
           queueEvent: true,
           cancelWaiting: true,
+          recovery: isSyncSuite
+            ? {
+                failedReads: 2,
+                droppedMusicEvents: true,
+                socketReconnectSameView: true,
+                watchdogRecovered: true,
+                lastLeaveClearedOnReturn: true,
+              }
+            : null,
           pauseResumeSkip: true,
           pinnedSource: true,
           resumeFrozenPosition: true,
@@ -271,6 +400,8 @@ it.skipIf(!bridge.path)(
         }),
       );
     } finally {
+      returnedMusic?.dispose();
+      await returned?.stop().catch(() => {});
       music?.dispose();
       await participation.stop().catch(() => {});
       for (const socket of sockets) socket.destroy();

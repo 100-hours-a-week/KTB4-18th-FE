@@ -26,7 +26,9 @@ const settle = async () => {
 beforeEach(async () => {
   vi.resetAllMocks();
   auth.token = musicToken();
-  vi.mocked(authenticatedFetchWithCurrentToken).mockResolvedValue(musicResponse(queuePage()));
+  vi.mocked(authenticatedFetchWithCurrentToken).mockImplementation(async () =>
+    musicResponse(queuePage()),
+  );
   controller = new ChatMusicQueueController(musicSession());
   controller.connect(musicSession(), true);
   await settle();
@@ -72,7 +74,9 @@ describe('music queue state and concurrency', () => {
     controller.add(song());
     controller.add(song());
     await settle();
-    const first = vi.mocked(authenticatedFetchWithCurrentToken).mock.calls.at(-1)![1];
+    const first = vi
+      .mocked(authenticatedFetchWithCurrentToken)
+      .mock.calls.find(([, init]) => init?.method === 'POST')![1];
     expect(controller.getSnapshot().pending?.kind).toBe('add');
     expect(controller.getSnapshot().isMutating).toBe(false);
     vi.mocked(authenticatedFetchWithCurrentToken)
@@ -185,6 +189,13 @@ it('applies same-version newer sync, refuses stale snapshot regression and retai
   controller.hint(parseMusicEvent(newer)!);
   expect(controller.getSnapshot().playback?.snapshot.serverTime).toBe('2026-11-09T05:00:10Z');
   await controller.loadQueue();
+  expect(controller.getSnapshot().playback).toBeNull();
+  expect(controller.getSnapshot().recoveryStatus).toBe('recovering');
+  vi.mocked(authenticatedFetchWithCurrentToken).mockImplementation(async () =>
+    musicResponse({ ...queuePage(4), server_time: '2026-11-09T05:00:11Z' }),
+  );
+  controller.recover();
+  await settle();
   expect(controller.getSnapshot().playback?.snapshot.version).toBe(4);
   vi.mocked(authenticatedFetchWithCurrentToken).mockRejectedValueOnce(new TypeError('lost'));
   controller.control('PAUSE');

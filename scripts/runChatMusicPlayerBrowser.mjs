@@ -7,7 +7,10 @@ process.env.VITE_CHAT_MUSIC_PLAYER_ENABLED = 'true';
 process.env.VITE_AUTH_DIRECT_V2_ENABLED = 'false';
 process.env.VITE_API_BASE_URL = '';
 process.env.VITE_API_PROXY_TARGET = 'http://127.0.0.1:1';
-const output = resolve('node_modules/.tmp/chat-music-player-verification/browser');
+const isSyncSuite = process.argv.includes('--sync');
+const output = resolve(
+  `node_modules/.tmp/${isSyncSuite ? 'chat-music-sync' : 'chat-music-player'}-verification/browser`,
+);
 await mkdir(output, { recursive: true });
 const server = await createServer({
   server: { host: '127.0.0.1', port: 0, hmr: false },
@@ -138,6 +141,7 @@ try {
       current = item(),
       position = 0;
     let clock = '2026-11-09T05:00:05Z';
+    let failQueueReads = 0;
     const commands = [];
     const snapshot = () => ({
       version,
@@ -173,6 +177,15 @@ try {
     await page.route('**/api/v1/chat-rooms/700/**', async (route) => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
+      if (failQueueReads > 0 && request.method() === 'GET' && path.endsWith('/queue-items')) {
+        failQueueReads--;
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'synthetic fault', data: { code: 'CHAT_UNAVAILABLE' } }),
+        });
+        return;
+      }
       let data;
       if (path.endsWith('/playback/commands')) {
         const command = JSON.parse(request.postData());
@@ -268,6 +281,37 @@ try {
       await region.getByRole('button', { name: '다음 곡으로' }).click();
       await expect(region.getByText('방에서 대기 중', { exact: true })).toBeVisible();
       expect(commands.map((c) => c.action)).toEqual(['PAUSE', 'RESUME', 'SKIP']);
+      if (isSyncSuite && viewport.width === 390) {
+        current = item();
+        state = 'PAUSED';
+        version++;
+        failQueueReads = 2;
+        await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+        await expect(
+          page.getByText('음악 상태를 확인하지 못했어요. 잠시 후 다시 확인해요.'),
+        ).toBeVisible();
+        await expect(page.getByTitle('YouTube 음악 영상')).toHaveCount(0);
+        await expect(region.getByRole('button', { name: '전체 재생' })).toBeDisabled();
+        await expect(region.getByText('방에서 일시정지', { exact: true })).toBeVisible({
+          timeout: 10000,
+        });
+        await expect(region.getByRole('button', { name: '내 음소거' })).toHaveAttribute(
+          'aria-pressed',
+          'true',
+        );
+        await expect(region.getByRole('slider', { name: '내 음량' })).toHaveValue('25');
+        state = 'PLAYING';
+        version++; // Drop all music events: the watchdog must read this state.
+        await expect(region.getByRole('button', { name: '전체 일시정지' })).toBeVisible({
+          timeout: 20000,
+        });
+        await page.screenshot({ path: resolve(output, 'recovered.png') });
+        await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+        await expect(page.getByTitle('YouTube 음악 영상')).toHaveCount(0);
+        await page.evaluate(() => window.dispatchEvent(new Event('online')));
+        await expect(region.getByRole('button', { name: '전체 일시정지' })).toBeVisible();
+        expect(commands.map((c) => c.action)).toEqual(['PAUSE', 'RESUME', 'SKIP']);
+      }
       await page.evaluate(() => window.musicFixture.connection(false));
       await expect(page.getByTitle('YouTube 음악 영상')).toHaveCount(0);
       await expect(region.getByRole('button', { name: '전체 재생' })).toBeDisabled();
@@ -294,6 +338,7 @@ try {
         sharedCommands: true,
         noEndedCommand: true,
         disconnectDestroyed: true,
+        recoveryScenario: isSyncSuite && viewport.width === 390,
       });
     } catch (error) {
       await page.screenshot({ path: resolve(output, `failure-${viewport.width}.png`) });

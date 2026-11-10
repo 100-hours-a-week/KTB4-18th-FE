@@ -20,6 +20,21 @@ export function useChatMusicQueue(
   useEffect(() => {
     controller.hint(event);
   }, [controller, event, isReady]);
+  useEffect(() => {
+    const online = () => controller.setNetworkAvailable(true);
+    const offline = () => controller.setNetworkAvailable(false);
+    const visible = () => {
+      if (document.visibilityState === 'visible') controller.recover();
+    };
+    window.addEventListener('online', online);
+    window.addEventListener('offline', offline);
+    document.addEventListener('visibilitychange', visible);
+    return () => {
+      window.removeEventListener('online', online);
+      window.removeEventListener('offline', offline);
+      document.removeEventListener('visibilitychange', visible);
+    };
+  }, [controller]);
   useEffect(() => () => controller.dispose(), [controller]);
   return { state, controller };
 }
