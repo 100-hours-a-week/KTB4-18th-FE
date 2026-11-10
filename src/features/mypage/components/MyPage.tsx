@@ -1004,7 +1004,7 @@ function TermsPage({ back }: { back: () => void }) {
               <BottomSheet.Description>{selected?.version}</BottomSheet.Description>
               <BottomSheet.CloseButton aria-label="약관 상세 닫기">닫기</BottomSheet.CloseButton>
             </BottomSheet.Header>
-            <BottomSheet.Body className="mypage-term-sheet-body">
+            <BottomSheet.Body className="mypage-term-sheet-body" data-no-drag>
               {selected && <TermsMarkdown content={selected.content} />}
             </BottomSheet.Body>
           </BottomSheet.Content>

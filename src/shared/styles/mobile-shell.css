@@ -12,6 +12,14 @@
   box-shadow: 0 0 0 1px var(--color-border-tertiary);
 }
 
+html {
+  overscroll-behavior-y: none;
+}
+
+html:has(:is(.music-exit-dialog, .music-delete-dialog)[open]) {
+  overflow-y: hidden;
+}
+
 /* The map is a viewport, while forms and record lists retain document scrolling. */
 html:has(.main-page--map),
 body:has(.main-page--map) {
@@ -226,6 +234,20 @@ body
   transform: none;
 }
 
+.seed-bottom-sheet__positioner:has(.signup-term-sheet-body, .mypage-term-sheet-body) {
+  align-items: safe flex-end;
+  overflow-y: auto;
+  overscroll-behavior-y: none;
+}
+
+.seed-bottom-sheet__content:has(.signup-term-sheet-body, .mypage-term-sheet-body) {
+  touch-action: pan-y;
+}
+
+.seed-bottom-sheet__content:has(.signup-term-sheet-body, .mypage-term-sheet-body)::after {
+  content: none;
+}
+
 body .gnb {
   bottom: 0;
   left: var(--app-center);
@@ -254,13 +276,23 @@ body .login-request-toast {
   width: calc(var(--app-width) - 32px);
 }
 
-body :is(.music-exit-dialog, .music-delete-dialog) {
+body :is(.music-exit-dialog, .music-delete-dialog)[open] {
   position: fixed;
-  right: auto;
-  left: var(--app-center);
-  max-width: calc(var(--app-width) - 40px);
-  margin-inline: 0;
-  transform: translateX(-50%);
+  inset: 0 auto 0 var(--app-left);
+  box-sizing: border-box;
+  display: grid;
+  width: var(--app-width);
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: none;
+  place-items: safe center center;
+  padding: 1rem 20px;
+  border: 0;
+  color: inherit;
+  background: transparent;
 }
 
 .music-exit-dialog::backdrop,
