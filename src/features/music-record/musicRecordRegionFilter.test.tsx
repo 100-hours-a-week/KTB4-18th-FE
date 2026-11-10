@@ -594,6 +594,54 @@ const expectSeoulList = async () => {
   expect(window.location.search).toBe('?sido=11');
 };
 describe('상세 왕복 지역 선택 회귀', () => {
+  it('상세 진입의 캡처에 전환 모드를 설정하고 완료 후 제거한다', async () => {
+    const root = document.documentElement;
+    const finished = deferred<void>();
+    const original = Object.getOwnPropertyDescriptor(document, 'startViewTransition');
+    let capturedMode: string | undefined;
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: false })),
+    );
+    document.startViewTransition = vi.fn((update) => {
+      capturedMode = root.dataset.musicRecordTransition;
+      const updateCallbackDone = Promise.resolve().then(() =>
+        typeof update === 'function' ? update() : update?.update?.(),
+      );
+      return {
+        finished: finished.promise,
+        ready: updateCallbackDone,
+        updateCallbackDone,
+        skipTransition: vi.fn(),
+        types: new Set<string>(),
+      };
+    });
+
+    try {
+      render(<RecordRoutes />);
+      await ready();
+      const source = screen.getByRole('link', { name: '노래 1 기록 상세 보기' });
+      fireEvent.click(source);
+
+      expect(capturedMode).toBe('detail');
+      expect(source).toHaveAttribute('data-music-record-transition-card');
+      const target = await waitFor(() => {
+        const card = document.querySelector('.music-detail-page [data-music-record-card="1"]');
+        expect(card).toHaveAttribute('data-music-record-transition-card');
+        return card;
+      });
+      expect(root).toHaveAttribute('data-music-record-transition', 'detail');
+
+      await act(async () => finished.resolve());
+      expect(root).not.toHaveAttribute('data-music-record-transition');
+      expect(source).not.toHaveAttribute('data-music-record-transition-card');
+      expect(target).not.toHaveAttribute('data-music-record-transition-card');
+    } finally {
+      await act(async () => finished.resolve());
+      if (original) Object.defineProperty(document, 'startViewTransition', original);
+      else Reflect.deleteProperty(document, 'startViewTransition');
+    }
+  });
   it('상세 돌아가기와 목록 재마운트에서 서울 선택을 유지한다', async () => {
     await openSeoulDetail();
     fireEvent.click(screen.getByRole('button', { name: '음악 기록 목록으로 돌아가기' }));

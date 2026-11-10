@@ -72,10 +72,11 @@ type CardTransition = {
   source: HTMLElement | null;
   open: () => void;
   destination: string;
+  mode?: 'detail';
   beforeCapture?: (card: HTMLElement) => void;
 };
 
-function transitionCard({ source, open, destination, beforeCapture }: CardTransition) {
+function transitionCard({ source, open, destination, mode, beforeCapture }: CardTransition) {
   if (isTransitioning) return;
   if (
     !source ||
@@ -89,7 +90,7 @@ function transitionCard({ source, open, destination, beforeCapture }: CardTransi
   isTransitioning = true;
   const from = window.location.href;
   const root = document.documentElement;
-  root.dataset.musicRecordTransition = '';
+  root.dataset.musicRecordTransition = mode ?? '';
   source.dataset.musicRecordTransitionCard = '';
   let target: HTMLElement | null = null;
 
@@ -133,6 +134,7 @@ export function openMusicRecordDetail(
   transitionCard({
     source: link,
     destination: recordCardSelector('.music-detail-page', record.record_id),
+    mode: 'detail',
     open: () => {
       if (isTransitioning) {
         activeRecordPreview = { record_id: record.record_id, music: record.music };
