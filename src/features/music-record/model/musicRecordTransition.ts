@@ -9,6 +9,7 @@ type ListPreview = {
   items: MusicRecord[];
   regions: { code: string; name: string }[];
   pageCount: number;
+  hasNext: boolean;
 };
 type ListReturn = {
   href: string;
@@ -21,6 +22,7 @@ const CARD_READY_TIMEOUT_MS = 300;
 let isTransitioning = false;
 let activeRecordPreview: RecordPreview | null = null;
 let activeListPreview: ListReturn | null = null;
+let activeListTransition: Promise<void> | undefined;
 let lastList: ListReturn | null = null;
 
 export function getMusicRecordTransitionPreview(recordId: number): RecordPreview | null {
@@ -29,6 +31,10 @@ export function getMusicRecordTransitionPreview(recordId: number): RecordPreview
 
 export function getMusicRecordListTransitionPreview(): ListPreview | null {
   return activeListPreview?.href === window.location.href ? activeListPreview.preview : null;
+}
+
+export function getMusicRecordListTransitionCompletion() {
+  return activeListTransition;
 }
 
 function rememberList(list: ListReturn, detailHref: string) {
@@ -70,11 +76,25 @@ function waitForCard(selector: string): Promise<HTMLElement | null> {
 
 type CardTransition = {
   source: HTMLElement | null;
-  open: () => void;
+  open: (completion?: Promise<void>) => void;
   destination: string;
-  mode?: 'detail';
+  mode?: 'detail' | 'list';
   beforeCapture?: (card: HTMLElement) => void;
 };
+
+function isCardInViewport(card: HTMLElement) {
+  const bounds = card.getBoundingClientRect();
+  const viewport = document.documentElement;
+  const header = card.closest('.music-page')?.querySelector(':scope > .music-page-header');
+  const visibleTop = Math.max(0, header?.getBoundingClientRect().bottom ?? 0);
+
+  return (
+    bounds.bottom > visibleTop &&
+    bounds.top < viewport.clientHeight &&
+    bounds.right > 0 &&
+    bounds.left < viewport.clientWidth
+  );
+}
 
 function transitionCard({ source, open, destination, mode, beforeCapture }: CardTransition) {
   if (isTransitioning) return;
@@ -98,6 +118,7 @@ function transitionCard({ source, open, destination, mode, beforeCapture }: Card
     isTransitioning = false;
     activeRecordPreview = null;
     activeListPreview = null;
+    activeListTransition = undefined;
     delete root.dataset.musicRecordTransition;
     delete source.dataset.musicRecordTransitionCard;
     if (target) delete target.dataset.musicRecordTransitionCard;
@@ -109,19 +130,25 @@ function transitionCard({ source, open, destination, mode, beforeCapture }: Card
       return;
     }
 
-    open();
+    const isSourceVisible = mode !== 'list' || isCardInViewport(source);
+    open(completion);
     target = await waitForCard(destination);
     if (!target) {
       transition.skipTransition();
       return;
     }
     beforeCapture?.(target);
+    if (mode === 'list' && (!isSourceVisible || !isCardInViewport(target))) {
+      transition.skipTransition();
+      return;
+    }
     target.dataset.musicRecordTransitionCard = '';
   });
 
   void transition.ready.catch(() => undefined);
   void transition.updateCallbackDone.catch(() => undefined);
-  return transition.finished.then(cleanup, cleanup);
+  const completion = transition.finished.then(cleanup, cleanup);
+  return completion;
 }
 
 export function openMusicRecordDetail(
@@ -152,8 +179,12 @@ export function openMusicRecordList(path: string, recordId: number): void {
   transitionCard({
     source: document.querySelector(recordCardSelector('.music-detail-page', recordId)),
     destination: recordCardSelector('.music-record-list-page', recordId),
-    open: () => {
-      if (isTransitioning) activeListPreview = list;
+    mode: 'list',
+    open: (completion) => {
+      if (completion) {
+        activeListPreview = list;
+        activeListTransition = completion;
+      }
       navigate(path);
     },
     beforeCapture: (card) => {

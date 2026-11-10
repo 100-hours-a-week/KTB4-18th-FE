@@ -274,10 +274,32 @@ describe('음악 기록 다중 선택 삭제', () => {
 
   it('더 불러온 기록도 기존 선택을 유지하며 함께 선택한다', async () => {
     hasNext = true;
+    let onIntersect: IntersectionObserverCallback = () => undefined;
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          onIntersect = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
     render(<MusicRecordListPage />);
     await enter();
     select(7);
-    fireEvent.click(screen.getByRole('button', { name: '더 불러오기' }));
+    expect(screen.queryByRole('button', { name: '더 불러오기' })).not.toBeInTheDocument();
+    const priorCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(([url]) => String(url).endsWith('?cursor=next')).length;
+    await act(async () => {
+      const entries = [{ isIntersecting: true } as IntersectionObserverEntry];
+      onIntersect(entries, {} as IntersectionObserver);
+      onIntersect(entries, {} as IntersectionObserver);
+    });
+    expect(
+      vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith('?cursor=next')),
+    ).toHaveLength(priorCalls + 1);
     await screen.findByRole('button', { name: '노래 9 기록 선택' });
     select(9);
     expect(screen.getByText('삭제할 음악 기록 2곡')).toBeInTheDocument();

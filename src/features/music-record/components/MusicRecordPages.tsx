@@ -27,6 +27,7 @@ import { formatMusicRecordDate } from '../model/formatMusicRecordDate';
 import { musicRecordFilterPath, readMusicRecordSidoCode } from '../model/musicRecordFilterPath';
 import { formatMusicRecordTime } from '../model/formatMusicRecordTime';
 import {
+  getMusicRecordListTransitionCompletion,
   getMusicRecordListTransitionPreview,
   openMusicRecordDetail,
   transitionMusicRecordEntry,
@@ -38,7 +39,9 @@ import { MusicRecordHero } from './MusicRecordHero';
 const replacementDraftKey = (recordId: number) => `music-record-replacement-draft:${recordId}`;
 
 export function MusicRecordListPage() {
-  const [returnPreview] = useState(getMusicRecordListTransitionPreview);
+  const [returnPreview, setReturnPreview] = useState(getMusicRecordListTransitionPreview);
+  const [returnPageCount] = useState(returnPreview?.pageCount);
+  const [returnTransition] = useState(getMusicRecordListTransitionCompletion);
   const [items, setItems] = useState<MusicRecord[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasNext, setHasNext] = useState(false);
@@ -51,18 +54,28 @@ export function MusicRecordListPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const regionFilter = useMusicRecordRegionFilter();
+  if (returnPreview && !isLoading && !regionFilter.isSnapshotLoading) setReturnPreview(null);
   const showReturnPreview =
     !!returnPreview &&
     !error &&
     !regionFilter.snapshotError &&
-    (isLoading || (regionFilter.selectedSidoCode !== null && regionFilter.isSnapshotLoading));
+    ((!items.length && isLoading) ||
+      (regionFilter.selectedSidoCode !== null && regionFilter.isSnapshotLoading));
   const visibleItems = showReturnPreview
     ? returnPreview.items
     : regionFilter.selectedSidoCode === null
       ? items
       : regionFilter.filteredSnapshot;
-  const visibleRegions = showReturnPreview ? returnPreview.regions : regionFilter.regions;
+  const returnRegionPreview =
+    returnPreview &&
+    (showReturnPreview || regionFilter.isSnapshotLoading) &&
+    !regionFilter.snapshotError
+      ? returnPreview.regions
+      : null;
+  const visibleRegions = returnRegionPreview ?? regionFilter.regions;
   const loadedPageCount = useRef(0);
+  const listEnd = useRef<HTMLDivElement>(null);
+  const requestedCursors = useRef(new Set<string>());
   const isFilterDisabled =
     isDeleteOpen || isDeleting || isLoading || regionFilter.isSnapshotLoading;
   const { scrollToTop, cancelScroll } = useMusicRecordRegionScroll(isFilterDisabled);
@@ -124,7 +137,10 @@ export function MusicRecordListPage() {
         loaded.push(...page.items);
         pageCount += 1;
       }
-      if (!next) setSelectedIds([]);
+      if (!next) {
+        requestedCursors.current.clear();
+        setSelectedIds([]);
+      }
       loadedPageCount.current = next ? loadedPageCount.current + pageCount : pageCount;
       setItems((old) => (next ? [...old, ...loaded] : loaded));
       setCursor(page.next_cursor);
@@ -139,13 +155,73 @@ export function MusicRecordListPage() {
   useEffect(() => {
     active.current = true;
     queueMicrotask(() => {
-      if (active.current) void load(null, returnPreview?.pageCount);
+      if (active.current) void load(null, returnPageCount);
     });
     return () => {
       active.current = false;
       requestGeneration.current += 1;
     };
-  }, [load, returnPreview]);
+  }, [load, returnPageCount]);
+
+  const hasMoreRecords =
+    regionFilter.selectedSidoCode === null && (showReturnPreview ? returnPreview.hasNext : hasNext);
+
+  useEffect(() => {
+    const end = listEnd.current;
+    if (!end || !hasMoreRecords || !cursor || isLoading || error || returnPreview || isDeleteOpen) {
+      return;
+    }
+
+    let observing = true;
+    let observer: IntersectionObserver | undefined;
+    const requestNextPage = () => {
+      if (!observing || requestedCursors.current.has(cursor)) return;
+      requestedCursors.current.add(cursor);
+      void load(cursor);
+    };
+    const checkScroll = () => {
+      if (
+        end.getClientRects().length &&
+        end.getBoundingClientRect().top <= window.innerHeight + 180
+      ) {
+        requestNextPage();
+      }
+    };
+    const observe = () => {
+      if (!observing) return;
+      if (typeof IntersectionObserver === 'function') {
+        observer = new IntersectionObserver(
+          ([entry]) => {
+            if (entry?.isIntersecting) requestNextPage();
+          },
+          { rootMargin: '0px 0px 180px' },
+        );
+        observer.observe(end);
+      } else {
+        window.addEventListener('scroll', checkScroll, { passive: true });
+        window.addEventListener('resize', checkScroll);
+        checkScroll();
+      }
+    };
+    if (returnTransition) void returnTransition.then(observe);
+    else observe();
+
+    return () => {
+      observing = false;
+      observer?.disconnect();
+      window.removeEventListener('scroll', checkScroll);
+      window.removeEventListener('resize', checkScroll);
+    };
+  }, [
+    cursor,
+    error,
+    hasMoreRecords,
+    isDeleteOpen,
+    isLoading,
+    load,
+    returnPreview,
+    returnTransition,
+  ]);
 
   const removeSelected = async () => {
     if (!selectedIds.length || mutationPending.current) return;
@@ -240,7 +316,7 @@ export function MusicRecordListPage() {
           regions={visibleRegions}
           selectedSidoCode={regionFilter.selectedSidoCode}
           isDisabled={isFilterDisabled}
-          isSkeletonVisible={!showReturnPreview && regionFilter.isSnapshotSkeletonVisible}
+          isSkeletonVisible={!returnRegionPreview && regionFilter.isSnapshotSkeletonVisible}
           error={regionFilter.snapshotError}
           onSelect={(code) => {
             if (isFilterDisabled) return;
@@ -388,6 +464,7 @@ export function MusicRecordListPage() {
                       items: visibleItems,
                       regions: visibleRegions,
                       pageCount: loadedPageCount.current,
+                      hasNext,
                     });
                   }}
                   aria-label={`${record.music.title} 기록 상세 보기`}
@@ -410,13 +487,14 @@ export function MusicRecordListPage() {
             onConfirm={() => void removeSelected()}
           />
         )}
-        {regionFilter.selectedSidoCode === null && hasNext && (
+        {hasMoreRecords && <div ref={listEnd} className="h-px" aria-hidden="true" />}
+        {hasMoreRecords && cursor && error && (
           <button
+            type="button"
             className="music-secondary-button"
-            disabled={isLoading}
             onClick={() => void load(cursor)}
           >
-            더 불러오기
+            다시 시도
           </button>
         )}
         {!items.length && !error && !isLoading && (
