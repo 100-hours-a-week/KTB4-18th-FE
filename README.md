@@ -457,3 +457,75 @@ FE ChatParticipation/STOMP/API를 연결한다. REST Task A/WS Task B, 합성 �
 추가300px 높이에서 입력창 경계를 확인했고, 최초 보정5초 간격과 검증 대기시간의 차이·작은 높이의 입력창 밀림은
 대기시간/음악 영역 스크롤·대화 여백을 보완한 뒤 재검증했다. 실제 YouTube SDK/embed·공식 데모의 PLAYING도 관측했다.
 이 결과는 물리 모바일/운영 음악 카탈로그·전체9~10단계 완료를 뜻하지 않는다.
+
+## 공동 재생 9단계 입장·재연결·이벤트 누락·장애 복구 (2026-11-09)
+
+FE `feature/chat-music-sync`, 시작390e4ad(8단계 PR252 병합)에서 기존 음악 저장소/Hook을 확장했다.
+BE·공개 API/DB·기존 플래그와 운영 설정은 바꾸지 않았다. 기존7·8단계에서 후속으로 남긴 음악 복구 기준은 이 절을 따른다.
+
+- 최초 입장/재연결은 기존 채팅 receipt·READY·recovery/history 완료 뒤 새 음악 snapshot을 읽는다.
+  읽기 전에는 음악을 재생하거나 공통 명령을 보내지 않는다. PLAYING은 새 서버 위치, PAUSED는 동결 위치를 따른다.
+  같은 계정/sid/방/member/view의 미확정 UUID·개인 음량은 유지하지만 명령을 자동으로 재전송하지 않는다.
+- 변경 알림이 빠져도 다음 PLAYBACK_SYNC의 상위 version으로 큐/재생을 복구한다.
+  음악 수신이15초간 없으면 읽기 전용 GET을 수행한다. 같은 version의 새 server_time도 수신으로 인정하되
+  중복/구 버전/다른 방/epoch 알림은 상태를 되돌리거나 감시 시간을 계속 연장하지 않는다.
+  이 동작은 음악에만 적용하며 일반 채팅의 별도 자동 누락 sync를 추가하지 않는다.
+- `visibilitychange`로 화면이 다시 보이면 최신 상태를 확인한다. offline에서는 요청·재생을 중단하고
+  online에서도 채팅 ready가 확인된 후 새 조회를 수행한다. 기존 요청의 늦은 응답/이전 SDK 콜백은 적용하지 않는다.
+- 상태는 waiting/loading/ready/recovering/error/denied로 구분한다. 조회 실패/최신 버전 미확인 시 플레이어를 정리하고
+  공통 조작·신청·취소·미확정 명령 확인을 잠근다. 큐 캐시는 읽을 수 있어도 권한이나 재생 근거로 쓰지 않는다.
+  일시 실패는1/2/4초 + 최대249ms jitter로 최대3회 GET을 재시도한다(각 요청10초 상한).
+  한도를 넘으면 자동 조회를 멈추고 수동 ‘음악 상태 다시 확인’을 제공한다. 새 연결/online/화면 복귀도 재확인 계기다.
+  401/403/404는 자동 재시도하지 않으며 live 음악 알림만으로 이용 권한을 다시 승인하지 않는다.
+- 결과 불확실한 쓰기는 UUID/원 tuple을 남기고 읽기 전용 재확인을 시작한다. 최신 상태 복구 후 사용자가 원 UUID로
+  결과를 확인할 수 있다. 영수증의 과거 응답으로 재생을 되돌리거나 새 UUID로 임의 재신청하지 않는다.
+- 복구 안내·명시적 확인 버튼은 검색/대기열 dialog 내부에서도 제공한다. native modal 뒤의 버튼만으로 복구하게 하지 않는다.
+  연결 실패와 YouTube 영상 자체의 차단/오류를 구분한다. 개인 음량/음소거는 복구 과정에서도 현재 참여/탭에 유지한다.
+
+서버의 큐/재생/명령은 기존 DB와 서버 시각이 기준이다. 기존 마지막 유효 참여 종료는 현재 곡·WAITING을 함께 취소한다.
+이번 실제 통합 시험에서 현재 곡+대기 곡이 있는 마지막 탭 퇴장 후 재입장 시 IDLE/current=null/빈 큐를 확인했다.
+Redis 전역 장애는 기존 lifecycle의 fail-closed·1013과 운영자 복구 명령→Chat 재기동 계약을 유지한다.
+FE가 Redis를 초기화하거나 운영 복구 명령을 호출하지 않는다. 전역 Redis 재시작/epoch CLI 자체는 이번에 새로 실행하지 않았다.
+기존10단계 운영 복구 검증 이력과 구분하며 실제 배포·운영 복구/1000연결 승인으로 표시하지 않는다.
+
+```sh
+npm run format:check
+npm run lint
+npm run verify:chat:types
+npm test -- --maxWorkers=4
+npm run build
+npm run verify:chat:music:sync:browser
+npm run verify:chat:music:sync:integration
+```
+
+브라우저 명령은 실제 React/Chrome과 합성 HTTP/YT SDK로320/390/1280px·300px 높이를 검증한다.
+390px에서는 화면 복귀→GET503 두 번→PAUSED 복원·알림 없는 RESUME의15초 감시 복구·offline/online과
+음량25%/음소거 유지·추가 쓰기0을 확인한다. 물리 모바일/실제 YouTube 장애 시험은 아니다.
+
+통합 명령은7·8단계의 BE HEAD 임시 archive 하네스를 사용한다. 원본 BE를 수정하지 않고 test-only bridge로
+실제 MySQL/Redis·HTTPS Core·두 Chat JAR·FE ChatParticipation/STOMP/API를 연결한다.
+REST A/WS B에서 음악 힌트를 FE 전달 경계에서 누락시키고 음악 GET503 두 번과 실제 소켓 단절을 주입한다.
+같은 membership/view의 재연결·PAUSED 위치/고정 소스 복원·음악 수신 침묵 복구·마지막 퇴장/재입장을 확인한다.
+서버 전체 프로세스 강제 종료·Redis 전역 복구를 주입한 시험과는 구분한다. 인증 저장소/GPS/곡은 합성이며
+합성 token config·자식 프로세스/시험 컨테이너는 기존 하네스 종료 흐름으로 정리한다.
+
+증빙은 `node_modules/.tmp/chat-music-sync-verification/`의 전체/채팅/통합 JSON·로그·browser 결과와 screenshot,
+`harness-path.txt`가 가리키는 임시 BE의 `build/core-auth-integration/`·전용 test-results다.
+최초 실제 통합의 원 UUID 확인 시도가 fresh 조회 완료 전 실행되어 차단된 것은 시험이 새 readiness 조건을 기다리도록 보완했다.
+UI가 복구 중 허용하지 않는 명령을 시험에서 직접 호출해 성공했다고 간주하지 않는다.
+커밋·push·PR·외부 문서·운영 설정·배포는 수행하지 않았다.
+
+최종 전체990개 중983통과·7조건부 제외·실패0, 채팅193개 중189통과·4조건부 제외·실패0.
+포맷·린트·전용 타입·프로덕션 빌드 통과. 음악 복구 단위/화면 시험39개·실제 Core/두 Chat 통합1개 통과.
+브라우저 세 크기·조회 실패/침묵/온라인 복구 및 screenshot을 확인했다. 최초 단위 시험의 쓰기 요청 인덱스는
+추가된 읽기 재확인과 구분하도록 수정했고, 권한 오류의 dialog 내부 재시도도 회귀 시험에 포함했다.
+
+### 9단계 BE 연동 보완 (2026-11-10)
+
+위9단계의 ‘BE 변경 없음/전역 복구 미실행’은 FE 선행 구현 당시의 이력이다.
+후속 BE `feature/chat-music-recovery`는30초 검증 유예·늦은 join/claim 전 빈 방 정리·PAUSED scan·조회 reconcile·CLI 구 음악 Outbox 만료를 구현했다.
+QueueSnapshot의 선택 `epoch`(OpenAPI1.2.0)를 파싱하고 첫 이벤트보다 먼저 고정해 구 세대 알림을 차단한다.
+필드 없는 구 BE도 지원한다. 다른epoch의 GET은 재생을 승인하지 않고 새 채팅 연결 후 fresh조회가 필요하다.
+`npm run verify:chat:music:sync:integration -- --worktree`로 src/build.gradle의 추적 BE 변경을 임시 사본에 적용해 검증한다.
+환경 파일/원본 BE는 변경하지 않고 diff SHA256을 남기며 미추적 BE src는 누락시키지 않고 거부한다.
+BE에서 실제 SIGTERM/SIGKILL·Redis 재시작·전용 CLI 복구를 별도로 검증했다. 실제 운영 설정/배포/SLO 승인은 아니다.
