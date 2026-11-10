@@ -446,15 +446,10 @@ body .chat-app {
   background: var(--diary-paper);
 }
 body .chat-app .chat-header {
-  flex-basis: calc(64px + env(safe-area-inset-top));
-  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  flex-basis: calc(3.5rem + env(safe-area-inset-top));
   padding-top: env(safe-area-inset-top);
-  border-bottom: 1px solid var(--color-border-secondary);
+  border-bottom: 0;
   background: var(--diary-paper);
-}
-body .chat-header-back {
-  width: 44px;
-  height: 44px;
 }
 body .chat-app .chat-header h1,
 body .music-page .music-page-header h1,
