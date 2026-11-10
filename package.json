@@ -23,7 +23,9 @@
     "verify:chat:music:integration": "node scripts/runChatMusicRequestIntegration.mjs",
     "verify:chat:music:browser": "node scripts/runChatMusicRequestBrowser.mjs",
     "verify:chat:music:player:integration": "node scripts/runChatMusicRequestIntegration.mjs --player",
-    "verify:chat:music:player:browser": "node scripts/runChatMusicPlayerBrowser.mjs"
+    "verify:chat:music:player:browser": "node scripts/runChatMusicPlayerBrowser.mjs",
+    "verify:chat:music:sync:integration": "node scripts/runChatMusicRequestIntegration.mjs --sync",
+    "verify:chat:music:sync:browser": "node scripts/runChatMusicPlayerBrowser.mjs --sync"
   },
   "dependencies": {
     "@karrotmarket/react-monochrome-icon": "^1.27.0",

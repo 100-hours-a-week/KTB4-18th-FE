@@ -218,3 +218,27 @@ describe('/신청·검색·대기열 사용자 흐름', () => {
     expect(authenticatedFetchWithCurrentToken).not.toHaveBeenCalled();
   });
 });
+
+it('keeps request actions disabled on permission failure and revalidates only on explicit music retry', async () => {
+  const user = userEvent.setup();
+  vi.mocked(authenticatedFetchWithCurrentToken).mockResolvedValueOnce(
+    musicResponse({ code: 'CHAT_VIEW_NOT_CONNECTED' }, 403),
+  );
+  render(<ChatRoomScreen chat={chatState()} />);
+  await screen.findByText('현재 이야기방 참여와 음악 이용 권한을 확인해 주세요.');
+  await user.click(screen.getByRole('button', { name: /음악 신청/ }));
+  const dialog = openDialog();
+  await waitFor(() => expect(dialog.getByRole('button', { name: '노래 1 신청' })).toBeDisabled());
+  await user.click(dialog.getByRole('button', { name: '음악 상태 다시 확인' }));
+  await waitFor(() =>
+    expect(screen.queryByText('현재 이야기방 참여와 음악 이용 권한을 확인해 주세요.')).toBeNull(),
+  );
+  await waitFor(() =>
+    expect(openDialog().getByRole('button', { name: '노래 1 신청' })).toBeEnabled(),
+  );
+  expect(
+    vi
+      .mocked(authenticatedFetchWithCurrentToken)
+      .mock.calls.filter(([, init]) => init?.method === 'POST'),
+  ).toEqual([]);
+});
