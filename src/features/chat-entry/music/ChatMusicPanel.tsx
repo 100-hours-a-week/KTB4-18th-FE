@@ -63,7 +63,8 @@ export function ChatMusicPanel({
     const timer = setTimeout(() => void controller.search(query), 300);
     return () => clearTimeout(timer);
   }, [controller, tab, query, isComposing, isReady, session.generation]);
-  const isWriteDisabled = !isReady || !!state.pending || state.isCoolingDown;
+  const isMusicReady = isReady && state.recoveryStatus === 'ready';
+  const isWriteDisabled = !isMusicReady || !!state.pending || state.isCoolingDown;
   const current = state.queue?.current;
   const stateLabel = state.queue?.state === 'PAUSED' ? '일시정지' : '현재 곡';
   const count = state.queue
@@ -168,7 +169,7 @@ export function ChatMusicPanel({
           <button
             type="button"
             onClick={() => controller.retryMutation()}
-            disabled={!isReady || state.isCoolingDown}
+            disabled={!isMusicReady || state.isCoolingDown}
           >
             {state.pending.kind === 'playback'
               ? '재생 요청 결과 다시 확인'
@@ -179,13 +180,34 @@ export function ChatMusicPanel({
         )}
         {state.isMutating && <span>요청을 확인하고 있어요…</span>}
       </div>
+      {state.recoveryStatus !== 'ready' && (
+        <div
+          className="chat-music-recovery"
+          role={
+            state.recoveryStatus === 'error' || state.recoveryStatus === 'denied'
+              ? 'alert'
+              : 'status'
+          }
+        >
+          <span>{state.recoveryMessage}</span>
+          {isReady && ['error', 'denied'].includes(state.recoveryStatus) && (
+            <button
+              type="button"
+              disabled={state.queueLoading}
+              onClick={() => controller.recover()}
+            >
+              음악 상태 다시 확인
+            </button>
+          )}
+        </div>
+      )}
       {chatMusicPlayerEnabled() && (
         <ChatMusicPlayerView
           playback={state.playback}
-          isReady={isReady}
+          isReady={isMusicReady}
           isCommandDisabled={isWriteDisabled || !state.playback}
           onCommand={(action) => controller.control(action)}
-          onRefresh={() => void controller.loadQueue()}
+          onRefresh={() => controller.recover()}
         />
       )}
       <dialog
@@ -217,6 +239,20 @@ export function ChatMusicPanel({
               대기열
             </button>
           </nav>
+          {tab !== null && isReady && state.recoveryStatus !== 'ready' && (
+            <div className="chat-music-recovery" role="status">
+              <span>{state.recoveryMessage}</span>
+              {['error', 'denied'].includes(state.recoveryStatus) && (
+                <button
+                  type="button"
+                  disabled={state.queueLoading}
+                  onClick={() => controller.recover()}
+                >
+                  음악 상태 다시 확인
+                </button>
+              )}
+            </div>
+          )}
           {!isReady && (
             <p className="chat-music-warning" role="status">
               연결을 확인하고 있어요. 연결 후 다시 이용해 주세요.
@@ -345,7 +381,7 @@ export function ChatMusicPanel({
             <button
               type="button"
               onClick={() => controller.retryMutation()}
-              disabled={!isReady || state.isCoolingDown}
+              disabled={!isMusicReady || state.isCoolingDown}
             >
               {state.pending.kind === 'playback'
                 ? '재생 요청 결과 다시 확인'
