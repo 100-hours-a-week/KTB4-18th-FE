@@ -219,7 +219,10 @@ export function ChatMusicPanel({
           event.preventDefault();
           close();
         }}
-        onClose={() => setTab(null)}
+        onClose={(event) => {
+          // A queued close from the previous opening must not close a newly reopened native dialog.
+          if (!event.currentTarget.open) setTab(null);
+        }}
         onClick={(event) => {
           if (event.target === event.currentTarget) close();
         }}
