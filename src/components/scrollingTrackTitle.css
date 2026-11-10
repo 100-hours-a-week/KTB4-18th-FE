@@ -10,7 +10,7 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .scrolling-track-title:has(> .scrolling-track-title__track--moving) {
+  .scrolling-track-title--fade:has(> .scrolling-track-title__track--moving) {
     --title-edge-fade: 12px;
     mask-image: linear-gradient(
       to right,
@@ -30,11 +30,11 @@
 @keyframes scrolling-track-title-marquee {
   0%,
   12% {
-    transform: translateX(var(--title-edge-fade));
+    transform: translateX(var(--title-edge-fade, 0px));
   }
   88%,
   100% {
-    transform: translateX(calc(-1 * (var(--title-marquee-distance) + var(--title-edge-fade))));
+    transform: translateX(calc(-1 * (var(--title-marquee-distance) + var(--title-edge-fade, 0px))));
   }
 }
 

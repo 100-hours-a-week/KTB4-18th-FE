@@ -2423,7 +2423,7 @@ button {
   object-fit: cover;
   border-radius: 0.5rem;
 }
-.music-result span,
+.music-result-select > span,
 .music-selected-content div {
   display: grid;
   gap: 0.25rem;
@@ -2645,6 +2645,31 @@ button {
   line-height: 1.5rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .music-result-select .scrolling-track-title__track--moving {
+    animation-name: none;
+    animation-delay: 300ms;
+  }
+
+  .music-result-select[aria-pressed='true'] .scrolling-track-title__track--moving {
+    animation-name: music-search-title-marquee;
+  }
+
+  @media (hover: hover) {
+    .music-result-select:hover .scrolling-track-title__track--moving {
+      animation-name: music-search-title-marquee;
+    }
+  }
+}
+@keyframes music-search-title-marquee {
+  from {
+    transform: translateX(0);
+  }
+  88%,
+  to {
+    transform: translateX(calc(-1 * var(--title-marquee-distance)));
+  }
 }
 .music-result-row .music-result small {
   overflow: hidden;
