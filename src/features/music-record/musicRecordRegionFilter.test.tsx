@@ -68,6 +68,7 @@ beforeEach(async () => {
   ];
   deleteStatus = 204;
   deletedIds = [];
+  vi.stubGlobal('scrollTo', vi.fn());
   const actual =
     await vi.importActual<typeof import('./api/musicRecordsApi')>('./api/musicRecordsApi');
   vi.mocked(getAllMusicRecords).mockReset().mockImplementation(actual.getAllMusicRecords);
@@ -168,6 +169,15 @@ const flush = async () => {
 const tick = async (time: number) => {
   await act(async () => vi.advanceTimersByTimeAsync(time));
 };
+const mockRegionScroll = (scrollY: number, shouldReduceMotion = false) => {
+  vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
+  vi.stubGlobal('scrollY', scrollY);
+  vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: shouldReduceMotion }));
+  const scrollTo = vi.fn<(options: ScrollToOptions) => void>();
+  vi.stubGlobal('scrollTo', scrollTo);
+  return scrollTo;
+};
+const advanceScroll = (time: number) => act(() => void vi.advanceTimersByTime(time));
 const deleteRecord = async (id: number) => {
   fireEvent.click(screen.getByRole('button', { name: '삭제할 기록 선택' }));
   fireEvent.click(screen.getByRole('button', { name: `노래 ${id} 기록 선택` }));
@@ -179,6 +189,8 @@ describe('음악 기록 지역 필터 목록', () => {
   it('전체 페이지에서 존재하는 지역을 code순으로 유일화하고 전국 pagination을 보존한다', async () => {
     render(<MusicRecordListPage />);
     const nationwide = await ready();
+    const scrollTo = vi.mocked(window.scrollTo);
+    expect(scrollTo).not.toHaveBeenCalled();
     const group = screen.getByRole('group', { name: '음악 기록 지역 필터' });
     expect([...group.querySelectorAll('button')].map((button) => button.textContent)).toEqual([
       '전국',
@@ -188,12 +200,19 @@ describe('음악 기록 지역 필터 목록', () => {
     ]);
     expect(nationwide).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('검색 결과 2곡')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '인천' }));
+    const incheon = screen.getByRole('button', { name: '인천' });
+    fireEvent.click(incheon);
+    expect(scrollTo).toHaveBeenNthCalledWith(1, { top: 0, behavior: 'instant' });
     expect(screen.getByRole('link', { name: '노래 3 기록 상세 보기' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '노래 1 기록 상세 보기' })).not.toBeInTheDocument();
     expect(screen.getByText('검색 결과 1곡')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '더 불러오기' })).not.toBeInTheDocument();
+    fireEvent.click(incheon);
+    expect(scrollTo).toHaveBeenNthCalledWith(2, { top: 0, behavior: 'instant' });
+    expect(incheon).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(nationwide);
+    expect(scrollTo).toHaveBeenNthCalledWith(3, { top: 0, behavior: 'instant' });
+    expect(scrollTo).toHaveBeenCalledTimes(3);
     expect(screen.getByText('검색 결과 2곡')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '더 불러오기' }));
     await screen.findByText('검색 결과 4곡');
@@ -305,6 +324,8 @@ describe('음악 기록 지역 필터 목록', () => {
     fireEvent.click(screen.getByRole('button', { name: '취소' }));
     fireEvent.click(screen.getByRole('button', { name: '목록 새로고침' }));
     expect(nationwide).toBeDisabled();
+    fireEvent.click(nationwide);
+    expect(window.scrollTo).not.toHaveBeenCalled();
     await act(async () => pending.resolve(pages.flat()));
     expect(nationwide).toBeEnabled();
     expect(screen.getByRole('button', { name: '삭제 선택 종료' })).toBeInTheDocument();
@@ -322,6 +343,82 @@ describe('음악 기록 지역 필터 목록', () => {
     expect(screen.getByText('검색 결과 2곡')).toBeInTheDocument();
     expect(screen.queryByRole('group', { name: '음악 기록 지역 필터' })).not.toBeInTheDocument();
     expect(vi.mocked(getAllMusicRecords)).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('음악 기록 지역 필터 스크롤', () => {
+  it.each([120, 1200])(
+    '%ipx에서 300ms가 지난 첫 프레임에 짧은 지역 목록을 표시한다',
+    async (startTop) => {
+      render(<MusicRecordListPage />);
+      const nationwide = await ready();
+      const incheon = screen.getByRole('button', { name: '인천' });
+      const scrollTo = mockRegionScroll(startTop);
+
+      fireEvent.click(incheon);
+      advanceScroll(144);
+      const midpoint = scrollTo.mock.lastCall?.[0].top;
+      expect(midpoint).toBeGreaterThan(startTop * 0.5);
+      expect(midpoint).toBeLessThan(startTop * 0.6);
+
+      advanceScroll(155);
+      expect(nationwide).toHaveAttribute('aria-pressed', 'true');
+      expect(window.location.search).toBe('');
+      expect(screen.getByText('검색 결과 2곡')).toBeInTheDocument();
+      advanceScroll(5);
+      expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: 'instant' });
+      expect(incheon).toHaveAttribute('aria-pressed', 'true');
+      expect(window.location.search).toBe('?sido=28');
+      expect(screen.getByText('검색 결과 1곡')).toBeInTheDocument();
+    },
+  );
+
+  it('진행 중 다시 선택하면 마지막 지역만 적용한다', async () => {
+    render(<MusicRecordListPage />);
+    const nationwide = await ready();
+    const jeju = screen.getByRole('button', { name: '제주' });
+    const scrollTo = mockRegionScroll(600);
+    fireEvent.click(screen.getByRole('button', { name: '인천' }));
+    advanceScroll(144);
+
+    vi.stubGlobal('scrollY', scrollTo.mock.lastCall?.[0].top);
+    fireEvent.click(jeju);
+    advanceScroll(160);
+    expect(nationwide).toHaveAttribute('aria-pressed', 'true');
+    expect(window.location.search).toBe('');
+    advanceScroll(144);
+    expect(jeju).toHaveAttribute('aria-pressed', 'true');
+    expect(window.location.search).toBe('?sido=50');
+  });
+
+  it.each(['popstate', ROUTE_CHANGE_EVENT])(
+    '%s 발생 시 진행 중인 지역 선택을 취소한다',
+    async (event) => {
+      render(<MusicRecordListPage />);
+      const nationwide = await ready();
+      const scrollTo = mockRegionScroll(600);
+      fireEvent.click(screen.getByRole('button', { name: '인천' }));
+      advanceScroll(144);
+      scrollTo.mockClear();
+
+      act(() => void window.dispatchEvent(new Event(event)));
+      advanceScroll(304);
+      expect(scrollTo).not.toHaveBeenCalled();
+      expect(nationwide).toHaveAttribute('aria-pressed', 'true');
+      expect(window.location.search).toBe('');
+    },
+  );
+
+  it('모션 감소 설정에서는 즉시 스크롤하고 지역을 적용한다', async () => {
+    render(<MusicRecordListPage />);
+    await ready();
+    const incheon = screen.getByRole('button', { name: '인천' });
+    const scrollTo = mockRegionScroll(600, true);
+
+    fireEvent.click(incheon);
+    expect(scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 0, behavior: 'instant' });
+    expect(incheon).toHaveAttribute('aria-pressed', 'true');
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 
@@ -507,8 +604,10 @@ describe('상세 왕복 지역 선택 회귀', () => {
   });
   it('브라우저 뒤로가기로 선택한 목록을 복원한다', async () => {
     await openSeoulDetail();
+    vi.mocked(window.scrollTo).mockClear();
     act(() => window.history.back());
     await expectSeoulList();
+    expect(window.scrollTo).not.toHaveBeenCalled();
   });
   it.each(['save', 'delete', 'missing'] as const)('%s 완료 후 지역을 유지한다', async (action) => {
     await openSeoulDetail();
