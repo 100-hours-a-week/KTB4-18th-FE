@@ -575,3 +575,9 @@ Docker/JDK25·설치 Chrome·양쪽 의존성이 필요하다. 양쪽 작업 트
 
 검수 곡·운영 migration/권한/ACL/키/라우팅·물리 모바일·1000연결/SLO·관측/복구 훈련·릴리스 승인 gate는 모두 pending이다.
 기본 플래그false를 유지하며 운영 활성화·DB/클라우드 변경·커밋·push·PR·배포는 수행하지 않았다.
+
+### 운영 음악 기능 활성화 빌드 (2026-11-10 사용자 요청)
+
+기존 검증 이력의 flags false·운영 보류 상태는 당시 기록이다. 이후 사용자 요청으로 `.env.production`에 음악 QUEUE/PLAYER 두 플래그의 기본값 true를 추가했다. `npm run build`는 production 모드로 빌드한다. CI 환경이나 `.env.production.local`에 기존 false 값이 있다면 `VITE_CHAT_MUSIC_QUEUE_ENABLED=true`, `VITE_CHAT_MUSIC_PLAYER_ENABLED=true`를 명시적으로 주입해야 한다. 실제 서버 배포 완료나 검수곡·운영 검증 완료를 의미하지 않는다.
+
+BE Chat prod의 음악 세 플래그·별도 음악 키·DB migration/권한·Redis 음악 ACL·Core 인증 의존성을 먼저 준비한다. 정확한 변수·값·반영 순서는 BE README의 「운영 활성화 설정 변경」을 따른다. FE 빌드 환경에는 BE 비밀 키를 넣지 않는다. 끌 때는 두 Vite 변수를 false로 재빌드·배포한다.
