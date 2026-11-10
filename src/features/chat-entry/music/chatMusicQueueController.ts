@@ -18,7 +18,11 @@ import type {
   RequestableMusicPage,
 } from './chatMusicTypes';
 
+export type MusicRecoveryStatus =
+  'waiting' | 'loading' | 'ready' | 'recovering' | 'error' | 'denied';
 export interface MusicQueueState {
+  recoveryStatus: MusicRecoveryStatus;
+  recoveryMessage: string;
   queue: MusicQueuePage | null;
   playback: { snapshot: MusicPlayback; receivedAt: number } | null;
   queueLoading: boolean;
@@ -34,6 +38,8 @@ export interface MusicQueueState {
   isCoolingDown: boolean;
 }
 const initial = (): MusicQueueState => ({
+  recoveryStatus: 'waiting',
+  recoveryMessage: '음악 연결을 확인하고 있어요.',
   queue: null,
   playback: null,
   queueLoading: false,
@@ -55,6 +61,12 @@ export class ChatMusicQueueController {
   private state = initial();
   private listeners = new Set<() => void>();
   private isActive = false;
+  private transportReady = false;
+  private isNetworkAvailable = typeof navigator === 'undefined' || navigator.onLine !== false;
+  private watchdog: ReturnType<typeof setTimeout> | undefined;
+  private readRetry: ReturnType<typeof setTimeout> | undefined;
+  private readFailures = 0;
+  private lastEventTime = -Infinity;
   private generation = 0;
   private maxVersion = -1;
   private epoch: number | undefined;
@@ -88,6 +100,7 @@ export class ChatMusicQueueController {
   private owns(generation = this.generation) {
     return (
       this.isActive &&
+      this.isNetworkAvailable &&
       generation === this.generation &&
       sameChatAuthContext(
         chatAuthContext(this.session.ownerToken),
@@ -98,18 +111,33 @@ export class ChatMusicQueueController {
   connect(session: ChatMusicSession, isReady: boolean) {
     this.pause();
     this.session = session;
-    if (!isReady) return;
+    this.transportReady = isReady;
+    if (!isReady || !this.isNetworkAvailable) return;
     this.generation += 1;
     this.isActive = true;
     this.maxVersion = -1;
+    this.lastEventTime = -Infinity;
+    this.readFailures = 0;
     this.epoch = undefined;
     this.queueCursors.clear();
     this.searchCursors.clear();
-    this.update({ queue: null, search: null, isQueueStale: true, queueError: '', searchError: '' });
+    this.update({
+      queue: null,
+      search: null,
+      isQueueStale: true,
+      queueError: '',
+      searchError: '',
+      recoveryStatus: 'loading',
+      recoveryMessage: '최신 음악 상태를 확인하고 있어요.',
+    });
     void this.loadQueue();
   }
   pause() {
     this.isActive = false;
+    clearTimeout(this.watchdog);
+    clearTimeout(this.readRetry);
+    this.watchdog = undefined;
+    this.readRetry = undefined;
     this.generation += 1;
     this.queueSerial += 1;
     this.searchSerial += 1;
@@ -125,6 +153,8 @@ export class ChatMusicQueueController {
     this.refreshTimer = undefined;
     this.update({
       playback: null,
+      recoveryStatus: 'waiting',
+      recoveryMessage: '연결 후 최신 음악 상태를 확인해요.',
       queueLoading: false,
       searchLoading: false,
       isMutating: false,
@@ -133,6 +163,64 @@ export class ChatMusicQueueController {
         ? { notice: '처리 결과를 확인하지 못했어요. 연결 후 같은 요청으로 결과를 확인해 주세요.' }
         : {}),
     });
+  }
+  setNetworkAvailable(isAvailable: boolean) {
+    if (this.isNetworkAvailable === isAvailable) return;
+    this.isNetworkAvailable = isAvailable;
+    if (!isAvailable) {
+      this.pause();
+      this.update({
+        recoveryMessage: '인터넷 연결이 끊겼어요. 연결 후 음악 상태를 다시 확인해요.',
+      });
+    } else this.connect(this.session, this.transportReady);
+  }
+  recover() {
+    if (!this.owns()) return;
+    this.readFailures = 0;
+    clearTimeout(this.readRetry);
+    this.readRetry = undefined;
+    this.update({
+      recoveryStatus: 'recovering',
+      recoveryMessage: '최신 음악 상태를 다시 확인하고 있어요.',
+      playback: null,
+      isQueueStale: true,
+    });
+    if (!this.queueRequest) void this.loadQueue();
+  }
+  private armWatchdog() {
+    clearTimeout(this.watchdog);
+    if (!this.owns() || this.state.recoveryStatus !== 'ready') return;
+    this.watchdog = setTimeout(() => {
+      this.watchdog = undefined;
+      if (this.queueRequest) this.armWatchdog();
+      else this.recover();
+    }, 15000);
+  }
+  private readFailed(error: unknown) {
+    clearTimeout(this.watchdog);
+    clearTimeout(this.readRetry);
+    this.readRetry = undefined;
+    const denied = error instanceof ChatMusicError && [401, 403, 404].includes(error.status ?? 0);
+    this.readFailures++;
+    const canRetry = !denied && this.readFailures <= 3;
+    this.update({
+      playback: null,
+      isQueueStale: true,
+      recoveryStatus: denied ? 'denied' : canRetry ? 'recovering' : 'error',
+      recoveryMessage: denied
+        ? '현재 이야기방 참여와 음악 이용 권한을 확인해 주세요.'
+        : canRetry
+          ? '음악 상태를 확인하지 못했어요. 잠시 후 다시 확인해요.'
+          : '음악 연결을 복구하지 못했어요. 다시 확인해 주세요.',
+    });
+    if (canRetry)
+      this.readRetry = setTimeout(
+        () => {
+          this.readRetry = undefined;
+          if (this.owns()) void this.loadQueue(false, false);
+        },
+        1000 * 2 ** (this.readFailures - 1) + Math.floor(Math.random() * 250),
+      );
   }
   dispose() {
     this.pause();
@@ -150,18 +238,27 @@ export class ChatMusicQueueController {
     if (
       !event ||
       !this.owns() ||
+      this.state.recoveryStatus === 'denied' ||
       event.roomId !== this.session.roomId ||
       (this.epoch !== undefined && event.epoch !== this.epoch) ||
       event.version < this.maxVersion
     )
       return;
-    this.acceptPlayback(event.playback);
+    if (this.state.recoveryStatus === 'ready') this.acceptPlayback(event.playback);
+    if (Date.parse(event.playback.serverTime) > this.lastEventTime) {
+      this.lastEventTime = Date.parse(event.playback.serverTime);
+      this.armWatchdog();
+    }
     this.epoch = event.epoch;
     this.maxVersion = event.version;
-    if (!this.state.queue || this.state.queue.version < event.version) {
+    if (
+      this.state.recoveryStatus !== 'ready' ||
+      !this.state.queue ||
+      this.state.queue.version < event.version
+    ) {
       this.update({ isQueueStale: true });
       if (this.queueRequest) this.refreshAgain = true;
-      else this.scheduleRefresh();
+      else if (!this.readRetry && this.state.recoveryStatus !== 'error') this.scheduleRefresh();
     }
   }
   private acceptPlayback(snapshot: MusicPlayback) {
@@ -209,6 +306,8 @@ export class ChatMusicQueueController {
     const previous = this.state.queue;
     const cursor = more ? previous?.nextCursor : null;
     if (more && (!cursor || this.state.isQueueStale || this.state.queueLoading)) return;
+    clearTimeout(this.readRetry);
+    this.readRetry = undefined;
     if (!more) {
       this.queueCursors.clear();
       clearTimeout(this.refreshTimer);
@@ -224,6 +323,11 @@ export class ChatMusicQueueController {
     try {
       const page = await fetchMusicQueue(this.session, cursor ?? null, controller.signal);
       if (!this.owns(generation) || serial !== this.queueSerial) return;
+      if (page.epoch !== undefined) {
+        if (this.epoch !== undefined && this.epoch !== page.epoch)
+          throw new ChatMusicError(409, 'EPOCH_CHANGED');
+        this.epoch = page.epoch;
+      }
       if (cursor && (!previous || page.version !== previous.version))
         throw new ChatMusicError(409, 'QUEUE_CHANGED');
       if (
@@ -232,7 +336,8 @@ export class ChatMusicQueueController {
         (page.items.length === 0 && page.nextCursor)
       )
         throw new ChatMusicError(502, 'INVALID_RESPONSE');
-      if (this.state.queue && page.version < this.state.queue.version) return;
+      if (this.state.queue && page.version < this.state.queue.version)
+        throw new ChatMusicError(409, 'QUEUE_CHANGED');
       if (
         cursor &&
         previous &&
@@ -242,8 +347,14 @@ export class ChatMusicQueueController {
       )
         throw new ChatMusicError(502, 'INVALID_RESPONSE');
       if (cursor) this.queueCursors.add(cursor);
-      this.acceptPlayback(page);
       const isStale = page.version < this.maxVersion;
+      if (!isStale) {
+        this.maxVersion = Math.max(this.maxVersion, page.version);
+        this.readFailures = 0;
+        this.update({ recoveryStatus: 'ready', recoveryMessage: '' });
+        this.acceptPlayback(page);
+        this.armWatchdog();
+      }
       this.update({
         queue: {
           ...page,
@@ -252,7 +363,7 @@ export class ChatMusicQueueController {
         isQueueStale: isStale,
         queueError: isStale ? '대기열이 바뀌었어요. 최신 목록을 다시 확인해 주세요.' : '',
       });
-      if (isStale && retry) this.refreshAgain = true;
+      if (isStale) this.readFailed(new ChatMusicError(409, 'QUEUE_CHANGED'));
     } catch (error) {
       if (!this.owns(generation) || serial !== this.queueSerial) return;
       if (
@@ -264,6 +375,7 @@ export class ChatMusicQueueController {
         await this.loadQueue(false, false);
         return;
       }
+      this.readFailed(error);
       this.update({
         queueError:
           error instanceof ChatMusicError
@@ -278,7 +390,7 @@ export class ChatMusicQueueController {
         this.update({ queueLoading: false });
         if (this.refreshAgain) {
           this.refreshAgain = false;
-          if (retry) this.scheduleRefresh();
+          if (retry && !this.readRetry) this.scheduleRefresh();
         }
       }
     }
@@ -374,11 +486,22 @@ export class ChatMusicQueueController {
     });
   }
   retryMutation() {
-    if (this.owns() && this.state.pending && !this.state.isMutating && !this.state.isCoolingDown)
+    if (
+      this.owns() &&
+      this.state.recoveryStatus === 'ready' &&
+      this.state.pending &&
+      !this.state.isMutating &&
+      !this.state.isCoolingDown
+    )
       void this.runMutation(this.state.pending);
   }
   private canMutate() {
-    return this.owns() && !this.state.pending && !this.state.isCoolingDown;
+    return (
+      this.owns() &&
+      this.state.recoveryStatus === 'ready' &&
+      !this.state.pending &&
+      !this.state.isCoolingDown
+    );
   }
   private async runMutation(mutation: MusicMutation) {
     const controller = new AbortController();
@@ -414,6 +537,12 @@ export class ChatMusicQueueController {
       });
       if (error instanceof ChatMusicError && error.status === 429)
         this.cooldown(error.retryAfter || 1);
+      if (
+        uncertain ||
+        (error instanceof ChatMusicError && [401, 403, 404].includes(error.status ?? 0))
+      ) {
+        this.recover();
+      }
       if (error instanceof ChatMusicError && error.status === 409) {
         void this.loadQueue();
         if (error.code === 'MUSIC_NOT_REQUESTABLE') void this.search(this.state.searchQuery);

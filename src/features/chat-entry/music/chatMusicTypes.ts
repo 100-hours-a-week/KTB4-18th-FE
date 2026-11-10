@@ -37,6 +37,7 @@ export interface MusicPlayback {
   durationMillis: number | null;
 }
 export interface MusicQueuePage extends MusicPlayback {
+  epoch?: number;
   items: MusicQueueItem[];
   nextCursor: string | null;
 }
@@ -147,7 +148,8 @@ export function parseMusicQueue(value: unknown): MusicQueuePage | null {
     !musicObject(value) ||
     !Array.isArray(value.items) ||
     value.items.length > 20 ||
-    !cursor(value.next_cursor)
+    !cursor(value.next_cursor) ||
+    (value.epoch !== undefined && !musicId(value.epoch))
   )
     return null;
   const items = value.items.map(parseQueueItem);
@@ -157,7 +159,12 @@ export function parseMusicQueue(value: unknown): MusicQueuePage | null {
     items.some((item, index) => index > 0 && item!.sequenceNo <= items[index - 1]!.sequenceNo)
   )
     return null;
-  return { ...playback, items: items as MusicQueueItem[], nextCursor: value.next_cursor };
+  return {
+    ...playback,
+    items: items as MusicQueueItem[],
+    nextCursor: value.next_cursor,
+    ...(value.epoch !== undefined ? { epoch: value.epoch as number } : {}),
+  };
 }
 export function parseRequestableMusic(value: unknown): RequestableMusicPage | null {
   if (
