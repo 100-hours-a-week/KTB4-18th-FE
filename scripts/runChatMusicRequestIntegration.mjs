@@ -7,11 +7,13 @@ import { createHash } from 'node:crypto';
 
 const frontend = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const backend = resolve(process.env.CHAT_BACKEND_DIR || join(frontend, '../meomuneum-backend'));
-const suite = process.argv.includes('--sync')
-  ? 'chat-music-sync-verification'
-  : process.argv.includes('--player')
-    ? 'chat-music-player-verification'
-    : 'chat-music-request-verification';
+const suite = process.argv.includes('--release')
+  ? 'chat-music-release-verification'
+  : process.argv.includes('--sync')
+    ? 'chat-music-sync-verification'
+    : process.argv.includes('--player')
+      ? 'chat-music-player-verification'
+      : 'chat-music-request-verification';
 const evidence = join(frontend, 'node_modules/.tmp', suite);
 await mkdir(evidence, { recursive: true });
 const root = await mkdtemp(join(tmpdir(), 'meomuneum-fe-music-'));
