@@ -529,3 +529,49 @@ QueueSnapshot의 선택 `epoch`(OpenAPI1.2.0)를 파싱하고 첫 이벤트보�
 `npm run verify:chat:music:sync:integration -- --worktree`로 src/build.gradle의 추적 BE 변경을 임시 사본에 적용해 검증한다.
 환경 파일/원본 BE는 변경하지 않고 diff SHA256을 남기며 미추적 BE src는 누락시키지 않고 거부한다.
 BE에서 실제 SIGTERM/SIGKILL·Redis 재시작·전용 CLI 복구를 별도로 검증했다. 실제 운영 설정/배포/SLO 승인은 아니다.
+
+## 공동 재생 10단계 통합 검증·운영 반영 준비 (2026-11-10)
+
+양쪽 `feature/chat-music-verification`의 릴리스 후보는 다음 명령으로 검증한다.
+
+```sh
+npm run verify:chat:music:readiness -- --live-youtube
+```
+
+BE의 `scripts/verify-chat-music-release.py`가 전체 회귀·실제 서버 복구·참여 회귀·세 JAR와
+FE 포맷/린트/타입/전체 시험/빌드·실제 서버에 연결한 세 Chrome 창·계약·기존 복구 UI·선택 YouTube smoke를 실행한다.
+Docker/JDK25·설치 Chrome·양쪽 의존성이 필요하다. 양쪽 작업 트리는 실행 중 고정하며 먼저 포맷을 끝낸다.
+실행별 증빙은 BE `build/chat-music-release-verification/<UTC시각>/summary.json`과 단계 로그/XML에 보존한다.
+
+개별 실제 서버 브라우저 검증은 `npm run verify:chat:music:release -- --worktree`,
+실제 응답/이벤트와 FE 파서·JSON Schema의 대조는 `npm run verify:chat:music:contracts`다.
+`--worktree`는 BE 추적 src/build.gradle 변경을 임시 사본에 적용하고, 새로운 미추적 BE src가 있으면 거부한다.
+서로 다른2계정·3탭이 신청/공동 정지/대기 곡 취소/정지 입장/건너뛰기/개인 음량/음악 중 채팅/마지막 퇴장을 검증한다.
+인증 저장/GPS와 YouTube SDK만 합성이다. 실제 OAuth·음원·물리 모바일·1000기기 동기화 시험으로 표시하지 않는다.
+
+이 과정에서 빠른 `/신청` 재개방 뒤 이전 native dialog close가 새 창을 닫을 수 있는 문제를 보완했다.
+늦은 close 시 이미 다시 열린 dialog라면 닫힘을 적용하지 않으며 재현/실제 브라우저 회귀를 포함한다.
+음악 API/공통 제어/음량 정책은 유지한다. 동시에 변경된 큐의 새 version을 수신한 뒤 공통 조작하는 시험과
+정상적인409 충돌 처리도 구분한다.
+
+운영 반영 순서/승인 조건은 BE README의 `10단계 운영 체크리스트와 반영 절차`, 미확인 gate는 `api/chat-music-release-gates.json`을 따른다.
+검수 곡·실제 라우팅/ACL/키/관측·물리 모바일·1000연결/SLO 검증이 남아 있으며 음악 두 FE 플래그는false다.
+로컬 검증 통과를 실제 배포/운영 승인으로 표시하지 않고 커밋·push·PR·운영 설정 변경은 수행하지 않는다.
+
+### 10단계 최종 로컬 검증 결과
+
+2026-11-10 `20261110T011615Z` 실행은 `localVerificationPassed=true`,
+`operationalActivationAllowed=false`다. 증빙은 BE
+`build/chat-music-release-verification/20261110T011615Z/summary.json`과 단계 로그/XML에 있다.
+
+- BE 전체 977개: 954 통과·23 조건부 제외·실패0. 별도 음악 복구20개·참여49개 전부 통과.
+- FE 전체 994개: 987 통과·7 조건부 제외·실패0. 포맷/린트/채팅 타입/빌드 통과.
+- 실제 Core·두 Chat·MySQL/Redis·2계정3탭에서 공동 제어/타인 대기 곡 취소/정지 입장/개인 음량/채팅/마지막 퇴장 정리 통과.
+- 실제 STOMP30건·queue20건을 스키마/FE 파서로 검사하고 OpenAPI 참조82개·잘못된 이벤트3개 거부 확인.
+- 기존 복구 UI 브라우저 회귀 통과. 별도 실제 YouTube SDK/iframe1개/PLAYING 관측·오류/실패 요청0.
+  공식 데모·합성 방 상태의 smoke이며 운영 곡·물리 모바일 동시 청취 검증은 아니다.
+- BE 소스 SHA256 `b7193d22e0ce23835a1f9cf7ae44c33344575e2457ba48f3cd981edfa69fecb5`와 세 JAR manifest가 일치한다.
+  FE 소스 SHA256 `ad5983fc5cacb5b152795a3721b1383b450cd5900c07d891ffe081bdd965ae9d`도 실행 중 변경이 없었다.
+
+검수 곡·운영 migration/권한/ACL/키/라우팅·물리 모바일·1000연결/SLO·관측/복구 훈련·릴리스 승인 gate는 모두 pending이다.
+기본 플래그false를 유지하며 운영 활성화·DB/클라우드 변경·커밋·push·PR·배포는 수행하지 않았다.
