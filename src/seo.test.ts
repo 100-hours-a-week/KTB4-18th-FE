@@ -35,10 +35,10 @@ describe('public search document', () => {
     expect(page.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(CANONICAL);
     expect(page.querySelector('link[rel="icon"]')?.getAttribute('type')).toBe('image/x-icon');
     expect(page.querySelector('meta[property="og:description"]')?.getAttribute('content')).toBe(
-      description,
+      '장소와 감상을 음악으로 기록하고, AI 추천과 지역 채팅으로 나눠보세요.',
     );
-    expect(page.querySelector('meta[property="og:title"]')?.getAttribute('content')).toMatch(
-      /^머문음.*장소와 감상.*위치 기반 음악 아카이브/,
+    expect(page.querySelector('meta[property="og:title"]')?.getAttribute('content')).toBe(
+      '머문음 | 지도에 남기는 음악',
     );
     expect(page.querySelector('meta[property="og:url"]')?.getAttribute('content')).toBe(CANONICAL);
   });
