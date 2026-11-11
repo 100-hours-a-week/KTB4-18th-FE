@@ -11,8 +11,9 @@ export interface RequestableMusic {
   title: string;
   artistName: string;
   albumCoverUrl: string | null;
-  youtubeVideoId: string;
-  durationMillis: number;
+  youtubeVideoId: string | null;
+  durationMillis: number | null;
+  isQueueable?: boolean;
   sources: ('RECORDED' | 'RECOMMENDED')[];
 }
 export interface MusicQueueItem {
@@ -182,9 +183,11 @@ export function parseRequestableMusic(value: unknown): RequestableMusicPage | nu
       !text(item.title, 1020) ||
       !text(item.artist_name, 4000) ||
       !nullableText(item.album_cover_url) ||
-      typeof item.youtube_video_id !== 'string' ||
-      !/^[A-Za-z0-9_-]{11}$/.test(item.youtube_video_id) ||
-      !musicId(item.duration_millis) ||
+      !nullableText(item.youtube_video_id) ||
+      (item.youtube_video_id !== null && !/^[A-Za-z0-9_-]{11}$/.test(item.youtube_video_id)) ||
+      (item.duration_millis !== null &&
+        (!musicId(item.duration_millis) || item.duration_millis > 9999999999)) ||
+      (item.is_queueable !== undefined && typeof item.is_queueable !== 'boolean') ||
       !Array.isArray(item.sources) ||
       item.sources.length < 1 ||
       item.sources.length > 2 ||
@@ -199,7 +202,8 @@ export function parseRequestableMusic(value: unknown): RequestableMusicPage | nu
       artistName: item.artist_name,
       albumCoverUrl: item.album_cover_url,
       youtubeVideoId: item.youtube_video_id,
-      durationMillis: item.duration_millis,
+      durationMillis: item.duration_millis as number | null,
+      ...(typeof item.is_queueable === 'boolean' ? { isQueueable: item.is_queueable } : {}),
       sources: item.sources as RequestableMusic['sources'],
     });
   }
@@ -240,5 +244,80 @@ export function parseMusicEvent(value: unknown): ChatMusicEvent | null {
     epoch: data.epoch,
     version: data.version,
     playback,
+  };
+}
+
+export interface MusicVideoCandidate {
+  candidateId: string;
+  musicId: number;
+  videoId: string;
+  title: string;
+  channelId: string;
+  channelTitle: string;
+  thumbnailUrl: string | null;
+  durationMillis: number;
+  officialStatus: 'UNREVIEWED' | 'CONFIRMED';
+  expiresAt: string;
+}
+export interface MusicVideoPage {
+  searchId: string;
+  musicId: number;
+  resultKind: 'READY' | 'EMPTY';
+  expiresAt: string;
+  items: MusicVideoCandidate[];
+}
+const uuid = (value: unknown): value is string =>
+  typeof value === 'string' && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value);
+export function parseMusicVideos(value: unknown): MusicVideoPage | null {
+  if (
+    !musicObject(value) ||
+    !uuid(value.search_id) ||
+    !musicId(value.music_id) ||
+    !date(value.expires_at) ||
+    !['READY', 'EMPTY'].includes(String(value.result_kind)) ||
+    !Array.isArray(value.items) ||
+    value.items.length > 10 ||
+    (value.result_kind === 'EMPTY' ? value.items.length !== 0 : value.items.length === 0)
+  )
+    return null;
+  const items: MusicVideoCandidate[] = [];
+  for (const item of value.items) {
+    if (
+      !musicObject(item) ||
+      !uuid(item.candidate_id) ||
+      item.music_id !== value.music_id ||
+      !text(item.video_id, 11) ||
+      !/^[A-Za-z0-9_-]{11}$/.test(item.video_id) ||
+      !text(item.title, 1020) ||
+      !text(item.channel_id, 64) ||
+      !text(item.channel_title, 1020) ||
+      !nullableText(item.thumbnail_url) ||
+      !musicId(item.duration_millis) ||
+      item.duration_millis > 9999999999 ||
+      item.playback_status !== 'PLAYABLE' ||
+      !['UNREVIEWED', 'CONFIRMED'].includes(String(item.official_status)) ||
+      item.expires_at !== value.expires_at ||
+      items.some((old) => old.candidateId === item.candidate_id || old.videoId === item.video_id)
+    )
+      return null;
+    items.push({
+      candidateId: item.candidate_id,
+      musicId: value.music_id,
+      videoId: item.video_id,
+      title: item.title,
+      channelId: item.channel_id,
+      channelTitle: item.channel_title,
+      thumbnailUrl: item.thumbnail_url,
+      durationMillis: item.duration_millis,
+      officialStatus: item.official_status as MusicVideoCandidate['officialStatus'],
+      expiresAt: item.expires_at,
+    });
+  }
+  return {
+    searchId: value.search_id,
+    musicId: value.music_id,
+    resultKind: value.result_kind as MusicVideoPage['resultKind'],
+    expiresAt: value.expires_at,
+    items,
   };
 }

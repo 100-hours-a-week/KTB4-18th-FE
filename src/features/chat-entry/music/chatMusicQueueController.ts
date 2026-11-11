@@ -5,6 +5,7 @@ import {
   fetchMusicQueue,
   mutateMusicQueue,
   searchChatMusic,
+  searchMusicVideos,
   type MusicMutation,
   type PlaybackAction,
 } from './chatMusicApi';
@@ -16,6 +17,8 @@ import type {
   MusicQueuePage,
   RequestableMusic,
   RequestableMusicPage,
+  MusicVideoPage,
+  MusicVideoCandidate,
 } from './chatMusicTypes';
 
 export type MusicRecoveryStatus =
@@ -32,6 +35,11 @@ export interface MusicQueueState {
   searchQuery: string;
   searchLoading: boolean;
   searchError: string;
+  selectedSong: RequestableMusic | null;
+  videos: MusicVideoPage | null;
+  videoLoading: boolean;
+  videoError: string;
+  isVideoCoolingDown: boolean;
   pending: MusicMutation | null;
   isMutating: boolean;
   notice: string;
@@ -49,6 +57,11 @@ const initial = (): MusicQueueState => ({
   searchQuery: '',
   searchLoading: false,
   searchError: '',
+  selectedSong: null,
+  videos: null,
+  videoLoading: false,
+  videoError: '',
+  isVideoCoolingDown: false,
   pending: null,
   isMutating: false,
   notice: '',
@@ -72,6 +85,8 @@ export class ChatMusicQueueController {
   private epoch: number | undefined;
   private queueRequest: AbortController | undefined;
   private searchRequest: AbortController | undefined;
+  private videoRequest: AbortController | undefined;
+  private videoSerial = 0;
   private mutationRequest: AbortController | undefined;
   private queueSerial = 0;
   private searchSerial = 0;
@@ -80,6 +95,7 @@ export class ChatMusicQueueController {
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
   private queueCursors = new Set<string>();
   private searchCursors = new Set<string>();
+  private videoCooldownTimer: ReturnType<typeof setTimeout> | undefined;
   private cooldownTimer: ReturnType<typeof setTimeout> | undefined;
   private session: ChatMusicSession;
 
@@ -134,6 +150,7 @@ export class ChatMusicQueueController {
   }
   pause() {
     this.isActive = false;
+    this.cancelVideos();
     clearTimeout(this.watchdog);
     clearTimeout(this.readRetry);
     this.watchdog = undefined;
@@ -225,6 +242,15 @@ export class ChatMusicQueueController {
   dispose() {
     this.pause();
     clearTimeout(this.cooldownTimer);
+    clearTimeout(this.videoCooldownTimer);
+  }
+  private videoCooldown(seconds: number) {
+    clearTimeout(this.videoCooldownTimer);
+    this.update({ isVideoCoolingDown: true });
+    this.videoCooldownTimer = setTimeout(
+      () => this.update({ isVideoCoolingDown: false }),
+      Math.max(1, seconds) * 1000,
+    );
   }
   private cooldown(seconds: number) {
     clearTimeout(this.cooldownTimer);
@@ -433,6 +459,12 @@ export class ChatMusicQueueController {
         (page.items.length === 0 && page.nextCursor)
       )
         throw new ChatMusicError(502, 'INVALID_RESPONSE');
+      if (
+        cursor &&
+        previous &&
+        page.items.some((item) => previous.items.some((old) => old.musicId === item.musicId))
+      )
+        throw new ChatMusicError(502, 'INVALID_RESPONSE');
       if (cursor) this.searchCursors.add(cursor);
       const items =
         more && previous
@@ -470,10 +502,76 @@ export class ChatMusicQueueController {
     this.searchRequest = undefined;
     this.update({ searchLoading: false });
   }
-  add(song: RequestableMusic) {
-    if (!this.canMutate()) return;
+  cancelVideos() {
+    this.videoSerial++;
+    this.videoRequest?.abort();
+    this.videoRequest = undefined;
+    this.update({ selectedSong: null, videos: null, videoError: '', videoLoading: false });
+  }
+  async selectSong(song: RequestableMusic): Promise<void> {
+    if (
+      !this.owns() ||
+      this.state.isCoolingDown ||
+      this.state.isVideoCoolingDown ||
+      this.state.pending
+    )
+      return;
+    this.videoRequest?.abort();
+    const controller = new AbortController();
+    this.videoRequest = controller;
+    const serial = ++this.videoSerial;
+    const generation = this.generation;
+    this.update({ selectedSong: song, videos: null, videoLoading: true, videoError: '' });
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    try {
+      const videos = await searchMusicVideos(this.session, song.musicId, controller.signal);
+      if (!this.owns(generation) || serial !== this.videoSerial) return;
+      this.update({ videos });
+    } catch (error) {
+      if (!this.owns(generation) || serial !== this.videoSerial) return;
+      this.update({
+        videoError:
+          error instanceof ChatMusicError
+            ? error.message
+            : '영상을 찾지 못했어요. 다시 시도해 주세요.',
+      });
+      if (error instanceof ChatMusicError && error.status === 429)
+        this.videoCooldown(error.retryAfter || 1);
+    } finally {
+      clearTimeout(timeout);
+      if (this.owns(generation) && serial === this.videoSerial) {
+        this.videoRequest = undefined;
+        this.update({ videoLoading: false });
+      }
+    }
+  }
+  add(song: RequestableMusic, candidate?: MusicVideoCandidate) {
+    if (!this.canMutate() || (candidate && this.state.isVideoCoolingDown)) return;
+    if (
+      candidate &&
+      (candidate.musicId !== song.musicId ||
+        !this.state.videos?.items.some((item) => item.candidateId === candidate.candidateId))
+    )
+      return;
+    const clock = this.state.playback;
+    const now = clock
+      ? Date.parse(clock.snapshot.serverTime) + performance.now() - clock.receivedAt
+      : Date.now();
+    if (candidate && Date.parse(candidate.expiresAt) <= now) {
+      this.update({
+        videoError: '영상 선택 기한이 지났어요. 영상을 다시 찾아 주세요.',
+        videos: null,
+      });
+      return;
+    }
     const id = crypto.randomUUID();
-    void this.runMutation({ id, kind: 'add', musicId: song.musicId, label: song.title });
+    void this.runMutation({
+      id,
+      kind: 'add',
+      musicId: song.musicId,
+      ...(candidate ? { candidateId: candidate.candidateId } : {}),
+      label: song.title,
+    });
   }
   cancel(item: MusicQueueItem) {
     if (!this.canMutate() || !this.state.queue || this.state.isQueueStale) return;
@@ -535,13 +633,21 @@ export class ChatMusicQueueController {
           ? '처리 결과를 확인하지 못했어요. 같은 요청으로 결과를 다시 확인해 주세요.'
           : error.message,
       });
-      if (error instanceof ChatMusicError && error.status === 429)
-        this.cooldown(error.retryAfter || 1);
+      if (error instanceof ChatMusicError && error.status === 429) {
+        if (error.code === 'VIDEO_REQUEST_RATE_LIMITED') this.videoCooldown(error.retryAfter || 1);
+        else this.cooldown(error.retryAfter || 1);
+      }
       if (
         uncertain ||
         (error instanceof ChatMusicError && [401, 403, 404].includes(error.status ?? 0))
       ) {
         this.recover();
+      }
+      if (
+        error instanceof ChatMusicError &&
+        ['CANDIDATE_EXPIRED', 'INVALID_CANDIDATE', 'MUSIC_METADATA_CHANGED'].includes(error.code)
+      ) {
+        this.update({ videos: null, videoError: error.message });
       }
       if (error instanceof ChatMusicError && error.status === 409) {
         void this.loadQueue();

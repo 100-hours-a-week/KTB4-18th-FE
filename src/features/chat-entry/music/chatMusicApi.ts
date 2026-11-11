@@ -6,6 +6,8 @@ import {
   parseMusicQueue,
   parsePlayback,
   parseRequestableMusic,
+  parseMusicVideos,
+  type MusicVideoPage,
   type ChatMusicSession,
   type MusicQueuePage,
   type RequestableMusicPage,
@@ -27,6 +29,15 @@ export class ChatMusicError extends Error {
   }
 }
 export function musicErrorMessage(status: number | null, code: string): string {
+  if (code === 'CANDIDATE_EXPIRED')
+    return '영상 선택 기한이 지났어요. 영상을 다시 찾아 선택해 주세요.';
+  if (code === 'INVALID_CANDIDATE' || code === 'MUSIC_METADATA_CHANGED')
+    return '곡 정보가 바뀌었어요. 영상을 다시 찾아 주세요.';
+  if (code === 'VIDEO_UNAVAILABLE') return '이 영상은 재생할 수 없어요. 다른 영상을 선택해 주세요.';
+  if (code === 'VIDEO_SEARCH_DISABLED')
+    return '영상 검색을 준비 중이에요. 잠시 후 다시 이용해 주세요.';
+  if (code === 'VIDEO_REQUEST_RATE_LIMITED')
+    return '영상 검색 요청 한도에 도달했어요. 나중에 다시 시도해 주세요.';
   if (code === 'QUEUE_EMPTY') return '대기 중인 곡이 없어요. 먼저 곡을 신청해 주세요.';
   if (code === 'TRACK_FINISHED' || code === 'INVALID_PLAYBACK_STATE')
     return '재생 상태가 바뀌었어요. 최신 상태를 확인해 주세요.';
@@ -93,8 +104,17 @@ async function request(
     throw new ChatMusicError(
       response.status,
       code,
-      Number.isFinite(retry) ? Math.min(60, Math.max(0, retry)) : 1,
-      mutation && (response.status >= 500 || response.status === 401 || response.status === 403),
+      Number.isFinite(retry) ? Math.min(86400, Math.max(0, retry)) : 1,
+      mutation &&
+        ((response.status >= 500 &&
+          ![
+            'VIDEO_VERIFICATION_REQUIRED',
+            'VIDEO_SEARCH_UNAVAILABLE',
+            'VIDEO_PROVIDER_BUSY',
+            'VIDEO_SEARCH_DISABLED',
+          ].includes(code)) ||
+          response.status === 401 ||
+          response.status === 403),
     );
   }
   return response.status === 204 ? null : musicObject(body) ? body.data : null;
@@ -140,7 +160,7 @@ export type MusicMutation =
       expectedVersion: number;
       label: string;
     }
-  | { id: string; kind: 'add'; musicId: number; label: string }
+  | { id: string; kind: 'add'; musicId: number; candidateId?: string; label: string }
   | { id: string; kind: 'cancel'; queueItemId: number; expectedVersion: number; label: string };
 export async function mutateMusicQueue(
   session: ChatMusicSession,
@@ -187,7 +207,10 @@ export async function mutateMusicQueue(
       method: 'POST',
       headers,
       signal,
-      body: JSON.stringify({ music_id: mutation.musicId }),
+      body: JSON.stringify({
+        music_id: mutation.musicId,
+        ...(mutation.candidateId ? { candidate_id: mutation.candidateId } : {}),
+      }),
     },
     true,
   );
@@ -202,4 +225,20 @@ export async function mutateMusicQueue(
   )
     throw new ChatMusicError(502, 'INVALID_RESPONSE', 0, true);
   return data.status as 'WAITING' | 'PLAYING' | 'CANCELED';
+}
+
+export async function searchMusicVideos(
+  session: ChatMusicSession,
+  musicId: number,
+  signal: AbortSignal,
+): Promise<MusicVideoPage> {
+  const data = await request(
+    session,
+    `music/${musicId}/video-searches`,
+    {},
+    { method: 'POST', signal },
+  );
+  const page = parseMusicVideos(data);
+  if (!page || page.musicId !== musicId) throw new ChatMusicError(502, 'INVALID_RESPONSE');
+  return page;
 }
