@@ -43,6 +43,8 @@ import {
   ROUTE_CHANGE_EVENT,
 } from './shared/navigation';
 
+import { useSearchMetadata } from './hooks/useSearchMetadata';
+
 import './App.css';
 
 const LOGIN_PATH = '/login';
@@ -85,6 +87,7 @@ const ChatbotPage = lazy(() => import('./features/chatbot/components/ChatbotPage
 function AppContent() {
   const [routeLocation, setRouteLocation] = useState(() => readRouteLocation());
   const pathname = routeLocation.pathname;
+  useSearchMetadata(pathname);
   const [initialAuthRestoreState] = useState(() => getAuthRestoreState());
   const [authStatus, setAuthStatus] = useState<AuthStatus>('restoring');
   useLocationRecommendationAuthState(authStatus === 'authenticated');
