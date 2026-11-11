@@ -2,9 +2,42 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>머문음</title>
+    <title>머문음 | AI 음악 추천과 장소별 음악 기록</title>
+    <meta
+      name="description"
+      content="머문음은 텍스트·사진·음성으로 AI 음악 추천을 받고, 장소에 음악과 메모를 남겨 지도에서 돌아보는 서비스입니다. 주요 기능은 로그인 후 이용할 수 있습니다."
+    />
+    <meta name="robots" content="index,follow" />
+    <link rel="canonical" href="https://meomuneum.com/login" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="머문음" />
+    <meta property="og:locale" content="ko_KR" />
+    <meta property="og:title" content="머문음 | AI 음악 추천과 장소별 음악 기록" />
+    <meta
+      property="og:description"
+      content="머문음은 텍스트·사진·음성으로 AI 음악 추천을 받고, 장소에 음악과 메모를 남겨 지도에서 돌아보는 서비스입니다. 주요 기능은 로그인 후 이용할 수 있습니다."
+    />
+    <meta property="og:url" content="https://meomuneum.com/login" />
+    <script>
+      if (location.pathname !== '/' && location.pathname !== '/login') {
+        document.querySelector('meta[name="robots"]').content = 'noindex,follow';
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "name": "머문음",
+            "url": "https://meomuneum.com/",
+            "inLanguage": "ko"
+          }
+        ]
+      }
+    </script>
     <!-- Microsoft Clarity: 운영 도메인에서만 수집 (로컬·프리뷰 데이터 섞임 방지) -->
     <script>
       if (location.hostname === 'meomuneum.com') {
