@@ -26,17 +26,19 @@ describe('public search document', () => {
     expect(page.querySelector('#root')?.textContent).toBe('');
     expect(page.querySelector('noscript')).toBeNull();
     render(createElement(DirectLoginPage));
-    expect(screen.queryByText(/머문음은 텍스트/)).toBeNull();
+    expect(screen.queryByText(/머문음은/)).toBeNull();
     expect(screen.getByRole('heading', { name: '오늘도, 한 곡 남겨볼까요?' })).toBeDefined();
-    expect(description).toMatch(/AI 음악 추천.*장소.*음악과 메모.*로그인 후/);
-    expect(page.title).toMatch(/^머문음.*AI 음악 추천/);
+    expect(description).toMatch(
+      /장소와 감상.*위치 기반 음악 아카이빙.*AI 음악 추천.*지역 채팅.*앨범 커버 도트/,
+    );
+    expect(page.title).toBe('머문음');
     expect(page.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(CANONICAL);
     expect(page.querySelector('link[rel="icon"]')?.getAttribute('type')).toBe('image/x-icon');
     expect(page.querySelector('meta[property="og:description"]')?.getAttribute('content')).toBe(
       description,
     );
-    expect(page.querySelector('meta[property="og:title"]')?.getAttribute('content')).toBe(
-      page.title,
+    expect(page.querySelector('meta[property="og:title"]')?.getAttribute('content')).toMatch(
+      /^머문음.*장소와 감상.*위치 기반 음악 아카이브/,
     );
     expect(page.querySelector('meta[property="og:url"]')?.getAttribute('content')).toBe(CANONICAL);
   });
