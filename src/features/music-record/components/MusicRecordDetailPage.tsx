@@ -402,6 +402,8 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
           <MusicRecordHero
             recordId={recordId}
             music={selectedMusic ?? record.music}
+            previewUrl={selectedMusic ? selectedMusic.preview_url : record.preview_url}
+            previewTrackId={selectedMusic?.external_music_id}
             albumCoverUrl={selectedMusic?.album_cover_url ?? record.music.album_cover_url}
             isChangeDisabled={isSaving || isDeleting || isDeleteOpen}
             onChange={openMusicSearch}

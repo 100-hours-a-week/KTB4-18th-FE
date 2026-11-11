@@ -1150,6 +1150,8 @@ export function MusicRecordCreatePage() {
           {selected && (
             <MusicRecordHero
               music={selected}
+              previewUrl={selected.preview_url}
+              previewTrackId={selected.external_music_id}
               onChange={() => {
                 stopPreview();
                 if (items.some((item) => item.external_music_id === selected.external_music_id)) {

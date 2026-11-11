@@ -1,0 +1,85 @@
+body .music-page .music-hero-play-button .music-hero-waveform {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 38px;
+  height: 18px;
+  color: #fff;
+  pointer-events: none;
+}
+
+body .music-page .music-hero-play-button .music-hero-waveform > span {
+  width: 2px;
+  height: 12px;
+  border-radius: 999px;
+  background: currentColor;
+  color: #fff;
+  transform-origin: center;
+  animation: music-hero-waveform-pulse 800ms ease-in-out infinite alternate;
+}
+
+body .music-page .music-hero-play-button .music-hero-waveform > span:nth-child(5n + 2) {
+  height: 16px;
+  animation-duration: 650ms;
+  animation-delay: -250ms;
+}
+
+body .music-page .music-hero-play-button .music-hero-waveform > span:nth-child(5n + 3) {
+  height: 18px;
+  animation-duration: 900ms;
+  animation-delay: -450ms;
+}
+
+body .music-page .music-hero-play-button .music-hero-waveform > span:nth-child(5n + 4) {
+  height: 15px;
+  animation-duration: 700ms;
+  animation-delay: -150ms;
+}
+
+body .music-page .music-hero-play-button .music-hero-waveform > span:nth-child(5n + 5) {
+  animation-duration: 750ms;
+  animation-delay: -350ms;
+}
+
+@keyframes music-hero-waveform-pulse {
+  from {
+    transform: scaleY(0.35);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body .music-page .music-hero-play-button .music-hero-waveform > span {
+    animation: none;
+  }
+}
+
+body .music-page .music-selected-content > .music-hero-actions {
+  align-self: end;
+  justify-items: end;
+  gap: 8px;
+}
+
+body .music-page .music-hero-actions > button {
+  justify-self: stretch;
+}
+
+body .music-page .music-hero-actions .music-hero-play-button {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+body .music-page .music-hero-play-button > svg {
+  width: 18px;
+  height: 18px;
+}
+
+body .music-page .music-hero-actions > p[role='alert'] {
+  max-width: 8rem;
+  color: #fff;
+  font-size: 12px;
+}
