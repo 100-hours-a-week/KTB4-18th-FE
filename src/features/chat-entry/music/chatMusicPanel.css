@@ -48,15 +48,23 @@
   margin-inline-start: 8px;
 }
 .chat-music-dialog {
-  margin: auto;
-  width: min(100% - 24px, 600px);
-  max-height: min(82dvh, 740px);
+  position: fixed;
+  inset: auto;
+  left: var(--music-left, 8px);
+  top: var(--music-top, 8px);
+  width: var(--music-width, calc(100vw - 16px));
+  height: var(--music-height, min(740px, calc(100dvh - 16px)));
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px);
+  margin: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  box-sizing: border-box;
+
   border: 1px solid var(--color-border-tertiary);
-  border-radius: 20px;
   padding: 0;
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
-  overflow: auto;
   overscroll-behavior: contain;
 }
 .chat-music-dialog::backdrop {
@@ -210,13 +218,6 @@
   margin: 16px auto;
 }
 @media (max-width: 480px) {
-  .chat-music-dialog {
-    width: 100%;
-    max-height: 88dvh;
-    margin: auto 0 0;
-    max-width: none;
-    border-radius: 20px 20px 0 0;
-  }
   .chat-music-sheet {
     padding-inline: 16px;
   }
@@ -227,11 +228,6 @@
     justify-content: space-between;
   }
 }
-@media (max-height: 500px) {
-  .chat-music-dialog {
-    max-height: 96dvh;
-  }
-}
 
 .chat-music-recovery {
   padding: 8px 16px;
@@ -239,4 +235,75 @@
 }
 .chat-music-recovery button {
   margin-inline-start: 8px;
+}
+
+/* The top-layer dialog stays inside both the app column and the keyboard viewport. */
+
+.chat-music-sheet {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+}
+.chat-music-sheet > header,
+.chat-music-sheet > nav,
+.chat-music-search,
+.chat-music-video-heading {
+  flex-shrink: 0;
+}
+.chat-music-sheet nav {
+  padding-block: 8px;
+}
+.chat-music-scroll {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.chat-music-scroll:focus-visible {
+  outline: 2px solid var(--color-text-primary);
+  outline-offset: -2px;
+}
+.chat-music-footer {
+  flex-shrink: 0;
+  max-height: 25%;
+  overflow: auto;
+  font-size: 12px;
+}
+.chat-music-footer p {
+  margin-block: 4px;
+}
+.chat-music-video-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.chat-music-video-heading strong {
+  min-width: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.chat-music-item-text span,
+.chat-music-item-text small {
+  overflow-wrap: anywhere;
+}
+.chat-music-compact .chat-music-sheet {
+  overflow: auto;
+  padding: 8px;
+}
+.chat-music-compact .chat-music-scroll {
+  flex: none;
+  min-height: 100px;
+  overflow: visible;
+}
+.chat-music-compact .chat-music-description {
+  margin-block: 2px;
+}
+.chat-music-compact .chat-music-footer {
+  max-height: none;
 }

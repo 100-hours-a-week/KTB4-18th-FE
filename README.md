@@ -581,3 +581,53 @@ Docker/JDK25·설치 Chrome·양쪽 의존성이 필요하다. 양쪽 작업 트
 기존 검증 이력의 flags false·운영 보류 상태는 당시 기록이다. 이후 사용자 요청으로 `.env.production`에 음악 QUEUE/PLAYER 두 플래그의 기본값 true를 추가했다. `npm run build`는 production 모드로 빌드한다. CI 환경이나 `.env.production.local`에 기존 false 값이 있다면 `VITE_CHAT_MUSIC_QUEUE_ENABLED=true`, `VITE_CHAT_MUSIC_PLAYER_ENABLED=true`를 명시적으로 주입해야 한다. 실제 서버 배포 완료나 검수곡·운영 검증 완료를 의미하지 않는다.
 
 BE Chat prod의 음악 세 플래그·별도 음악 키·DB migration/권한·Redis 음악 ACL·Core 인증 의존성을 먼저 준비한다. 정확한 변수·값·반영 순서는 BE README의 「운영 활성화 설정 변경」을 따른다. FE 빌드 환경에는 BE 비밀 키를 넣지 않는다. 끌 때는 두 Vite 변수를 false로 재빌드·배포한다.
+
+## 지역 음악 영상 선택 신청 창 — 최소 P1 3단계
+
+작업 브랜치: `feature/chat-music-video-request`. 아래 내용은 이전 검수 소스 직접 신청 흐름을 보완한다.
+기존 공동 재생·자동 합류·개인 음량/음소거·모든 활성 참여자의 공통 조작 정책을 유지한다.
+
+- 창을 열면 검색 없이 본인의 현재 지역 기록·AI 추천 곡 목록을 조회한다. 영상/길이 null도 표시한다.
+  검색은 이 목록 전체를 서버에서 찾는 용도이며 300ms 지연·한글 조합·검색어 변경 시 구 요청 취소를 적용한다.
+  타인의 공개 기록을 신청 가능한 곡이라고 안내하지 않는다.
+- 내부 스크롤 하단의 IntersectionObserver/scroll로 20곡씩 자동 페이지를 읽는다. 키보드용 더 보기와 재시도를 유지한다.
+  다음 페이지 실패 때 기존 곡을 보존하고 같은 페이지를 재시도한다. 중복 항목/반복 cursor는 자동 반복을 중단한다.
+- 곡 선택 시 같은 dialog에서 동기 `POST .../music/{music_id}/video-searches`를 호출한다.
+  제목·채널·썸네일·길이·공식 확인 여부를 표시하며, 첫 영상을 자동 선택/재생하지 않는다.
+  뒤로 가면 검색어·목록·스크롤·선택 버튼 포커스를 복원한다. 후보 조회는 자동 폴링하지 않는다.
+- 신청은 `{music_id,candidate_id}`와 UUID를 보낸다. 응답 유실/불명확 결과의 재확인은 원 UUID/후보를 그대로 사용하고,
+  이미 성공했을 수 있는 요청을 후보 만료 때문에 새 요청으로 바꾸지 않는다. 과거 응답의 playback은 최신 상태를 덮어쓰지 않는다.
+  후보 만료·곡 정보 변경·사용 불가·정상 후보 없음·외부 실패를 구분한다. 알려진 검증 전 실패는 불명확한 쓰기로 보존하지 않는다.
+- 후보 요청/응답은 계정·sid·방·member/view·연결 세대로 격리하고 뒤로 가기/닫기/다른 곡 선택/연결 변경 때 취소한다.
+  영상 호출 한도의 Retry-After는 최대1일을 반영하되, 영상 작업의 대기 상태가 방 전체 재생·일시정지·취소를 막지 않는다.
+- native dialog의 너비는 앱 열과 visual viewport의 교집합으로 제한한다. 키보드 높이/offset, 앱 크기 변경을 반영한다.
+  제목·닫기·탭·검색은 유지하고 목록만 스크롤한다. 가용 높이300px 미만의 극단적 화면은 sheet 스크롤로 모든 조작에 접근한다.
+  처음 열 때 검색창에 자동 포커스하지 않고, Escape·포커스 트랩·닫은 뒤 원래 버튼/입력 위치 복귀를 유지한다.
+- TEXT/VOICE/IMAGE 추천 접수 직전에 로그인 계정의 이미 허용된 현재 GPS로 서버 위치 토큰을 새로 발급받아 전달한다.
+  한 번의 위치 확인에 최대4초를 사용하며 원 좌표/임의 region_id를 추천 API에 넣거나 토큰을 저장하지 않는다.
+  위치 권한이 미허용/확인 불가·GPS/서버 실패이면 기존 지역 미상 추천을 유지한다. 새로운 권한 팝업을 강제하지 않는다.
+  사용자/인증 세대가 바뀌거나 취소되면 늦은 위치를 버린다. 토큰 오류를 숨기려고 추천 POST를 자동 중복 전송하지 않는다.
+  기존 위치 추천 팝업의 GPS·서버 지역 확정 계약은 유지하며 과거 지역 미상 추천을 임의로 현재 방에 연결하지 않는다.
+
+### 연동·적용 조건
+
+BE 최소 P1 1·2단계의 queue API1.3.0/video-foundation API1.1.0을 기준으로 한다.
+BE migration·단일 worker 전환·서버 `CHAT_MUSIC_VIDEO_SEARCH_ENABLED=true`와 YouTube Data API 키를 준비해야 새 선택 신청을 사용할 수 있다.
+키는 FE/Vite 변수에 넣지 않는다. 기존 `VITE_CHAT_MUSIC_QUEUE_ENABLED`, `VITE_CHAT_MUSIC_PLAYER_ENABLED`와 앱 배포 설정은 변경하지 않았다.
+새 화면은 직접 신청으로 자동 우회하지 않는다. 서버 검색 비활성 상태는 준비 중 안내를 표시하고 일반 채팅/기존 플레이어는 유지한다.
+정확한 DB 권한·구 worker 중지·rollback은 BE README의 최소 P1 2단계를 따른다.
+
+### 검증 결과와 한계
+
+- `npm run format:check`, `npm run lint`, `npm run verify:chat:types`, `npm run build` 통과.
+- 전체 Vitest1027건 중1020통과·7기존조건부제외·실패0.
+- Chrome headless에서390×844/1280×900/320×568의 실제 React·인증 fetch와 HTTP fixture를 검증했다.
+  nullable 곡·44곡 자동 페이지·영상 선택·뒤로 가기 포커스/스크롤·후보를 포함한 동일 UUID 재확인·이웃 곡 취소·재연결·Escape·화면 가로 넘침 없음이 통과했다.
+  합성 visualViewport 높이300/offset60으로 키보드 축소 경계를 확인하고 각 화면 스크린샷도 확인했다.
+- 실행: `npm run verify:chat:music:browser`. 증빙은 `node_modules/.tmp/chat-music-video-request-verification/browser/`의 results.json/스크린샷과 상위 summary.json이다.
+  전체 테스트 원본은 `node_modules/.tmp/music-video-request-final-all.json`에 보존한다.
+- 초기 UI 시험은 이전 직접 신청 버튼·검색창 자동 포커스 기대를 새 계약으로 갱신했다. 후속 시험에서 발견한 기본 목록 중복 조회를 수정했고,
+  데스크톱은 브라우저 중앙 대신 기존 앱 열 중앙을 기준으로 검사했다. 기존 실패·중간 JSON도 .tmp에 보존한다.
+- 실제 BE/DB 후보 검색·두 Chat·실 YouTube 재생·물리 iOS/Android 키보드·1000연결과 운영 적용은4단계 통합 검증 대상이다.
+  이전 실제 서버/릴리스 하네스 결과를 새 후보 선택 계약의 검증으로 재사용하지 않았으며 이번에는 해당 하네스를 실행하지 않았다.
+- 로컬 이슈 `docs/issues/chat-music-video-request.md`와 프로젝트 기억을 갱신했다. BE·운영 DB/설정·배포·커밋/push/PR은 변경하지 않았다.

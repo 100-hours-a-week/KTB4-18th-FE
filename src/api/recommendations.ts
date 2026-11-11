@@ -1,9 +1,14 @@
+import { recommendationLocationToken } from './recommendationLocation';
 import type {
   Recommendation,
   RecommendationAccepted,
   RecommendationStreamTrack,
 } from '../types/recommendation';
-import { AuthRequestError, authenticatedFetch } from '../features/auth-login/api/authSession';
+import {
+  AuthRequestError,
+  authenticatedFetch,
+  getSharedAuthEpoch,
+} from '../features/auth-login/api/authSession';
 
 // 운영에서는 같은 도메인의 /api를 백엔드로 연결하거나 VITE_API_BASE_URL을 설정합니다.
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
@@ -49,6 +54,10 @@ export async function recommend(
   signal: AbortSignal,
   inputType: RecommendationInputType = 'TEXT',
 ) {
+  const authEpoch = getSharedAuthEpoch();
+  const locationToken = await recommendationLocationToken(signal);
+  if (signal.aborted || authEpoch !== getSharedAuthEpoch())
+    throw new DOMException('Aborted', 'AbortError');
   const accepted = await request<RecommendationAccepted>('/recommendations', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -57,6 +66,7 @@ export async function recommend(
       trigger_type: 'CHATBOT',
       conversation_key: conversationKey,
       prompt,
+      ...(locationToken ? { location_resolution_token: locationToken } : {}),
     }),
     signal,
   });

@@ -4,6 +4,7 @@ import { ChatMusicQueueController } from './chatMusicQueueController';
 import {
   added,
   candidate,
+  videoPage,
   deferred,
   musicEvent,
   musicResponse,
@@ -220,4 +221,123 @@ it('applies same-version newer sync, refuses stale snapshot regression and retai
   expect(posts[0][1]?.headers).toEqual(posts[1][1]?.headers);
   controller.pause();
   expect(controller.getSnapshot().playback).toBeNull();
+});
+
+describe('selected video request lifecycle', () => {
+  it('drops video results after back navigation, another song, or disconnect', async () => {
+    const late = deferred<Response>();
+    vi.mocked(authenticatedFetchWithCurrentToken).mockReturnValueOnce(late.promise);
+    const waiting = controller.selectSong(song());
+    controller.cancelVideos();
+    late.resolve(musicResponse(videoPage()));
+    await waiting;
+    expect(controller.getSnapshot().videos).toBeNull();
+    expect(controller.getSnapshot().selectedSong).toBeNull();
+    vi.mocked(authenticatedFetchWithCurrentToken).mockResolvedValueOnce(musicResponse(videoPage()));
+    await controller.selectSong(song());
+    expect(controller.getSnapshot().videos?.items).toHaveLength(2);
+    controller.pause();
+    expect(controller.getSnapshot().videos).toBeNull();
+  });
+  it('retries an uncertain selected ADD with its original candidate even after candidate expiry', async () => {
+    vi.mocked(authenticatedFetchWithCurrentToken).mockResolvedValueOnce(musicResponse(videoPage()));
+    await controller.selectSong(song());
+    const selected = controller.getSnapshot().videos!.items[0];
+    vi.mocked(authenticatedFetchWithCurrentToken).mockRejectedValueOnce(
+      new TypeError('lost response'),
+    );
+    controller.add(song(), selected);
+    await settle();
+    const original = controller.getSnapshot().pending;
+    expect(original).toMatchObject({ kind: 'add', candidateId: selected.candidateId });
+    selected.expiresAt = '2020-01-01T00:00:00Z';
+    vi.mocked(authenticatedFetchWithCurrentToken)
+      .mockResolvedValueOnce(musicResponse(added(), 201))
+      .mockResolvedValueOnce(musicResponse(queuePage(2)));
+    controller.retryMutation();
+    await settle();
+    const writes = vi
+      .mocked(authenticatedFetchWithCurrentToken)
+      .mock.calls.filter(
+        ([path, init]) => String(path).includes('queue-items') && init?.method === 'POST',
+      );
+    expect(writes).toHaveLength(2);
+    expect(writes[0][1]?.body).toBe(writes[1][1]?.body);
+    expect(writes[0][1]?.headers).toEqual(writes[1][1]?.headers);
+  });
+  it('refuses an expired candidate before sending and preserves the regional list on page failure', async () => {
+    vi.mocked(authenticatedFetchWithCurrentToken).mockResolvedValueOnce(
+      musicResponse({ items: [candidate()], next_cursor: 'page-2' }),
+    );
+    await controller.search('');
+    vi.mocked(authenticatedFetchWithCurrentToken).mockResolvedValueOnce(musicResponse(null, 503));
+    await controller.search('', true);
+    expect(controller.getSnapshot().search?.items).toHaveLength(1);
+    expect(controller.getSnapshot().searchError).toBeTruthy();
+    vi.mocked(authenticatedFetchWithCurrentToken).mockResolvedValueOnce(musicResponse(videoPage()));
+    await controller.selectSong(song());
+    const selected = controller.getSnapshot().videos!.items[0];
+    selected.expiresAt = '2020-01-01T00:00:00Z';
+    const before = vi.mocked(authenticatedFetchWithCurrentToken).mock.calls.length;
+    controller.add(song(), selected);
+    expect(vi.mocked(authenticatedFetchWithCurrentToken).mock.calls).toHaveLength(before);
+    expect(controller.getSnapshot().videoError).toContain('기한');
+    expect(controller.getSnapshot().pending).toBeNull();
+  });
+});
+
+it('rejects late video results after a newer song or a changed auth sid', async () => {
+  const late = deferred<Response>();
+  vi.mocked(authenticatedFetchWithCurrentToken)
+    .mockReturnValueOnce(late.promise)
+    .mockResolvedValueOnce(musicResponse(videoPage(2)));
+  const first = controller.selectSong(song());
+  const secondSong = { ...song(), musicId: 2, title: '다른 지역 곡' };
+  await controller.selectSong(secondSong);
+  late.resolve(musicResponse(videoPage()));
+  await first;
+  expect(controller.getSnapshot().videos?.musicId).toBe(2);
+  const old = deferred<Response>();
+  vi.mocked(authenticatedFetchWithCurrentToken).mockReturnValueOnce(old.promise);
+  const pending = controller.selectSong(song());
+  auth.token = musicToken('550e8400-e29b-41d4-a716-446655440099');
+  old.resolve(musicResponse(videoPage()));
+  await pending;
+  expect(controller.getSnapshot().videos).toBeNull();
+});
+it('keeps confirmed candidate expiry distinct from an uncertain write', async () => {
+  vi.mocked(authenticatedFetchWithCurrentToken).mockResolvedValueOnce(musicResponse(videoPage()));
+  await controller.selectSong(song());
+  const selected = controller.getSnapshot().videos!.items[0];
+  vi.mocked(authenticatedFetchWithCurrentToken).mockResolvedValueOnce(
+    musicResponse({ code: 'CANDIDATE_EXPIRED' }, 410),
+  );
+  controller.add(song(), selected);
+  await settle();
+  expect(controller.getSnapshot().pending).toBeNull();
+  expect(controller.getSnapshot().videos).toBeNull();
+  expect(controller.getSnapshot().videoError).toContain('기한');
+});
+
+it('keeps playback controls usable when the video provider daily budget is exhausted', async () => {
+  vi.mocked(authenticatedFetchWithCurrentToken).mockResolvedValueOnce(
+    musicResponse({ code: 'VIDEO_REQUEST_RATE_LIMITED' }, 429, { 'Retry-After': '86400' }),
+  );
+  await controller.selectSong(song());
+  expect(controller.getSnapshot().isVideoCoolingDown).toBe(true);
+  expect(controller.getSnapshot().isCoolingDown).toBe(false);
+  vi.mocked(authenticatedFetchWithCurrentToken).mockImplementation(async (path, init) =>
+    String(path).includes('playback/commands') && init?.method === 'POST'
+      ? musicResponse(queuePage(2))
+      : musicResponse(queuePage(2)),
+  );
+  controller.control('PAUSE');
+  await settle();
+  expect(
+    vi
+      .mocked(authenticatedFetchWithCurrentToken)
+      .mock.calls.some(
+        ([path, init]) => String(path).includes('playback/commands') && init?.method === 'POST',
+      ),
+  ).toBe(true);
 });

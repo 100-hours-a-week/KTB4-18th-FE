@@ -1,4 +1,9 @@
-import { AuthRequestError, authenticatedFetch } from '../../../features/auth-login/api/authSession';
+import { recommendationLocationToken } from '../../../api/recommendationLocation';
+import {
+  AuthRequestError,
+  authenticatedFetch,
+  getSharedAuthEpoch,
+} from '../../../features/auth-login/api/authSession';
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
@@ -54,11 +59,16 @@ export async function submitImageRecommendation(
   conversationKey: string,
   signal: AbortSignal,
 ): Promise<ImageAccepted> {
+  const authEpoch = getSharedAuthEpoch();
+  const locationToken = await recommendationLocationToken(signal);
+  if (signal.aborted || authEpoch !== getSharedAuthEpoch())
+    throw new DOMException('Aborted', 'AbortError');
   const form = new FormData();
   form.append('image', image, 'recommendation.jpg');
   form.append('conversation_key', conversationKey);
   form.append('input_type', 'IMAGE');
   form.append('trigger_type', 'CHATBOT');
+  if (locationToken) form.append('location_resolution_token', locationToken);
   let response: Response;
   try {
     response = await authenticatedFetch(`${baseUrl}/api/v1/recommendations/images`, {

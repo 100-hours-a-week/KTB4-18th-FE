@@ -86,3 +86,26 @@ export function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
+
+export function videoPage(musicId = 1) {
+  const expiresAt = new Date(Date.now() + 3600000).toISOString();
+  return {
+    search_id: '550e8400-e29b-41d4-a716-446655440050',
+    music_id: musicId,
+    result_kind: 'READY',
+    expires_at: expiresAt,
+    items: [1, 2].map((index) => ({
+      candidate_id: `550e8400-e29b-41d4-a716-44665544005${index}`,
+      music_id: musicId,
+      video_id: index === 1 ? 'abcdefghijk' : 'ABCDEFGHIJK',
+      title: `영상 ${index}`,
+      channel_id: 'synthetic-channel',
+      channel_title: '영상 채널',
+      thumbnail_url: null,
+      duration_millis: 120000,
+      playback_status: 'PLAYABLE',
+      official_status: index === 1 ? 'UNREVIEWED' : 'CONFIRMED',
+      expires_at: expiresAt,
+    })),
+  };
+}

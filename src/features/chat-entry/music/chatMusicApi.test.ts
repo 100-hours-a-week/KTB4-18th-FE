@@ -3,10 +3,17 @@ import {
   AuthRequestError,
   authenticatedFetchWithCurrentToken,
 } from '../../auth-login/api/authSession';
-import { ChatMusicError, fetchMusicQueue, mutateMusicQueue, searchChatMusic } from './chatMusicApi';
+import {
+  ChatMusicError,
+  fetchMusicQueue,
+  mutateMusicQueue,
+  searchChatMusic,
+  searchMusicVideos,
+} from './chatMusicApi';
 import {
   added,
   candidate,
+  videoPage,
   musicResponse,
   musicSession,
   musicToken,
@@ -189,4 +196,65 @@ it('rejects mismatched pinned item/source and unsafe duration without guessing a
   expect(parseMusicQueue({ ...pinned, source_video_id: 'different11' })).toBeNull();
   expect(parseMusicQueue({ ...pinned, duration_millis: Number.MAX_SAFE_INTEGER })).toBeNull();
   expect(parseMusicQueue(queuePage())?.sourceVideoId).toBeNull();
+});
+
+describe('regional video selection contract', () => {
+  it('accepts a regional song without video and keeps invalid metadata fail closed', async () => {
+    const row = {
+      ...candidate(),
+      youtube_video_id: null,
+      duration_millis: null,
+      is_queueable: false,
+    };
+    expect(parseRequestableMusic({ items: [row], next_cursor: null })?.items[0]).toMatchObject({
+      youtubeVideoId: null,
+      durationMillis: null,
+      isQueueable: false,
+    });
+    expect(
+      parseRequestableMusic({ items: [{ ...row, youtube_video_id: 'bad' }], next_cursor: null }),
+    ).toBeNull();
+    const page = videoPage();
+    vi.mocked(authenticatedFetchWithCurrentToken).mockResolvedValueOnce(musicResponse(page));
+    expect((await searchMusicVideos(musicSession(), 1, signal())).items).toHaveLength(2);
+    expect(String(vi.mocked(authenticatedFetchWithCurrentToken).mock.calls[0][0])).toContain(
+      '/music/1/video-searches?',
+    );
+    expect(vi.mocked(authenticatedFetchWithCurrentToken).mock.calls[0][1]).toMatchObject({
+      method: 'POST',
+      cache: 'no-store',
+    });
+    for (const bad of [
+      { ...page, music_id: 2 },
+      { ...page, items: [page.items[0], page.items[0]] },
+      { ...page, items: [{ ...page.items[0], official_status: 'VERIFIED' }] },
+    ]) {
+      vi.mocked(authenticatedFetchWithCurrentToken).mockResolvedValueOnce(musicResponse(bad));
+      await expect(searchMusicVideos(musicSession(), 1, signal())).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
+  it('pins candidate in the original UUID body and distinguishes precommit verification failures', async () => {
+    const mutation = {
+      id: crypto.randomUUID(),
+      kind: 'add' as const,
+      musicId: 1,
+      candidateId: videoPage().items[0].candidate_id,
+      label: '곡',
+    };
+    vi.mocked(authenticatedFetchWithCurrentToken).mockResolvedValueOnce(
+      musicResponse(added(), 201),
+    );
+    await mutateMusicQueue(musicSession(), mutation, signal());
+    expect(
+      JSON.parse(String(vi.mocked(authenticatedFetchWithCurrentToken).mock.calls[0][1]?.body)),
+    ).toEqual({ music_id: 1, candidate_id: mutation.candidateId });
+    vi.mocked(authenticatedFetchWithCurrentToken).mockResolvedValueOnce(
+      musicResponse({ code: 'VIDEO_VERIFICATION_REQUIRED' }, 503),
+    );
+    await expect(mutateMusicQueue(musicSession(), mutation, signal())).rejects.toMatchObject({
+      isUncertain: false,
+    });
+  });
 });
