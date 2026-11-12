@@ -10,8 +10,13 @@ process.env.VITE_AUTH_DIRECT_V2_ENABLED = 'false';
 process.env.VITE_API_BASE_URL = '';
 process.env.VITE_API_PROXY_TARGET = 'http://127.0.0.1:1';
 const output = resolve(
-  '/tmp/meomuneum-music-browser/chat-music-video-request-verification/browser',
+  process.env.CHAT_MUSIC_BROWSER_OUTPUT_DIR ??
+    '/tmp/meomuneum-music-browser/chat-music-video-request-verification/browser',
 );
+const candidateCount = Number(process.env.CHAT_MUSIC_BROWSER_CANDIDATES ?? 2);
+if (![2, 50].includes(candidateCount)) throw new Error('Candidate fixture count must be 2 or 50');
+const selectedVideo = candidateCount === 50 ? 50 : 1;
+const candidateId = (index) => `550e8400-e29b-41d4-a716-${String(index + 50).padStart(12, '0')}`;
 await mkdir(output, { recursive: true });
 const server = await createServer({
   cacheDir: `/tmp/meomuneum-${process.pid}-vite-cache`,
@@ -103,10 +108,15 @@ try {
           music_id: id,
           result_kind: 'READY',
           expires_at: expires,
-          items: [1, 2].map((index) => ({
-            candidate_id: `550e8400-e29b-41d4-a716-44665544005${index}`,
+          items: Array.from({ length: candidateCount }, (_, i) => i + 1).map((index) => ({
+            candidate_id: candidateId(index),
             music_id: id,
-            video_id: index === 1 ? 'abcdefghijk' : 'ABCDEFGHIJK',
+            video_id:
+              index === 1
+                ? 'abcdefghijk'
+                : index === 2
+                  ? 'ABCDEFGHIJK'
+                  : String(index).padStart(11, '0'),
             title: `선택 영상 ${index}`,
             channel_id: 'channel',
             channel_title: '이웃의 음악 채널',
@@ -220,7 +230,25 @@ try {
       await expect(choose).toBeFocused();
       expect(Math.abs((await list.evaluate((el) => el.scrollTop)) - scroll)).toBeLessThan(2);
       await choose.click();
-      await dialog.getByRole('button', { name: '선택 영상 1 영상 신청', exact: true }).click();
+      await expect(dialog.getByRole('button', { name: /선택 영상 \d+ 영상 신청$/ })).toHaveCount(
+        candidateCount,
+      );
+      const lastVideo = dialog.getByRole('button', {
+        name: `선택 영상 ${selectedVideo} 영상 신청`,
+        exact: true,
+      });
+      await lastVideo.scrollIntoViewIfNeeded();
+      if (candidateCount === 50) {
+        expect(
+          await dialog.getByLabel('영상 후보 목록', { exact: true }).evaluate((el) => el.scrollTop),
+        ).toBeGreaterThan(0);
+        const last = await lastVideo.boundingBox(),
+          frame = await dialog.boundingBox();
+        expect(last.y).toBeGreaterThanOrEqual(frame.y);
+        expect(last.y + last.height).toBeLessThanOrEqual(frame.y + frame.height);
+        await page.screenshot({ path: resolve(output, `videos-last-${viewport.width}.png`) });
+      }
+      await lastVideo.click();
       await dialog.getByRole('button', { name: '신청 결과 다시 확인' }).click();
       await expect(dialog.getByRole('button', { name: '신청 결과 다시 확인' })).toHaveCount(0);
       await expect(dialog.getByText('곡 신청을 확인했어요.', { exact: true })).toHaveCount(0);
@@ -230,7 +258,7 @@ try {
       expect(bodies[0]).toBe(bodies[1]);
       expect(JSON.parse(bodies[0])).toMatchObject({
         music_id: 44,
-        candidate_id: '550e8400-e29b-41d4-a716-446655440051',
+        candidate_id: candidateId(selectedVideo),
       });
       expect(await page.evaluate(() => window.musicFixture.sent)).toEqual([]);
       await dialog.getByRole('button', { name: '대기열', exact: true }).click();
@@ -293,6 +321,9 @@ try {
         nullVideoList: true,
         automatic44Songs: true,
         selectedCandidateSameUuid: true,
+        candidateCount,
+        selectedVideo,
+        allCandidateRowsRendered: true,
         appAndKeyboardBounds: true,
         backRestoresFocusAndScroll: true,
       });
