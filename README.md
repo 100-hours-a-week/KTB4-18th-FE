@@ -631,3 +631,24 @@ BE migration·단일 worker 전환·서버 `CHAT_MUSIC_VIDEO_SEARCH_ENABLED=true
 - 실제 BE/DB 후보 검색·두 Chat·실 YouTube 재생·물리 iOS/Android 키보드·1000연결과 운영 적용은4단계 통합 검증 대상이다.
   이전 실제 서버/릴리스 하네스 결과를 새 후보 선택 계약의 검증으로 재사용하지 않았으며 이번에는 해당 하네스를 실행하지 않았다.
 - 로컬 이슈 `docs/issues/chat-music-video-request.md`와 프로젝트 기억을 갱신했다. BE·운영 DB/설정·배포·커밋/push/PR은 변경하지 않았다.
+
+## 저장 영상 재사용·최대50개 후보 응답 호환
+
+`fix/chat-music-video-reuse`는 후보 parser 상한을10→50으로 확대한다. API 경로·필드·후보 선택·UUID·
+개인 음량/재생·내부 목록 스크롤은 유지한다. 모든50개를 표시하고 마지막 후보도 같은 신청 경로로 처리한다.
+51개·중복 영상/후보 ID 등 비정상 응답은 계속 거절한다. FE에 추가 키나 환경변수는 없다.
+
+BE의 후보 rank50 migration과 새 parser FE를 먼저 반영한 뒤 BE50개 응답을 배포해야 한다.
+구 FE는11개 이상을 오류로 처리한다. 새 FE는 기존10개 이하 응답도 수용하므로 FE 선행 배포가 가능하다.
+기존 저장 후보가10개면 재사용 시10개이며, 새 키워드 검색부터 최대50개다. 자동 보충 검색은 하지 않는다.
+후보 만료 후 상세 재검증·새 UUID 발급과 검색/상세 기본 예산100/10000은 BE 소관이며,
+실제 Google 할당량·운영 환경변수 주입·배포 완료를 뜻하지 않는다.
+로컬 작업 이슈는 docs/issues/chat-music-video-reuse.md에 보존한다.
+
+검증: format:check·lint·verify:chat:types·빌드 통과. 전체1086건 중1079통과·7기존조건부제외·실패0.
+Chrome320×568/390×844/1280×900에서 후보50개 전체 표시·내부 스크롤·50번째 신청·동일 UUID 재확인·
+뒤로 가기 복원·키보드 경계·가로 넘침 없음을 확인하고 스크린샷을 확인했다.
+실제 BE 서비스/DB가 생성한 후보50개 응답을 FE parser가 모두 수용했다.
+증빙은 `node_modules/.tmp/music-video-reuse/summary.json`, `backend-contract.json`, `browser/results.json`이다.
+브라우저는 HTTP fixture를 사용했으며 실제 Google 호출·실 YouTube 재생·물리 모바일 검증이나 운영 배포는 아니다.
+원본 dev는 변경하지 않았으며 검증 당시 변경은 미커밋 상태였으며 이후 사용자 요청으로 목적별 커밋을 생성했다.

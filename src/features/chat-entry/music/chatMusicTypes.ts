@@ -276,7 +276,7 @@ export function parseMusicVideos(value: unknown): MusicVideoPage | null {
     !date(value.expires_at) ||
     !['READY', 'EMPTY'].includes(String(value.result_kind)) ||
     !Array.isArray(value.items) ||
-    value.items.length > 10 ||
+    value.items.length > 50 ||
     (value.result_kind === 'EMPTY' ? value.items.length !== 0 : value.items.length === 0)
   )
     return null;

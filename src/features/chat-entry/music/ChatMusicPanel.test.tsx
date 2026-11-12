@@ -457,3 +457,38 @@ it('places the compact card directly after the header and shares the existing pl
     expected_version: 1,
   });
 });
+
+it('shows all fifty candidates and submits the last selected video without another search', async () => {
+  const page = videoPage(1, 50);
+  vi.mocked(authenticatedFetchWithCurrentToken).mockImplementation(async (path, init) => {
+    if (String(path).includes('video-searches')) return musicResponse(page);
+    if (init?.method === 'POST') return musicResponse(added(1, 'WAITING', ++version), 201);
+    if (String(path).includes('requestable-music'))
+      return musicResponse({ items: [candidate()], next_cursor: null });
+    return musicResponse(queuePage(version, items));
+  });
+  const user = userEvent.setup();
+  render(<ChatRoomScreen chat={chatState()} />);
+  await openMusicSearch(user);
+  await user.click(await openDialog().findByRole('button', { name: '노래 1 영상 선택' }));
+  await openDialog().findByRole('button', { name: '영상 50 영상 신청' });
+  expect(openDialog().getAllByRole('button', { name: /영상 신청$/ })).toHaveLength(50);
+  await user.click(openDialog().getByRole('button', { name: '영상 50 영상 신청' }));
+  await waitFor(() => {
+    const request = vi
+      .mocked(authenticatedFetchWithCurrentToken)
+      .mock.calls.find(
+        ([path, init]) => String(path).includes('/queue-items') && init?.method === 'POST',
+      );
+    expect(request).toBeDefined();
+    expect(JSON.parse(String(request?.[1]?.body))).toEqual({
+      music_id: 1,
+      candidate_id: page.items[49].candidate_id,
+    });
+  });
+  expect(
+    vi
+      .mocked(authenticatedFetchWithCurrentToken)
+      .mock.calls.filter(([path]) => String(path).includes('video-searches')),
+  ).toHaveLength(1);
+});
