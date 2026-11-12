@@ -3,6 +3,8 @@ import { getGridBounds, getMapViewport } from './mapGeometry';
 import type { MapDot, MapGridDot } from './mapTypes';
 import { getHighResolutionArtworkUrl } from '../../shared/albumArtwork';
 
+const ZOOM_LEVELS = [1, 1.5, 2, 3, 5, 7.5, 10, 15, 20, 30];
+
 type ZoneMapCanvasProps = {
   children?: ReactNode;
   isIntro?: boolean;
@@ -33,10 +35,11 @@ export function ZoneMapCanvas({
     return Math.max(-limit, Math.min(limit, value));
   }
 
-  function changeZoom(delta: number) {
+  function changeZoom(direction: number) {
     drag.current = null;
     setViewport((previous) => {
-      const zoom = Math.max(1, Math.min(3, previous.zoom + delta));
+      const index = ZOOM_LEVELS.indexOf(previous.zoom);
+      const zoom = ZOOM_LEVELS[Math.max(0, Math.min(ZOOM_LEVELS.length - 1, index + direction))];
       return {
         zoom,
         x: clampOffset(previous.x, zoom),
@@ -162,8 +165,8 @@ export function ZoneMapCanvas({
             <button
               type="button"
               aria-label="지도 확대"
-              disabled={viewport.zoom === 3}
-              onClick={() => changeZoom(0.5)}
+              disabled={viewport.zoom === ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
+              onClick={() => changeZoom(1)}
             >
               <span aria-hidden="true">+</span>
             </button>
@@ -183,7 +186,7 @@ export function ZoneMapCanvas({
               type="button"
               aria-label="지도 축소"
               disabled={viewport.zoom === 1}
-              onClick={() => changeZoom(-0.5)}
+              onClick={() => changeZoom(-1)}
             >
               <span aria-hidden="true">−</span>
             </button>
