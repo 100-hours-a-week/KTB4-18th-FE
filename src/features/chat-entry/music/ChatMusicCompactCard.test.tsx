@@ -50,7 +50,9 @@ it.each([
 it('shows one empty prompt and permits starting queued tracks without inventing a current song', () => {
   const value = { ...props(), playback: playback('IDLE') };
   const { container, rerender } = render(<ChatMusicCompactCard {...value} />);
-  expect(screen.getAllByText('함께 들을 곡을 신청해 보세요')).toHaveLength(1);
+  expect(screen.getAllByText("'/신청'을 입력해서 이 지역에서의 음악을 신청해보세요")).toHaveLength(
+    1,
+  );
   expect(container.querySelector('.chat-now-playing-cover')).toBeNull();
   expect(container.querySelector('strong, small')).toBeNull();
   expect(screen.getByRole('button', { name: '전체 재생' })).toBeEnabled();
@@ -120,4 +122,16 @@ it('reuses the music-record 680px artwork for compact cover and background', () 
   expect(
     container.querySelector('section')?.style.getPropertyValue('--chat-now-playing-artwork'),
   ).toContain('680x680bb');
+});
+
+it('uses the active region only in the empty mini guidance', () => {
+  const { rerender } = render(
+    <ChatMusicCompactCard {...props()} playback={playback('IDLE')} regionName="성남시 분당구" />,
+  );
+  expect(
+    screen.getByText("'/신청'을 입력해서 성남시 분당구에서의 음악을 신청해보세요"),
+  ).toBeVisible();
+  rerender(<ChatMusicCompactCard {...props()} regionName="성남시 분당구" />);
+  expect(screen.queryByText(/입력해서/)).toBeNull();
+  expect(screen.getByText('노래 99')).toBeVisible();
 });

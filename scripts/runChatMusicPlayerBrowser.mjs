@@ -216,7 +216,11 @@ try {
     try {
       await page.goto(base + '/tests/fixtures/chatMusic.html');
       await expect(page.getByRole('textbox', { name: '메시지' })).toBeVisible();
-      await page.getByRole('button', { name: '음악 플레이어 열기' }).click();
+      await expect(page.locator('.chat-music-fab')).toHaveCount(0);
+      await page
+        .getByRole('region', { name: '현재 방 음악' })
+        .getByRole('button', { name: /플레이어 열기$/ })
+        .click();
       const region = page.getByRole('region', { name: '공동 음악 재생' });
       await expect(region.getByRole('button', { name: '브라우저 재생 허용' })).toBeVisible();
       expect(commands).toHaveLength(0);
@@ -240,6 +244,9 @@ try {
             ['load', 'cue', 'play', 'pause', 'destroy'].includes(call[0]),
           ).length,
       );
+      await page.locator('.chat-music-player-pane').evaluate((el) => {
+        el.scrollTop = 0;
+      });
       expect(
         await page.locator('.chat-room-artwork').evaluate((el) => {
           const box = el.getBoundingClientRect();
@@ -252,7 +259,10 @@ try {
       ).toBe(true);
       await page.getByRole('button', { name: '음악 창 닫기' }).click();
       await expect(page.getByRole('textbox', { name: '메시지' })).toBeVisible();
-      await page.getByRole('button', { name: '음악 플레이어 열기' }).click();
+      await page
+        .getByRole('region', { name: '현재 방 음악' })
+        .getByRole('button', { name: /플레이어 열기$/ })
+        .click();
       await page.getByRole('button', { name: '＋ 음악 신청' }).click();
       await page.getByRole('button', { name: '대기열', exact: true }).click();
       await page.getByRole('button', { name: '플레이어', exact: true }).click();
@@ -325,6 +335,18 @@ try {
       await region.getByRole('button', { name: '다음 곡으로' }).click();
       await expect(region.getByRole('button', { name: '전체 재생' })).toBeVisible();
       expect(commands.map((c) => c.action)).toEqual(['PAUSE', 'RESUME', 'SKIP']);
+      const emptyGuidance = page.locator('.chat-now-playing-empty');
+      await expect(emptyGuidance).toContainText("'/신청'을 입력해서");
+      expect(
+        await emptyGuidance.evaluate((el) => ({
+          fits: el.scrollHeight <= el.clientHeight && el.scrollWidth <= el.clientWidth,
+          cardHeight: el.closest('.chat-now-playing').getBoundingClientRect().height,
+          controlsHeight: el
+            .closest('.chat-now-playing')
+            .querySelector('.chat-now-playing-controls button')
+            .getBoundingClientRect().height,
+        })),
+      ).toEqual({ fits: true, cardHeight: 60, controlsHeight: 36 });
       if (isSyncSuite && viewport.width === 390) {
         current = item();
         state = 'PAUSED';
@@ -363,6 +385,7 @@ try {
       await expect(region.getByRole('button', { name: '전체 재생' })).toBeDisabled();
       await page.getByRole('button', { name: '음악 창 닫기' }).click();
       await expect(page.getByRole('textbox', { name: '메시지' })).toBeVisible();
+      await page.screenshot({ path: resolve(output, `empty-entry-${viewport.width}.png`) });
       await page.setViewportSize({ width: viewport.width, height: 300 });
       const composer = page.getByRole('textbox', { name: '메시지' });
       await expect
@@ -474,7 +497,10 @@ async function probeYouTube(browser, base, output) {
   });
   try {
     await page.goto(base + '/tests/fixtures/chatMusic.html');
-    await page.getByRole('button', { name: '음악 플레이어 열기' }).click();
+    await page
+      .getByRole('region', { name: '현재 방 음악' })
+      .getByRole('button', { name: /플레이어 열기$/ })
+      .click();
     const region = page.getByRole('region', { name: '공동 음악 재생' });
     await expect(region).toBeVisible();
     await expect

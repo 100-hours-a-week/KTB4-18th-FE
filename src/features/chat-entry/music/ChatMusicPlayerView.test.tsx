@@ -75,6 +75,13 @@ it('preserves the SDK iframe, local settings and commands through presentation h
   await waitFor(() => expect(api.loadVideoById).toHaveBeenCalledTimes(1));
   const iframe = container.querySelector('iframe');
   expect(iframe?.closest('[inert]')).toHaveAttribute('aria-hidden', 'true');
+  const slider = screen.getByRole('slider', { name: '내 음량' });
+  expect(slider).toHaveAttribute('min', '0');
+  expect(slider).toHaveAttribute('max', '100');
+  expect(slider).toHaveAttribute('step', '1');
+  const ticks = container.querySelector('.chat-room-volume-ticks');
+  expect(ticks).toHaveAttribute('aria-hidden', 'true');
+  expect(ticks?.querySelectorAll('span')).toHaveLength(5);
   fireEvent.change(screen.getByRole('slider', { name: '내 음량' }), { target: { value: '23' } });
   fireEvent.click(screen.getByRole('button', { name: '내 음소거' }));
   const initialCalls = vi.mocked(api.playVideo).mock.calls.length;

@@ -87,7 +87,8 @@
 }
 .chat-now-playing-empty {
   font-size: 13px;
-  line-height: 18px;
+  line-height: 15px;
+  overflow-wrap: anywhere;
 }
 .chat-now-playing-controls {
   display: flex;

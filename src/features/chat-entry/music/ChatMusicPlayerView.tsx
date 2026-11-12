@@ -249,16 +249,23 @@ export function ChatMusicPlayerView({
         <label className="chat-music-accessible" htmlFor="chat-music-volume">
           내 음량
         </label>
-        <input
-          id="chat-music-volume"
-          type="range"
-          min="0"
-          max="100"
-          step="1"
-          style={{ '--music-volume': `${state.volume}%` } as CSSProperties}
-          value={state.volume}
-          onChange={(event) => player.volume(Number(event.target.value))}
-        />
+        <div className="chat-room-volume-slider">
+          <input
+            id="chat-music-volume"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            style={{ '--music-volume': `${state.volume}%` } as CSSProperties}
+            value={state.volume}
+            onChange={(event) => player.volume(Number(event.target.value))}
+          />
+          <div className="chat-room-volume-ticks" aria-hidden="true">
+            {[0, 25, 50, 75, 100].map((value) => (
+              <span key={value} />
+            ))}
+          </div>
+        </div>
         <output htmlFor="chat-music-volume">{state.volume}%</output>
       </div>
       <p className="chat-room-player-hint">

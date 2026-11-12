@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 
 // Only this isolated entry uses legacy synthetic token storage and a mocked HTTP transport.
 process.env.VITE_CHAT_MUSIC_QUEUE_ENABLED = 'true';
+process.env.VITE_CHAT_MUSIC_PLAYER_ENABLED = 'false';
 process.env.VITE_AUTH_DIRECT_V2_ENABLED = 'false';
 process.env.VITE_API_BASE_URL = '';
 process.env.VITE_API_PROXY_TARGET = 'http://127.0.0.1:1';
@@ -154,7 +155,8 @@ try {
     });
     try {
       await page.goto(base + '/tests/fixtures/chatMusic.html');
-      await expect(page.getByRole('button', { name: '음악 플레이어 열기' })).toBeVisible();
+      await expect(page.locator('.chat-music-fab')).toHaveCount(0);
+      await expect(page.getByRole('region', { name: '현재 방 음악' })).toHaveCount(0);
       const composer = page.getByRole('textbox', { name: '메시지' });
       await composer.fill('/신청');
       await composer.press('Enter');
@@ -247,7 +249,8 @@ try {
       await page.keyboard.press('Escape');
       await expect(dialog).not.toBeVisible();
       await expect(composer).toBeFocused();
-      await page.getByRole('button', { name: '음악 플레이어 열기' }).click();
+      await composer.fill('/신청');
+      await composer.press('Enter');
       await dialog.getByRole('searchbox').fill('없음');
       await expect(
         dialog.getByText('검색 결과가 없어요. 다른 제목이나 가수로 찾아보세요.'),
