@@ -25,12 +25,14 @@ export function ChatMusicPanel({
   event,
   currentUserId,
   request,
+  regionName,
 }: {
   session: ChatMusicSession;
   isReady: boolean;
   event?: ChatMusicEvent;
   currentUserId?: number | null;
   request: MusicSearchRequest;
+  regionName?: string;
 }) {
   const { state, controller } = useChatMusicQueue(session, isReady, event);
   const [tab, setTab] = useState<'player' | 'search' | 'queue' | null>(null);
@@ -39,7 +41,6 @@ export function ChatMusicPanel({
   const [isComposing, setIsComposing] = useState(false);
   const [handledRequest, setHandledRequest] = useState(request.sequence);
   const dialog = useRef<HTMLDialogElement>(null);
-  const fab = useRef<HTMLButtonElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const listScroll = useRef(0);
@@ -65,7 +66,10 @@ export function ChatMusicPanel({
       const composer = element
         .closest('.chat-entry-shell')
         ?.querySelector<HTMLTextAreaElement>('.region-chat-composer textarea');
-      for (const target of [returnFocus.current, fab.current, composer]) {
+      const mini = element
+        .closest('.chat-music')
+        ?.querySelector<HTMLButtonElement>('.chat-now-playing-metadata');
+      for (const target of [returnFocus.current, mini, composer]) {
         if (
           !target?.isConnected ||
           target.matches(':disabled, [aria-disabled="true"]') ||
@@ -244,9 +248,11 @@ export function ChatMusicPanel({
     <section
       className={`chat-music${chatMusicPlayerEnabled() ? ' chat-music-with-player' : ''}`}
       aria-label="이야기방 음악"
+      aria-describedby={needsAttention ? 'chat-music-attention' : undefined}
     >
       {chatMusicPlayerEnabled() && (
         <ChatMusicCompactCard
+          regionName={regionName}
           playback={state.playback}
           hasQueuedTracks={(state.queue?.items.length ?? 0) > 0}
           isCommandDisabled={isWriteDisabled || !state.playback}
@@ -254,18 +260,6 @@ export function ChatMusicPanel({
           onCommand={(action) => controller.control(action)}
         />
       )}
-      <button
-        type="button"
-        ref={fab}
-        className="chat-music-fab"
-        aria-label="음악 플레이어 열기"
-        aria-describedby={needsAttention ? 'chat-music-attention' : undefined}
-        onClick={() => setTab(chatMusicPlayerEnabled() ? 'player' : 'search')}
-      >
-        <span className="chat-music-fab-disc" aria-hidden="true" />
-        <span>음악 신청</span>
-        {needsAttention && <span className="chat-music-attention" aria-hidden="true" />}
-      </button>
       {needsAttention && (
         <span id="chat-music-attention" className="chat-music-accessible" role="status">
           음악 상태를 확인해 주세요.{' '}

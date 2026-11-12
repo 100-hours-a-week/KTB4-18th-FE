@@ -5,6 +5,7 @@ import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
 import './chatMusicCompactCard.css';
 
 interface ChatMusicCompactCardProps {
+  regionName?: string;
   playback: TimedPlayback | null;
   hasQueuedTracks: boolean;
   isCommandDisabled: boolean;
@@ -12,6 +13,7 @@ interface ChatMusicCompactCardProps {
   onCommand: (action: PlaybackAction) => void;
 }
 export function ChatMusicCompactCard({
+  regionName,
   playback,
   hasQueuedTracks,
   isCommandDisabled,
@@ -80,7 +82,10 @@ export function ChatMusicCompactCard({
             </span>
           </>
         ) : (
-          <span className="chat-now-playing-empty">함께 들을 곡을 신청해 보세요</span>
+          <span className="chat-now-playing-empty">
+            {"'/신청'을 입력해서 "}
+            {regionName || '이 지역'}에서의 음악을 신청해보세요
+          </span>
         )}
       </button>
       <div className="chat-now-playing-controls" aria-label="방 전체 음악 조작">

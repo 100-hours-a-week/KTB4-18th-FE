@@ -54,6 +54,7 @@ let items = [queueItem(1)];
 beforeEach(() => {
   vi.resetAllMocks();
   vi.stubEnv('VITE_CHAT_MUSIC_QUEUE_ENABLED', 'true');
+  vi.stubEnv('VITE_CHAT_MUSIC_PLAYER_ENABLED', 'false');
   auth.token = musicToken();
   version = 1;
   items = [queueItem(1)];
@@ -75,6 +76,10 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 const openDialog = () => within(screen.getByRole('dialog'));
+async function openMusicSearch(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByRole('textbox', { name: '메시지' }), '/신청');
+  await user.keyboard('{Enter}');
+}
 
 describe('/신청·검색·대기열 사용자 흐름', () => {
   it('opens /신청 keyword without sending chat, shows provenance and submits once', async () => {
@@ -122,7 +127,7 @@ describe('/신청·검색·대기열 사용자 흐름', () => {
   it('shows current song separately and allows cancelling a neighbor waiting item', async () => {
     const user = userEvent.setup();
     render(<ChatRoomScreen chat={chatState()} />);
-    await user.click(screen.getByRole('button', { name: '음악 플레이어 열기' }));
+    await openMusicSearch(user);
     await user.click(openDialog().getByRole('button', { name: '대기열' }));
     await openDialog().findByRole('button', { name: '노래 1 신청 취소' });
     expect(openDialog().getByRole('region', { name: '현재 곡' })).toHaveTextContent('노래 99');
@@ -140,7 +145,7 @@ describe('/신청·검색·대기열 사용자 흐름', () => {
   it('keeps unknown write and lets user confirm with same UUID from inside the dialog', async () => {
     const user = userEvent.setup();
     render(<ChatRoomScreen chat={chatState()} />);
-    await user.click(screen.getByRole('button', { name: '음악 플레이어 열기' }));
+    await openMusicSearch(user);
     await openDialog().findByRole('button', { name: '노래 1 영상 선택' });
     await user.click(openDialog().getByRole('button', { name: '노래 1 영상 선택' }));
     await openDialog().findByRole('button', { name: '영상 1 영상 신청' });
@@ -168,7 +173,7 @@ describe('/신청·검색·대기열 사용자 흐름', () => {
     const user = userEvent.setup();
     const chat = chatState();
     const { rerender } = render(<ChatRoomScreen chat={chat} />);
-    await user.click(screen.getByRole('button', { name: '음악 플레이어 열기' }));
+    await openMusicSearch(user);
     await user.click(openDialog().getByRole('button', { name: '대기열' }));
     await openDialog().findByRole('button', { name: '노래 1 신청 취소' });
     items = [queueItem(3)];
@@ -194,8 +199,8 @@ describe('/신청·검색·대기열 사용자 흐름', () => {
   it('debounces search, shows empty/error states and closes with focus restoration', async () => {
     const user = userEvent.setup();
     render(<ChatRoomScreen chat={chatState()} />);
-    const trigger = screen.getByRole('button', { name: '음악 플레이어 열기' });
-    await user.click(trigger);
+    const trigger = screen.getByRole('textbox', { name: '메시지' });
+    await openMusicSearch(user);
     const search = openDialog().getByRole('searchbox');
     expect(search).not.toHaveFocus();
     expect(openDialog().getByRole('button', { name: '음악 창 닫기' })).toHaveFocus();
@@ -243,11 +248,11 @@ it('keeps request actions disabled on permission failure and revalidates only on
   );
   render(<ChatRoomScreen chat={chatState()} />);
   await waitFor(() =>
-    expect(screen.getByRole('button', { name: '음악 플레이어 열기' })).toHaveAccessibleDescription(
+    expect(screen.getByRole('region', { name: '이야기방 음악' })).toHaveAccessibleDescription(
       expect.stringContaining('현재 이야기방 참여와 음악 이용 권한을 확인해 주세요.'),
     ),
   );
-  await user.click(screen.getByRole('button', { name: '음악 플레이어 열기' }));
+  await openMusicSearch(user);
   const dialog = openDialog();
   await waitFor(() =>
     expect(dialog.getByRole('button', { name: '노래 1 영상 선택' })).toBeDisabled(),
@@ -296,7 +301,7 @@ it('lists unregistered regional music without typing and restores the list after
     return musicResponse(queuePage());
   });
   render(<ChatRoomScreen chat={chatState()} />);
-  await user.click(screen.getByRole('button', { name: '음악 플레이어 열기' }));
+  await openMusicSearch(user);
   const choose = await openDialog().findByRole('button', { name: '노래 1 영상 선택' });
   expect(openDialog().getByRole('searchbox')).not.toHaveFocus();
   const list = openDialog().getByLabelText('지역 음악 목록');
@@ -332,7 +337,7 @@ it('distinguishes an empty candidate result from a failed video search and retri
     return musicResponse(queuePage());
   });
   render(<ChatRoomScreen chat={chatState()} />);
-  await user.click(screen.getByRole('button', { name: '음악 플레이어 열기' }));
+  await openMusicSearch(user);
   await user.click(await openDialog().findByRole('button', { name: '노래 1 영상 선택' }));
   await openDialog().findByRole('alert');
   expect(openDialog().queryByText('신청할 수 있는 영상을 찾지 못했어요.')).toBeNull();
@@ -341,14 +346,17 @@ it('distinguishes an empty candidate result from a failed video search and retri
   expect(attempts).toBe(2);
 });
 
-it('keeps one mounted player across FAB, request, queue and final close without a UI command', async () => {
+it('keeps one mounted player across mini entry, request, queue and final close without a UI command', async () => {
   vi.stubEnv('VITE_CHAT_MUSIC_PLAYER_ENABLED', 'true');
   const user = userEvent.setup();
   const { container } = render(<ChatRoomScreen chat={chatState()} />);
   const player = container.querySelector('.chat-room-player');
-  const fab = screen.getByRole('button', { name: '음악 플레이어 열기' });
+  const mini = within(screen.getByRole('region', { name: '현재 방 음악' })).getByRole('button', {
+    name: /플레이어 열기$/,
+  });
+  expect(container.querySelector('.chat-music-fab')).toBeNull();
   expect(screen.queryByRole('dialog')).toBeNull();
-  await user.click(fab);
+  await user.click(mini);
   expect(openDialog().getByRole('region', { name: '공동 음악 재생' })).toBe(player);
   await user.click(openDialog().getByRole('button', { name: '＋ 음악 신청' }));
   expect(openDialog().getByRole('searchbox')).toBeVisible();
@@ -356,9 +364,9 @@ it('keeps one mounted player across FAB, request, queue and final close without 
   await user.click(openDialog().getByRole('button', { name: '플레이어' }));
   expect(openDialog().getByRole('region', { name: '공동 음악 재생' })).toBe(player);
   await user.click(openDialog().getByRole('button', { name: '음악 창 닫기' }));
-  expect(fab).toHaveFocus();
+  expect(mini).toHaveFocus();
   expect(container.querySelector('.chat-room-player')).toBe(player);
-  await user.click(fab);
+  await user.click(mini);
   expect(openDialog().getByRole('region', { name: '공동 음악 재생' })).toBe(player);
   expect(container.querySelectorAll('dialog')).toHaveLength(1);
   expect(
@@ -369,16 +377,19 @@ it('keeps one mounted player across FAB, request, queue and final close without 
 });
 
 it.each([
-  { openerState: 'detached', isFabDisabled: false },
-  { openerState: 'disabled', isFabDisabled: false },
-  { openerState: 'detached', isFabDisabled: true },
+  { openerState: 'detached', playerEnabled: false, isMiniDisabled: false },
+  { openerState: 'detached', playerEnabled: true, isMiniDisabled: false },
+  { openerState: 'disabled', playerEnabled: true, isMiniDisabled: false },
+  { openerState: 'detached', playerEnabled: true, isMiniDisabled: true },
 ])(
-  'restores usable focus after closing with $openerState opener and FAB disabled=$isFabDisabled',
-  async ({ openerState, isFabDisabled }) => {
+  'restores usable focus with $openerState opener, player=$playerEnabled and mini disabled=$isMiniDisabled',
+  async ({ openerState, playerEnabled, isMiniDisabled }) => {
+    vi.stubEnv('VITE_CHAT_MUSIC_PLAYER_ENABLED', String(playerEnabled));
     const user = userEvent.setup();
-    render(<ChatRoomScreen chat={chatState()} />);
+    const { container } = render(<ChatRoomScreen chat={chatState()} />);
     const composer = screen.getByRole('textbox', { name: '메시지' });
-    const fab = screen.getByRole('button', { name: '음악 플레이어 열기' });
+    const mini = container.querySelector<HTMLButtonElement>('.chat-now-playing-metadata');
+    expect(container.querySelector('.chat-music-fab')).toBeNull();
     const opener = document.createElement('button');
     opener.textContent = 'temporary opener';
     document.body.append(opener);
@@ -389,10 +400,10 @@ it.each([
       expect(openDialog().getByRole('button', { name: '음악 창 닫기' })).toHaveFocus();
       if (openerState === 'detached') opener.remove();
       else opener.disabled = true;
-      if (isFabDisabled) fab.setAttribute('disabled', '');
+      if (isMiniDisabled) mini?.setAttribute('disabled', '');
       await user.click(openDialog().getByRole('button', { name: '음악 창 닫기' }));
       expect(screen.queryByRole('dialog')).toBeNull();
-      expect(isFabDisabled ? composer : fab).toHaveFocus();
+      expect(playerEnabled && !isMiniDisabled ? mini : composer).toHaveFocus();
       expect(opener).not.toHaveFocus();
     } finally {
       opener.remove();

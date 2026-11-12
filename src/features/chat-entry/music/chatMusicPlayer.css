@@ -198,15 +198,44 @@
   gap: 8px;
   font-size: 12px;
 }
-.chat-room-player-volume input {
+.chat-room-volume-slider {
+  position: relative;
+  display: flex;
   flex: 1;
-  width: 60px;
+  align-items: center;
+  height: 36px;
   min-width: 32px;
+}
+.chat-room-player-volume input {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
   accent-color: #00864d;
+}
+.chat-room-volume-ticks {
+  position: absolute;
+  right: 6px;
+  bottom: 1px;
+  left: 6px;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.chat-room-volume-ticks span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #d7d9d6;
 }
 .chat-room-player-volume label,
 .chat-room-player-volume output {
   flex-shrink: 0;
+}
+.chat-room-player-volume output {
+  flex: 0 0 36px;
+  width: 36px;
+  font-variant-numeric: tabular-nums;
+  text-align: end;
 }
 .chat-room-player-hint {
   color: var(--color-text-secondary);
