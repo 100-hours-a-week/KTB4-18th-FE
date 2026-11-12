@@ -1,6 +1,5 @@
 .chat-music {
   flex-shrink: 0;
-  border-block: 1px solid var(--color-border-tertiary);
 }
 .chat-music-bar {
   display: flex;
@@ -46,29 +45,6 @@
 }
 .chat-music-notice button {
   margin-inline-start: 8px;
-}
-.chat-music-dialog {
-  position: fixed;
-  inset: auto;
-  left: var(--music-left, 8px);
-  top: var(--music-top, 8px);
-  width: var(--music-width, calc(100vw - 16px));
-  height: var(--music-height, min(740px, calc(100dvh - 16px)));
-  max-width: calc(100vw - 16px);
-  max-height: calc(100dvh - 16px);
-  margin: 0;
-  border-radius: 16px;
-  overflow: hidden;
-  box-sizing: border-box;
-
-  border: 1px solid var(--color-border-tertiary);
-  padding: 0;
-  background: var(--color-bg-primary);
-  color: var(--color-text-primary);
-  overscroll-behavior: contain;
-}
-.chat-music-dialog::backdrop {
-  background: rgb(0 0 0 / 0.4);
 }
 .chat-music-sheet {
   min-width: 0;
@@ -188,7 +164,7 @@
 }
 .chat-music-sources span {
   font-size: 10px;
-  border: 1px solid var(--color-border-tertiary);
+  border: 0;
   border-radius: 4px;
   padding: 0 4px;
 }
@@ -268,15 +244,6 @@
   outline: 2px solid var(--color-text-primary);
   outline-offset: -2px;
 }
-.chat-music-footer {
-  flex-shrink: 0;
-  max-height: 25%;
-  overflow: auto;
-  font-size: 12px;
-}
-.chat-music-footer p {
-  margin-block: 4px;
-}
 .chat-music-video-heading {
   display: flex;
   align-items: center;
@@ -304,6 +271,47 @@
 .chat-music-compact .chat-music-description {
   margin-block: 2px;
 }
-.chat-music-compact .chat-music-footer {
-  max-height: none;
+
+.chat-music-current .chat-music-cover,
+ol.chat-music-list .chat-music-cover,
+.chat-music-song-list .chat-music-cover {
+  flex-basis: 68px;
+  width: 68px;
+  height: 68px;
+}
+.chat-music-current > div,
+ol.chat-music-list .chat-music-item-text,
+.chat-music-song-list .chat-music-item-text {
+  gap: 0;
+}
+.chat-music-sources [data-source='RECORDED'] {
+  color: var(--seed-color-palette-green-900);
+  background: var(--seed-color-palette-green-200);
+}
+.chat-music-sources [data-source='RECOMMENDED'] {
+  color: var(--seed-color-palette-purple-900);
+  background: var(--seed-color-palette-purple-200);
+}
+
+.chat-music-current > div > strong,
+ol.chat-music-list .chat-music-item-text > strong,
+.chat-music-song-list .chat-music-item-text > strong {
+  margin: 0;
+  line-height: 18px;
+}
+.chat-music-current > div > strong + span,
+ol.chat-music-list .chat-music-item-text > strong + span,
+.chat-music-song-list .chat-music-item-text > strong + span {
+  margin: 0;
+  margin-top: 1px;
+  line-height: 16px;
+}
+.chat-music-current > div > small {
+  margin-bottom: 2px;
+}
+ol.chat-music-list .chat-music-item-text > small {
+  margin-top: 2px;
+}
+.chat-music-song-list .chat-music-sources {
+  margin-top: 4px;
 }

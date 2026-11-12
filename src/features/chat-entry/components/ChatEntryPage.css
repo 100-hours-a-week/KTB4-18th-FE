@@ -379,3 +379,7 @@
 .region-chat-composer {
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+.chat-entry-screen .chat-entry-shell > .chat-entry-header {
+  border-bottom: 0;
+}

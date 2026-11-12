@@ -85,7 +85,7 @@ export class ChatMusicPlayer {
     if (!this.player && !this.isConnecting && this.state.status !== 'error') void this.connect();
     this.tick();
   }
-  private async connect() {
+  private async connect(retryOnTimeout = true) {
     if (!this.target || !this.isReady) return;
     const generation = ++this.generation;
     this.isConnecting = true;
@@ -94,20 +94,31 @@ export class ChatMusicPlayer {
     try {
       const api = await loadYouTubeApi();
       if (!owns() || !this.target) return;
+      const snapshot = this.timed?.snapshot;
+      if (!snapshot?.current || !snapshot.sourceVideoId || !snapshot.durationMillis) {
+        this.isConnecting = false;
+        return;
+      }
       const child = document.createElement('div');
       this.target.replaceChildren(child);
       this.readyTimeout = setTimeout(() => {
-        if (owns()) this.fail('YouTube 플레이어에 연결하지 못했어요. 다시 시도해 주세요.');
+        if (!owns()) return;
+        if (retryOnTimeout) {
+          this.disconnect();
+          void this.connect(false);
+        } else this.fail('YouTube 플레이어에 연결하지 못했어요. 다시 시도해 주세요.');
       }, 15_000);
       this.player = new api.Player(child, {
+        videoId: snapshot.sourceVideoId,
         width: '100%',
         height: '100%',
         playerVars: {
           playsinline: 1,
-          controls: 1,
+          controls: 0,
           disablekb: 1,
           origin: window.location.origin,
           autoplay: 0,
+          cc_load_policy: 0,
         },
         events: {
           onReady: ({ target }) => {

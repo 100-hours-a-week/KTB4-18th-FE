@@ -19,10 +19,11 @@ export function useMusicDialogBounds(ref: RefObject<HTMLDialogElement | null>, i
         (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight),
         box?.height ? box.bottom : window.innerHeight,
       );
-      const width = Math.max(0, Math.min(600, right - left - 16));
-      const height = Math.max(0, Math.min(740, bottom - top - 16));
+      const width = Math.max(0, Math.min(600, right - left));
+      const height = Math.max(0, Math.min(740, bottom - top - 8));
       dialog.style.setProperty('--music-left', `${left + (right - left - width) / 2}px`);
-      dialog.style.setProperty('--music-top', `${top + (bottom - top - height) / 2}px`);
+      dialog.style.setProperty('--music-top', `${bottom - height}px`);
+      dialog.style.setProperty('--music-bottom', `${window.innerHeight - bottom}px`);
       dialog.style.setProperty('--music-width', `${width}px`);
       dialog.style.setProperty('--music-height', `${height}px`);
       dialog.classList.toggle('chat-music-compact', height < 300);

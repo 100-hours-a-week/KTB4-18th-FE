@@ -9,10 +9,11 @@ process.env.VITE_API_BASE_URL = '';
 process.env.VITE_API_PROXY_TARGET = 'http://127.0.0.1:1';
 const isSyncSuite = process.argv.includes('--sync');
 const output = resolve(
-  `node_modules/.tmp/${isSyncSuite ? 'chat-music-sync' : 'chat-music-player'}-verification/browser`,
+  `/tmp/meomuneum-music-browser/${isSyncSuite ? 'chat-music-sync' : 'chat-music-player'}-verification/browser`,
 );
 await mkdir(output, { recursive: true });
 const server = await createServer({
+  cacheDir: `/tmp/meomuneum-${process.pid}-vite-cache`,
   server: { host: '127.0.0.1', port: 0, hmr: false },
   clearScreen: false,
 });
@@ -214,6 +215,8 @@ try {
     });
     try {
       await page.goto(base + '/tests/fixtures/chatMusic.html');
+      await expect(page.getByRole('textbox', { name: '메시지' })).toBeVisible();
+      await page.getByRole('button', { name: '음악 플레이어 열기' }).click();
       const region = page.getByRole('region', { name: '공동 음악 재생' });
       await expect(region.getByRole('button', { name: '브라우저 재생 허용' })).toBeVisible();
       expect(commands).toHaveLength(0);
@@ -225,6 +228,48 @@ try {
       expect(box.height).toBeGreaterThanOrEqual(200);
       await region.getByRole('slider', { name: '내 음량' }).fill('25');
       await region.getByRole('button', { name: '내 음소거' }).click();
+      await expect(region.getByRole('button', { name: '내 음소거' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(commands).toHaveLength(0);
+      const iframeNode = await video.elementHandle();
+      const beforeUiCalls = await page.evaluate(
+        () =>
+          window.ytFixture.calls.filter((call) =>
+            ['load', 'cue', 'play', 'pause', 'destroy'].includes(call[0]),
+          ).length,
+      );
+      expect(
+        await page.locator('.chat-room-artwork').evaluate((el) => {
+          const box = el.getBoundingClientRect();
+          return [
+            [2, 2],
+            [box.width / 2, box.height / 2],
+            [box.width - 2, box.height - 2],
+          ].every(([x, y]) => el.contains(document.elementFromPoint(box.left + x, box.top + y)));
+        }),
+      ).toBe(true);
+      await page.getByRole('button', { name: '음악 창 닫기' }).click();
+      await expect(page.getByRole('textbox', { name: '메시지' })).toBeVisible();
+      await page.getByRole('button', { name: '음악 플레이어 열기' }).click();
+      await page.getByRole('button', { name: '＋ 음악 신청' }).click();
+      await page.getByRole('button', { name: '대기열', exact: true }).click();
+      await page.getByRole('button', { name: '플레이어', exact: true }).click();
+      expect(
+        await iframeNode.evaluate(
+          (node) => node === document.querySelector('.chat-room-youtube iframe'),
+        ),
+      ).toBe(true);
+      expect(
+        await page.evaluate(
+          () =>
+            window.ytFixture.calls.filter((call) =>
+              ['load', 'cue', 'play', 'pause', 'destroy'].includes(call[0]),
+            ).length,
+        ),
+      ).toBe(beforeUiCalls);
+      await expect(region.getByRole('slider', { name: '내 음량' })).toHaveValue('25');
       await expect(region.getByRole('button', { name: '내 음소거' })).toHaveAttribute(
         'aria-pressed',
         'true',
@@ -260,11 +305,10 @@ try {
           2,
         ),
       );
-      await expect(page.getByRole('heading', { name: '성남시 분당구 이야기' })).toBeInViewport();
-      await expect(page.getByRole('textbox', { name: '메시지' })).toBeInViewport();
+      await expect(page.getByRole('heading', { name: '음악 신청' })).toBeVisible();
       await page.screenshot({ path: resolve(output, `playing-${viewport.width}.png`) });
       await region.getByRole('button', { name: '전체 일시정지' }).click();
-      await expect(region.getByText('방에서 일시정지', { exact: true })).toBeVisible();
+      await expect(region.getByRole('button', { name: '전체 재개' })).toBeVisible();
       await expect(region.getByRole('button', { name: '전체 재개' })).toBeEnabled({
         timeout: 3000,
       });
@@ -279,7 +323,7 @@ try {
         timeout: 3000,
       });
       await region.getByRole('button', { name: '다음 곡으로' }).click();
-      await expect(region.getByText('방에서 대기 중', { exact: true })).toBeVisible();
+      await expect(region.getByRole('button', { name: '전체 재생' })).toBeVisible();
       expect(commands.map((c) => c.action)).toEqual(['PAUSE', 'RESUME', 'SKIP']);
       if (isSyncSuite && viewport.width === 390) {
         current = item();
@@ -288,11 +332,13 @@ try {
         failQueueReads = 2;
         await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
         await expect(
-          page.getByText('음악 상태를 확인하지 못했어요. 잠시 후 다시 확인해요.'),
+          page
+            .getByRole('dialog')
+            .getByText('음악 상태를 확인하지 못했어요. 잠시 후 다시 확인해요.', { exact: true }),
         ).toBeVisible();
         await expect(page.getByTitle('YouTube 음악 영상')).toHaveCount(0);
         await expect(region.getByRole('button', { name: '전체 재생' })).toBeDisabled();
-        await expect(region.getByText('방에서 일시정지', { exact: true })).toBeVisible({
+        await expect(region.getByRole('button', { name: '전체 재개' })).toBeVisible({
           timeout: 10000,
         });
         await expect(region.getByRole('button', { name: '내 음소거' })).toHaveAttribute(
@@ -315,6 +361,8 @@ try {
       await page.evaluate(() => window.musicFixture.connection(false));
       await expect(page.getByTitle('YouTube 음악 영상')).toHaveCount(0);
       await expect(region.getByRole('button', { name: '전체 재생' })).toBeDisabled();
+      await page.getByRole('button', { name: '음악 창 닫기' }).click();
+      await expect(page.getByRole('textbox', { name: '메시지' })).toBeVisible();
       await page.setViewportSize({ width: viewport.width, height: 300 });
       const composer = page.getByRole('textbox', { name: '메시지' });
       await expect
@@ -426,6 +474,7 @@ async function probeYouTube(browser, base, output) {
   });
   try {
     await page.goto(base + '/tests/fixtures/chatMusic.html');
+    await page.getByRole('button', { name: '음악 플레이어 열기' }).click();
     const region = page.getByRole('region', { name: '공동 음악 재생' });
     await expect(region).toBeVisible();
     await expect

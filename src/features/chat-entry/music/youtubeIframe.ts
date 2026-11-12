@@ -13,6 +13,7 @@ export interface YouTubePlayer {
   destroy(): void;
 }
 export interface YouTubeOptions {
+  videoId?: string;
   width: string;
   height: string;
   playerVars: Record<string, string | number>;

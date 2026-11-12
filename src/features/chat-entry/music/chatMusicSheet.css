@@ -1,0 +1,155 @@
+.chat-music .chat-music-fab {
+  position: absolute;
+  z-index: 3;
+  right: 16px;
+  bottom: calc(var(--chat-entry-composer-height, 76px) + 12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 124px;
+  height: 52px;
+  min-width: 124px;
+  padding: 6px 12px 6px 7px;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 26px;
+  background: var(--diary-paper, #faf8f3);
+  box-shadow: var(--diary-shadow);
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.chat-music-fab-disc {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, #eae6da 0 7%, #7e896a 8% 25%, transparent 26%),
+    repeating-radial-gradient(circle, #222 0 2px, #383838 3px 4px);
+}
+.chat-music-attention {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  width: 8px;
+  height: 8px;
+  background: #a7503b;
+  border-radius: 50%;
+}
+.chat-music-accessible {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.chat-music-dialog {
+  position: fixed;
+  inset: auto;
+  left: var(--music-left, 8px);
+  top: auto;
+  bottom: var(--music-bottom, 0px);
+  width: var(--music-width, 100vw);
+  height: var(--music-height, min(740px, calc(100dvh - 16px)));
+  max-width: 100vw;
+  max-height: calc(100dvh - 16px);
+  margin: 0;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 24px 24px 0 0;
+  padding: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  background: #fff;
+  color: var(--color-text-primary);
+  overscroll-behavior: contain;
+}
+.chat-music-dialog[open] {
+  animation: chat-music-rise 180ms ease-out;
+}
+.chat-music-dialog::backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
+.chat-music-sheet::before {
+  content: '';
+  flex: 0 0 4px;
+  width: 36px;
+  border-radius: 4px;
+  background: #d9d9d4;
+  align-self: center;
+  margin-bottom: 12px;
+}
+.chat-music-sheet [hidden] {
+  display: none;
+}
+.chat-music-player-pane {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.chat-music-player-menu {
+  display: flex;
+  gap: 12px;
+  padding-top: 12px;
+}
+.chat-music-compact .chat-music-player-pane {
+  flex: none;
+  overflow: visible;
+}
+@keyframes chat-music-rise {
+  from {
+    transform: translateY(32px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-music-dialog[open] {
+    animation: none;
+  }
+}
+
+.chat-music-sheet > header {
+  position: relative;
+  justify-content: center;
+  min-height: 36px;
+  padding-inline: 40px;
+}
+.chat-music-sheet > header > button {
+  position: absolute;
+  right: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  padding: 6px;
+}
+.chat-music-player-menu {
+  justify-content: flex-end;
+}
+.chat-music-player-menu button {
+  flex: 0 0 auto;
+}
+
+.chat-music-player-dialog {
+  height: auto;
+}
+.chat-music-player-dialog .chat-music-sheet {
+  padding-bottom: max(40px, env(safe-area-inset-bottom));
+  height: auto;
+  max-height: var(--music-height, calc(100dvh - 8px));
+}
+.chat-music-player-dialog .chat-music-player-pane {
+  flex: 0 1 auto;
+}
+
+.chat-music-player-dialog .chat-music-empty-queue-notice {
+  text-align: right;
+}
