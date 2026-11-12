@@ -1,67 +1,196 @@
 .chat-room-player {
-  max-height: min(56dvh, max(60px, calc(var(--chat-entry-viewport-height, 100dvh) - 270px)));
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: 8px 16px 12px;
-  border-block-start: 1px solid var(--color-border-tertiary);
+  padding: 8px 8px 16px;
 }
-.chat-room-player-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin-block-end: 8px;
-  font-size: 12px;
-}
-.chat-room-player-track {
-  flex: 1;
-  min-width: 0;
-}
-.chat-room-player-track small {
-  display: block;
-  color: var(--color-text-secondary);
+.chat-room-artwork-stage {
+  position: relative;
+  isolation: isolate;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.chat-room-player-heading strong {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 14px;
-}
-.chat-room-player-heading span {
-  flex-shrink: 0;
-}
-.chat-room-youtube {
   width: 100%;
+  height: auto;
+  aspect-ratio: 1.5;
   min-width: 200px;
-  height: clamp(200px, 26dvh, 270px);
-  background: #111;
+  min-height: 200px;
 }
-.chat-room-youtube:empty {
-  display: none;
+.chat-room-provider,
+.chat-room-artwork {
+  position: absolute;
+  inset: 0;
 }
+.chat-room-provider {
+  z-index: 0;
+}
+.chat-room-youtube,
 .chat-room-youtube iframe {
   display: block;
   width: 100%;
   height: 100%;
+  min-width: 200px;
+  min-height: 200px;
   border: 0;
 }
+.chat-room-artwork {
+  inset: -1px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  overflow: hidden;
+}
+.chat-room-album {
+  position: relative;
+  isolation: isolate;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 64%;
+  aspect-ratio: 1;
+  margin-right: 26%;
+  border-radius: 10px;
+  background: #eee9df;
+  overflow: hidden;
+  font-size: 56px;
+  color: #6c7b55;
+}
+.chat-room-album::after {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  border-radius: inherit;
+  background: url('/images/chat-album-sleeve-overlay.png') center / 108% 108% no-repeat;
+  mix-blend-mode: screen;
+  opacity: 0.55;
+  pointer-events: none;
+  content: '';
+}
+.chat-room-album img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.chat-room-vinyl {
+  position: absolute;
+  width: 64%;
+  aspect-ratio: 1;
+  margin-left: 30%;
+  border-radius: 50%;
+  background:
+    conic-gradient(
+      from 20deg,
+      transparent 0deg 85deg,
+      #ffffff0a 105deg,
+      #ffffff2e 125deg,
+      #ffffff0a 145deg,
+      transparent 165deg 360deg
+    ),
+    repeating-radial-gradient(circle, #232323 0 2px, #333 3px 4px);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 4px 12px #0002;
+}
+.chat-room-vinyl span {
+  width: 30%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, #e9e4d9 0 10%, #7b8465 12% 100%);
+}
+.chat-room-vinyl {
+  animation: chat-music-spin 8s linear infinite;
+  animation-play-state: paused;
+}
+.chat-room-vinyl.is-playing {
+  animation-play-state: running;
+}
+.chat-room-timeline {
+  margin-block: 14px;
+}
+.chat-room-timeline progress {
+  display: block;
+  width: 100%;
+  height: 5px;
+  border: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  accent-color: #00864d;
+  background: #ecece8;
+}
+.chat-room-timeline progress::-webkit-progress-bar {
+  background: #ecece8;
+}
+.chat-room-timeline progress::-webkit-progress-value {
+  background: #00864d;
+}
+.chat-room-timeline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.chat-room-timeline > span {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+.chat-room-metadata-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-block: 16px;
+}
+.chat-room-player-heading {
+  text-align: left;
+}
+.chat-room-player-track {
+  min-width: 0;
+}
+.chat-room-player-track strong {
+  display: block;
+  font-size: 19px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.chat-room-player-track small {
+  display: block;
+  margin-top: 5px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
 .chat-room-player-status {
-  font-size: 12px;
-  margin-block: 6px;
+  text-align: left;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  margin-block: 8px;
 }
 .chat-room-player p {
   font-size: 12px;
-  margin-block: 6px;
+  margin-block: 8px;
 }
 .chat-room-player-actions {
   display: flex;
+  justify-content: center;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-block: 8px;
+  gap: 16px;
+  margin-block: 14px;
+}
+.chat-room-metadata-row .chat-room-player-heading {
+  min-width: 0;
+  flex: 1;
+}
+.chat-room-metadata-row .chat-room-player-actions {
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin: 0;
+}
+.chat-room-metadata-row .chat-room-player-actions button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  min-height: 40px;
+  padding: 6px;
+  border: 0;
+  background: transparent;
 }
 .chat-room-player-volume {
   display: flex;
@@ -73,7 +202,7 @@
   flex: 1;
   width: 60px;
   min-width: 32px;
-  accent-color: var(--color-text-primary);
+  accent-color: #00864d;
 }
 .chat-room-player-volume label,
 .chat-room-player-volume output {
@@ -81,13 +210,142 @@
 }
 .chat-room-player-hint {
   color: var(--color-text-secondary);
+  text-align: left;
+}
+@keyframes chat-music-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-room-vinyl {
+    animation: none;
+  }
 }
 
-/* Reserve the composer inside the visual viewport when the software keyboard opens. */
-.chat-music-with-player {
-  max-height: max(0px, calc(var(--chat-entry-viewport-height, 100dvh) - 180px));
-  overflow: auto;
+.chat-room-player-volume button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  padding: 6px;
 }
-.chat-music-with-player + .region-chat-panel .region-chat-messages {
-  padding-block: clamp(0px, calc(var(--chat-entry-viewport-height, 100dvh) - 500px), 20px);
+.chat-room-player-volume input {
+  appearance: none;
+  height: 5px;
+  border-radius: 4px;
+  background: linear-gradient(
+    to right,
+    #00864d var(--music-volume, 70%),
+    #e6e8e5 var(--music-volume, 70%)
+  );
+}
+.chat-room-player-volume input::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px #0002;
+}
+.chat-room-player-volume input::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 50%;
+}
+
+.chat-room-player-empty .chat-room-vinyl > span {
+  background: radial-gradient(circle, #e9e4d9 0 10%, #007b45 12% 100%);
+}
+.chat-room-empty-sleeve {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid #d4ddd6;
+  border-radius: inherit;
+  background: #faf8f3;
+}
+.chat-room-empty-sleeve .brand-mark {
+  width: 32%;
+  height: 32%;
+  margin-bottom: 8%;
+}
+.chat-room-empty-sleeve .brand-mark::before {
+  width: 100%;
+  height: 100%;
+  background: #17231b;
+}
+.chat-room-empty-sleeve-label {
+  position: absolute;
+  bottom: 10%;
+  left: 10%;
+  color: #56675c;
+  font: 400 clamp(8px, 2.3vw, 13px) / 1.4 var(--font-sans);
+  letter-spacing: 0.08em;
+}
+.chat-room-empty-sleeve::after {
+  position: absolute;
+  right: 10%;
+  bottom: 11%;
+  width: 10%;
+  height: 1%;
+  min-height: 2px;
+  background: #007b45;
+  content: '';
+}
+
+.chat-room-view-options {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.chat-music .chat-room-view-options button {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.chat-music .chat-room-view-options button[aria-pressed='true'] {
+  border-color: #007b45;
+  background: #e7f1e9;
+  color: #00663a;
+  font-weight: 650;
+}
+.chat-room-view-note {
+  margin: 0 0 8px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+.chat-room-artwork[hidden] {
+  display: none;
+}
+.chat-room-video-stage {
+  aspect-ratio: 16 / 9;
+  background: #111;
+}
+
+.chat-room-record-label {
+  overflow: hidden;
+}
+.chat-room-record-label img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.chat-room-video-shield {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  background: transparent;
+  pointer-events: auto;
+}
+.chat-room-video-shield[hidden] {
+  display: none;
 }

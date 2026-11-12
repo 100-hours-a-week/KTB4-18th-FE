@@ -8,9 +8,12 @@ process.env.VITE_CHAT_MUSIC_QUEUE_ENABLED = 'true';
 process.env.VITE_AUTH_DIRECT_V2_ENABLED = 'false';
 process.env.VITE_API_BASE_URL = '';
 process.env.VITE_API_PROXY_TARGET = 'http://127.0.0.1:1';
-const output = resolve('node_modules/.tmp/chat-music-video-request-verification/browser');
+const output = resolve(
+  '/tmp/meomuneum-music-browser/chat-music-video-request-verification/browser',
+);
 await mkdir(output, { recursive: true });
 const server = await createServer({
+  cacheDir: `/tmp/meomuneum-${process.pid}-vite-cache`,
   server: { host: '127.0.0.1', port: 0, hmr: false },
   clearScreen: false,
 });
@@ -151,7 +154,7 @@ try {
     });
     try {
       await page.goto(base + '/tests/fixtures/chatMusic.html');
-      await expect(page.getByRole('button', { name: /음악 신청/ })).toBeVisible();
+      await expect(page.getByRole('button', { name: '음악 플레이어 열기' })).toBeVisible();
       const composer = page.getByRole('textbox', { name: '메시지' });
       await composer.fill('/신청');
       await composer.press('Enter');
@@ -217,7 +220,9 @@ try {
       await choose.click();
       await dialog.getByRole('button', { name: '선택 영상 1 영상 신청', exact: true }).click();
       await dialog.getByRole('button', { name: '신청 결과 다시 확인' }).click();
-      await expect(dialog.getByText('곡 신청을 확인했어요.', { exact: true })).toBeVisible();
+      await expect(dialog.getByRole('button', { name: '신청 결과 다시 확인' })).toHaveCount(0);
+      await expect(dialog.getByText('곡 신청을 확인했어요.', { exact: true })).toHaveCount(0);
+      await expect.poll(() => writes.length).toBe(2);
       expect(writes).toHaveLength(2);
       expect(writes[0]).toBe(writes[1]);
       expect(bodies[0]).toBe(bodies[1]);
@@ -242,7 +247,7 @@ try {
       await page.keyboard.press('Escape');
       await expect(dialog).not.toBeVisible();
       await expect(composer).toBeFocused();
-      await page.getByRole('button', { name: /음악 신청/ }).click();
+      await page.getByRole('button', { name: '음악 플레이어 열기' }).click();
       await dialog.getByRole('searchbox').fill('없음');
       await expect(
         dialog.getByText('검색 결과가 없어요. 다른 제목이나 가수로 찾아보세요.'),

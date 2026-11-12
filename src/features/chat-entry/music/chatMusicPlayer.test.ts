@@ -1,10 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatMusicPlayer, playbackPosition } from './chatMusicPlayer';
-import { loadYouTubeApi, type YouTubeOptions, type YouTubePlayer } from './youtubeIframe';
+import {
+  loadYouTubeApi,
+  type YouTubeApi,
+  type YouTubeOptions,
+  type YouTubePlayer,
+} from './youtubeIframe';
 import { parsePlayback } from './chatMusicTypes';
 import { queuePage, queueItem, deferred } from './chatMusicTestHelpers';
 vi.mock('./youtubeIframe', () => ({ loadYouTubeApi: vi.fn() }));
 let options: YouTubeOptions;
+let sdk: YouTubeApi;
 let apiPlayer: YouTubePlayer;
 let player: ChatMusicPlayer;
 let currentTime: number, nativeState: number;
@@ -50,9 +56,8 @@ beforeEach(() => {
       return apiPlayer;
     }
   }
-  vi.mocked(loadYouTubeApi).mockResolvedValue({
-    Player: Player as unknown as import('./youtubeIframe').YouTubeApi['Player'],
-  });
+  sdk = { Player: Player as unknown as YouTubeApi['Player'] };
+  vi.mocked(loadYouTubeApi).mockResolvedValue(sdk);
   player = new ChatMusicPlayer();
   player.mount(document.createElement('div'));
 });
@@ -111,6 +116,19 @@ describe('server-authoritative YouTube follower', () => {
     expect(apiPlayer.pauseVideo).toHaveBeenCalled();
     expect(apiPlayer.playVideo).not.toHaveBeenCalled();
   });
+  it('retains local settings without reloading or pausing when the same room snapshot is reapplied', async () => {
+    const value = timed();
+    player.update(value, true);
+    await ready();
+    player.volume(23);
+    player.mute();
+    player.update(value, true);
+    expect(player.getSnapshot()).toMatchObject({ volume: 23, isMuted: true });
+    expect(apiPlayer.loadVideoById).toHaveBeenCalledTimes(1);
+    expect(apiPlayer.cueVideoById).not.toHaveBeenCalled();
+    expect(apiPlayer.pauseVideo).not.toHaveBeenCalled();
+    expect(apiPlayer.destroy).not.toHaveBeenCalled();
+  });
   it('offers blocked autoplay recovery, keeps volume/mute local, and never treats ENDED as a room command', async () => {
     player.update(timed(), true);
     await ready();
@@ -163,7 +181,7 @@ describe('server-authoritative YouTube follower', () => {
   it('keeps timeout retryable and retains personal settings across reconnect', async () => {
     player.update(timed(), true);
     await settle();
-    vi.advanceTimersByTime(15000);
+    await vi.advanceTimersByTimeAsync(30000);
     expect(player.getSnapshot().status).toBe('error');
     player.volume(0);
     player.mute();
@@ -173,4 +191,83 @@ describe('server-authoritative YouTube follower', () => {
     expect(apiPlayer.setVolume).toHaveBeenLastCalledWith(0);
     expect(apiPlayer.mute).toHaveBeenCalled();
   });
+});
+
+it('passes a non-forcing caption hint without changing the other playback defaults', async () => {
+  player.update(timed(), true);
+  await settle();
+  expect(options.playerVars).toMatchObject({
+    cc_load_policy: 0,
+    autoplay: 0,
+    controls: 0,
+    disablekb: 1,
+  });
+});
+
+it('seeds the latest valid video during SDK bootstrap and waits for onReady before synchronized playback', async () => {
+  const gate = deferred<YouTubeApi>();
+  vi.mocked(loadYouTubeApi).mockReturnValue(gate.promise);
+  player.update(timed(), true);
+  const newer = snapshot(2, 'PLAYING', 100);
+  newer.sourceVideoId = '12345678901';
+  newer.current!.youtubeVideoId = '12345678901';
+  player.update(timed(newer), true);
+  gate.resolve(sdk);
+  await settle();
+  expect(options.videoId).toBe('12345678901');
+  expect(options.playerVars.autoplay).toBe(0);
+  expect(apiPlayer.loadVideoById).not.toHaveBeenCalled();
+  await ready();
+  expect(apiPlayer.loadVideoById).toHaveBeenCalledWith({
+    videoId: '12345678901',
+    startSeconds: 15,
+  });
+  expect(apiPlayer.cueVideoById).not.toHaveBeenCalled();
+});
+
+it('reconnects once on readiness timeout, preserving settings and rejecting stale callbacks', async () => {
+  player.volume(23);
+  player.mute();
+  player.update(timed(), true);
+  await settle();
+  const first = options;
+  await vi.advanceTimersByTimeAsync(15000);
+  expect(apiPlayer.destroy).toHaveBeenCalledTimes(1);
+  expect(loadYouTubeApi).toHaveBeenCalledTimes(2);
+  expect(player.getSnapshot().status).toBe('loading');
+  first.events.onReady({ target: apiPlayer });
+  first.events.onError({ data: 150 });
+  expect(apiPlayer.loadVideoById).not.toHaveBeenCalled();
+  await ready();
+  expect(apiPlayer.setVolume).toHaveBeenLastCalledWith(23);
+  expect(apiPlayer.mute).toHaveBeenCalled();
+  expect(apiPlayer.loadVideoById).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(loadYouTubeApi).toHaveBeenCalledTimes(2);
+});
+
+it('limits readiness recovery and cancels retry when readiness or ownership ends', async () => {
+  player.update(timed(), true);
+  await settle();
+  await vi.advanceTimersByTimeAsync(30000);
+  expect(loadYouTubeApi).toHaveBeenCalledTimes(2);
+  expect(player.getSnapshot().status).toBe('error');
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(loadYouTubeApi).toHaveBeenCalledTimes(2);
+  player.retry();
+  await settle();
+  expect(loadYouTubeApi).toHaveBeenCalledTimes(3);
+  player.update(null, false);
+  await vi.advanceTimersByTimeAsync(30000);
+  expect(loadYouTubeApi).toHaveBeenCalledTimes(3);
+  expect(player.getSnapshot().status).toBe('waiting');
+});
+
+it.each([101, 150, 153])('never automatically reconnects for YouTube error %i', async (code) => {
+  player.update(timed(), true);
+  await settle();
+  options.events.onError({ data: code });
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(loadYouTubeApi).toHaveBeenCalledTimes(1);
+  expect(player.getSnapshot().status).toBe('error');
 });

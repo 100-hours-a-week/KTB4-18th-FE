@@ -1,0 +1,119 @@
+.chat-now-playing {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 60px;
+  min-height: 60px;
+  max-height: 60px;
+  padding: 7px 16px;
+  overflow: hidden;
+  isolation: isolate;
+  background: #eef2ef;
+  color: #17231b;
+}
+.chat-now-playing::before,
+.chat-now-playing::after {
+  position: absolute;
+  z-index: -1;
+  content: '';
+  pointer-events: none;
+}
+.chat-now-playing::before {
+  inset: -24px;
+  background-image: var(--chat-now-playing-artwork);
+  background-position: center;
+  background-size: cover;
+  filter: blur(24px);
+}
+.chat-now-playing::after {
+  inset: 0;
+  background: linear-gradient(110deg, rgb(255 255 255 / 72%), rgb(255 255 255 / 60%));
+}
+.chat-music .chat-now-playing-metadata {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 46px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.chat-now-playing-cover {
+  display: grid;
+  flex: 0 0 46px;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #ffffff1a;
+  font-size: 24px;
+}
+.chat-now-playing-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.chat-now-playing-track {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.chat-now-playing-track strong,
+.chat-now-playing-track small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-now-playing-track strong {
+  font-size: 16px;
+  line-height: 20px;
+  font-weight: 650;
+}
+.chat-now-playing-track small {
+  color: #243429;
+  font-size: 13px;
+  line-height: 17px;
+}
+.chat-now-playing-empty {
+  font-size: 13px;
+  line-height: 18px;
+}
+.chat-now-playing-controls {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+.chat-music .chat-now-playing-controls button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+.chat-music .chat-now-playing button:focus-visible {
+  outline-color: #17231b;
+  outline-offset: 2px;
+}
+@media (max-width: 360px) {
+  .chat-now-playing {
+    gap: 8px;
+    padding-inline: 16px;
+  }
+  .chat-now-playing-metadata {
+    gap: 8px;
+  }
+}

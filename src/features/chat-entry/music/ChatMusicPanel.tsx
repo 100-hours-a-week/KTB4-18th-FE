@@ -7,8 +7,12 @@ import type {
 } from './chatMusicTypes';
 import { useChatMusicQueue } from './useChatMusicQueue';
 import './chatMusicPanel.css';
+import './chatMusicSheet.css';
 import { useMusicDialogBounds } from './useMusicDialogBounds';
 import { ChatMusicPlayerView } from './ChatMusicPlayerView';
+import { ChatMusicCompactCard } from './ChatMusicCompactCard';
+import { ChatMusicFooter } from './ChatMusicFooter';
+import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
 import { chatMusicPlayerEnabled } from './chatMusicCommands';
 
 export interface MusicSearchRequest {
@@ -29,11 +33,13 @@ export function ChatMusicPanel({
   request: MusicSearchRequest;
 }) {
   const { state, controller } = useChatMusicQueue(session, isReady, event);
-  const [tab, setTab] = useState<'search' | 'queue' | null>(null);
+  const [tab, setTab] = useState<'player' | 'search' | 'queue' | null>(null);
+  const [playerAttention, setPlayerAttention] = useState('');
   const [query, setQuery] = useState('');
   const [isComposing, setIsComposing] = useState(false);
   const [handledRequest, setHandledRequest] = useState(request.sequence);
   const dialog = useRef<HTMLDialogElement>(null);
+  const fab = useRef<HTMLButtonElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const listScroll = useRef(0);
@@ -56,9 +62,28 @@ export function ChatMusicPanel({
       element.querySelector<HTMLButtonElement>('header button')?.focus();
     } else if (tab === null && element.open) {
       element.close();
-      if (returnFocus.current?.isConnected) returnFocus.current.focus();
+      const composer = element
+        .closest('.chat-entry-shell')
+        ?.querySelector<HTMLTextAreaElement>('.region-chat-composer textarea');
+      for (const target of [returnFocus.current, fab.current, composer]) {
+        if (
+          !target?.isConnected ||
+          target.matches(':disabled, [aria-disabled="true"]') ||
+          target.closest('[hidden], [inert]')
+        )
+          continue;
+        target.focus({ preventScroll: true });
+        if (document.activeElement === target) break;
+      }
     }
-    // Opening focuses a control, never the search input (which would open the mobile keyboard).
+    if (tab === 'player') {
+      const pane = element.querySelector('.chat-music-player-pane');
+      if (pane) pane.scrollTop = 0;
+    }
+    if (tab !== null && element.open && !element.contains(document.activeElement))
+      element.querySelector<HTMLButtonElement>('header button')?.focus();
+    if (tab !== null && document.activeElement?.closest('[hidden]'))
+      element.querySelector<HTMLButtonElement>('header button')?.focus();
   }, [tab]);
   useEffect(() => {
     if (tab !== 'search' || state.selectedSong || !isReady || isComposing) {
@@ -131,7 +156,20 @@ export function ChatMusicPanel({
   const isMusicReady = isReady && state.recoveryStatus === 'ready';
   const isWriteDisabled = !isMusicReady || !!state.pending || state.isCoolingDown;
   const current = state.queue?.current;
-  const stateLabel = state.queue?.state === 'PAUSED' ? '일시정지' : '현재 곡';
+  const stateLabel = '현재 곡';
+  const notice = [
+    '공동 재생 요청을 확인했어요.',
+    '대기 곡 신청을 취소했어요.',
+    '곡 신청을 확인했어요.',
+  ].includes(state.notice)
+    ? ''
+    : state.notice;
+  const needsAttention =
+    !!notice ||
+    !!playerAttention ||
+    !!state.pending ||
+    !!state.queueError ||
+    state.recoveryStatus !== 'ready';
   const count = state.queue
     ? `${state.queue.items.length}${state.queue.nextCursor ? '+' : ''}`
     : null;
@@ -164,7 +202,9 @@ export function ChatMusicPanel({
         {'sources' in song ? (
           <div className="chat-music-sources">
             {song.sources.map((source) => (
-              <span key={source}>{source === 'RECORDED' ? '지역 기록' : '내 추천'}</span>
+              <span key={source} data-source={source}>
+                {source === 'RECORDED' ? '지역 기록' : '내 추천'}
+              </span>
             ))}
           </div>
         ) : (
@@ -205,88 +245,36 @@ export function ChatMusicPanel({
       className={`chat-music${chatMusicPlayerEnabled() ? ' chat-music-with-player' : ''}`}
       aria-label="이야기방 음악"
     >
-      <div className="chat-music-bar">
-        <button type="button" onClick={showSearch} disabled={!isReady}>
-          ＋ 음악 신청
-        </button>
-        <span className="chat-music-summary">
-          {!isReady
-            ? '연결 후 음악을 신청할 수 있어요'
-            : current
-              ? current.title
-              : state.queueLoading
-                ? '음악 목록 확인 중'
-                : state.queueError
-                  ? '음악 목록을 확인하지 못했어요'
-                  : '함께 들을 곡을 신청해 보세요'}
-        </span>
-        <button
-          type="button"
-          onClick={() => {
-            controller.cancelVideos();
-            setTab('queue');
-            void controller.loadQueue();
-          }}
-          disabled={!isReady}
-        >
-          대기열{count !== null ? ` ${count}` : ''}
-        </button>
-      </div>
-      <div
-        className="chat-music-notice"
-        role="status"
-        aria-live="polite"
-        aria-hidden={tab !== null}
-      >
-        {state.notice}
-        {state.pending && !state.isMutating && (
-          <button
-            type="button"
-            onClick={() => controller.retryMutation()}
-            disabled={!isMusicReady || state.isCoolingDown}
-          >
-            {state.pending.kind === 'playback'
-              ? '재생 요청 결과 다시 확인'
-              : state.pending.kind === 'add'
-                ? '신청 결과 다시 확인'
-                : '취소 결과 다시 확인'}
-          </button>
-        )}
-        {state.isMutating && <span>요청을 확인하고 있어요…</span>}
-      </div>
-      {state.recoveryStatus !== 'ready' && (
-        <div
-          className="chat-music-recovery"
-          role={
-            state.recoveryStatus === 'error' || state.recoveryStatus === 'denied'
-              ? 'alert'
-              : 'status'
-          }
-        >
-          <span>{state.recoveryMessage}</span>
-          {isReady && ['error', 'denied'].includes(state.recoveryStatus) && (
-            <button
-              type="button"
-              disabled={state.queueLoading}
-              onClick={() => controller.recover()}
-            >
-              음악 상태 다시 확인
-            </button>
-          )}
-        </div>
-      )}
       {chatMusicPlayerEnabled() && (
-        <ChatMusicPlayerView
+        <ChatMusicCompactCard
           playback={state.playback}
-          isReady={isMusicReady}
+          hasQueuedTracks={(state.queue?.items.length ?? 0) > 0}
           isCommandDisabled={isWriteDisabled || !state.playback}
+          onOpen={() => setTab('player')}
           onCommand={(action) => controller.control(action)}
-          onRefresh={() => controller.recover()}
         />
+      )}
+      <button
+        type="button"
+        ref={fab}
+        className="chat-music-fab"
+        aria-label="음악 플레이어 열기"
+        aria-describedby={needsAttention ? 'chat-music-attention' : undefined}
+        onClick={() => setTab(chatMusicPlayerEnabled() ? 'player' : 'search')}
+      >
+        <span className="chat-music-fab-disc" aria-hidden="true" />
+        <span>음악 신청</span>
+        {needsAttention && <span className="chat-music-attention" aria-hidden="true" />}
+      </button>
+      {needsAttention && (
+        <span id="chat-music-attention" className="chat-music-accessible" role="status">
+          음악 상태를 확인해 주세요.{' '}
+          {notice || playerAttention || state.recoveryMessage || state.queueError}
+        </span>
       )}
       <dialog
         ref={dialog}
-        className="chat-music-dialog"
+        className={`chat-music-dialog${tab === 'player' ? ' chat-music-player-dialog' : ''}`}
         aria-modal="true"
         aria-labelledby="chat-music-title"
         onCancel={(event) => {
@@ -298,17 +286,41 @@ export function ChatMusicPanel({
           if (!event.currentTarget.open) setTab(null);
         }}
         onClick={(event) => {
-          if (event.target === event.currentTarget) close();
+          if (event.target !== event.currentTarget) return;
+          const box = event.currentTarget.getBoundingClientRect();
+          if (
+            event.clientX < box.left ||
+            event.clientX > box.right ||
+            event.clientY < box.top ||
+            event.clientY > box.bottom
+          )
+            close();
         }}
       >
         <div className="chat-music-sheet">
           <header>
-            <h2 id="chat-music-title">{tab === 'search' ? '음악 신청' : '음악 대기열'}</h2>
+            <h2 id="chat-music-title">{tab === 'queue' ? '음악 대기열' : '음악 신청'}</h2>
             <button type="button" aria-label="음악 창 닫기" onClick={close}>
-              닫기
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                aria-hidden="true"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+              >
+                <path d="m5 5 14 14M19 5 5 19" />
+              </svg>
             </button>
           </header>
-          <nav aria-label="음악 메뉴">
+          <nav aria-label="음악 메뉴" hidden={tab === 'player'}>
+            {chatMusicPlayerEnabled() && (
+              <button type="button" onClick={() => setTab('player')}>
+                플레이어
+              </button>
+            )}
             <button type="button" aria-pressed={tab === 'search'} onClick={showSearch}>
               곡 찾기
             </button>
@@ -342,6 +354,18 @@ export function ChatMusicPanel({
               연결을 확인하고 있어요. 연결 후 다시 이용해 주세요.
             </p>
           )}
+          <div className="chat-music-player-pane" hidden={tab !== 'player'}>
+            {chatMusicPlayerEnabled() && (
+              <ChatMusicPlayerView
+                playback={state.playback}
+                isReady={isMusicReady}
+                isCommandDisabled={isWriteDisabled || !state.playback}
+                onCommand={(action) => controller.control(action)}
+                onRefresh={() => controller.recover()}
+                onAttentionChange={setPlayerAttention}
+              />
+            )}
+          </div>
           {tab === 'search' && state.selectedSong ? (
             <>
               <div className="chat-music-video-heading">
@@ -494,7 +518,7 @@ export function ChatMusicPanel({
                       : '아직 신청할 수 있는 곡이 없어요.'}
                   </p>
                 )}
-                <ul className="chat-music-list" aria-label="신청 가능한 곡">
+                <ul className="chat-music-list chat-music-song-list" aria-label="신청 가능한 곡">
                   {state.search?.items.map((song, index) => item(song, index, 'search'))}
                 </ul>
                 {state.search?.nextCursor && (
@@ -510,7 +534,7 @@ export function ChatMusicPanel({
                 )}
               </div>
             </>
-          ) : (
+          ) : tab === 'queue' ? (
             <>
               {current && (
                 <section className="chat-music-current" aria-label={stateLabel}>
@@ -579,28 +603,22 @@ export function ChatMusicPanel({
                 )}
               </div>
             </>
-          )}
-          <footer className="chat-music-footer">
-            <p className="chat-music-description">신청한 곡은 대기 순서대로 재생돼요.</p>
-            {state.isVideoCoolingDown && (
-              <p role="status">영상 검색·신청은 잠시 후 다시 이용해 주세요.</p>
-            )}
-            {state.isCoolingDown && <p role="status">잠시 후 다음 요청을 보낼 수 있어요.</p>}
-            {state.notice && <p role="status">{state.notice}</p>}
-            {state.pending && !state.isMutating && (
-              <button
-                type="button"
-                onClick={() => controller.retryMutation()}
-                disabled={!isMusicReady || state.isCoolingDown}
-              >
-                {state.pending.kind === 'playback'
-                  ? '재생 요청 결과 다시 확인'
-                  : state.pending.kind === 'add'
-                    ? '신청 결과 다시 확인'
-                    : '취소 결과 다시 확인'}
-              </button>
-            )}
-          </footer>
+          ) : null}
+          <ChatMusicFooter
+            isPlayer={tab === 'player'}
+            count={count}
+            isReady={isReady}
+            isMusicReady={isMusicReady}
+            feedback={state}
+            notice={notice}
+            onSearch={showSearch}
+            onQueue={() => {
+              controller.cancelVideos();
+              setTab('queue');
+              void controller.loadQueue();
+            }}
+            onRetry={() => controller.retryMutation()}
+          />
         </div>
       </dialog>
     </section>
@@ -611,7 +629,7 @@ function MusicCover({ url }: { url: string | null }) {
   let safe: string | null = null;
   try {
     if (url) {
-      const parsed = new URL(url, window.location.origin);
+      const parsed = new URL(getHighResolutionArtworkUrl(url)!, window.location.origin);
       if (['https:', 'http:'].includes(parsed.protocol) && !parsed.username && !parsed.password)
         safe = parsed.href;
     }

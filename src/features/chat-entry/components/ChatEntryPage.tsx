@@ -52,6 +52,14 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
   }, [chat.messages?.length, chat.pendingMessages?.length, membershipId]);
   useEffect(() => {
     const viewport = window.visualViewport;
+    const updateComposer = () => {
+      const composer = input.current?.closest('form');
+      if (composer)
+        screen.current?.style.setProperty(
+          '--chat-entry-composer-height',
+          `${composer.getBoundingClientRect().height}px`,
+        );
+    };
     const updateViewport = () => {
       if (!screen.current) return;
       const height = `${viewport?.height ?? window.innerHeight}px`;
@@ -59,6 +67,7 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
       screen.current.style.top = `${viewport?.offsetTop ?? 0}px`;
       screen.current.style.setProperty('--chat-entry-viewport-height', height);
       resizeInput();
+      updateComposer();
     };
     updateViewport();
     viewport?.addEventListener('resize', updateViewport);
@@ -69,12 +78,15 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
       typeof ResizeObserver === 'undefined'
         ? undefined
         : new ResizeObserver(() => {
+            updateComposer();
             if (input.current?.clientWidth !== width) {
               width = input.current?.clientWidth;
               resizeInput();
             }
           });
     if (input.current) observer?.observe(input.current);
+    const composer = input.current?.closest('form');
+    if (composer) observer?.observe(composer);
     let isActive = true;
     void document.fonts?.ready.then(() => {
       if (isActive) resizeInput();
@@ -180,6 +192,16 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
             <span>/{capacity ?? '-'}</span>
           </div>
         </header>
+        {chatMusicEnabled() && chat.musicSession && (
+          <ChatMusicPanel
+            key={chat.musicSession.key}
+            session={chat.musicSession}
+            isReady={chat.isReady}
+            event={chat.musicEvent}
+            currentUserId={chat.currentUserId}
+            request={musicSearch}
+          />
+        )}
         <div className="region-chat-toast" aria-live="polite" aria-atomic="true">
           {chat.showDisconnectToast && <p>채팅 연결이 끊겼어요.</p>}
         </div>
@@ -216,16 +238,6 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
             </button>
           )}
         </div>
-        {chatMusicEnabled() && chat.musicSession && (
-          <ChatMusicPanel
-            key={chat.musicSession.key}
-            session={chat.musicSession}
-            isReady={chat.isReady}
-            event={chat.musicEvent}
-            currentUserId={chat.currentUserId}
-            request={musicSearch}
-          />
-        )}
         <section className="region-chat-panel" aria-label="실시간 동네 이야기">
           <div
             ref={list}

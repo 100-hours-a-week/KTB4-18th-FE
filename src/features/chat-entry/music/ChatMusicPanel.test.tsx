@@ -94,7 +94,8 @@ describe('/신청·검색·대기열 사용자 흐름', () => {
     const add = await openDialog().findByRole('button', { name: '영상 1 영상 신청' });
     fireEvent.click(add);
     fireEvent.click(add);
-    await waitFor(() => expect(openDialog().getByText('곡 신청을 확인했어요.')).toBeVisible());
+    await waitFor(() => expect(openDialog().queryByText('요청을 확인하고 있어요…')).toBeNull());
+    expect(openDialog().queryByText('곡 신청을 확인했어요.')).toBeNull();
     expect(
       vi
         .mocked(authenticatedFetchWithCurrentToken)
@@ -121,7 +122,8 @@ describe('/신청·검색·대기열 사용자 흐름', () => {
   it('shows current song separately and allows cancelling a neighbor waiting item', async () => {
     const user = userEvent.setup();
     render(<ChatRoomScreen chat={chatState()} />);
-    await user.click(screen.getByRole('button', { name: /대기열/ }));
+    await user.click(screen.getByRole('button', { name: '음악 플레이어 열기' }));
+    await user.click(openDialog().getByRole('button', { name: '대기열' }));
     await openDialog().findByRole('button', { name: '노래 1 신청 취소' });
     expect(openDialog().getByRole('region', { name: '현재 곡' })).toHaveTextContent('노래 99');
     expect(openDialog().getByText('이웃 신청')).toBeVisible();
@@ -138,7 +140,7 @@ describe('/신청·검색·대기열 사용자 흐름', () => {
   it('keeps unknown write and lets user confirm with same UUID from inside the dialog', async () => {
     const user = userEvent.setup();
     render(<ChatRoomScreen chat={chatState()} />);
-    await user.click(screen.getByRole('button', { name: /음악 신청/ }));
+    await user.click(screen.getByRole('button', { name: '음악 플레이어 열기' }));
     await openDialog().findByRole('button', { name: '노래 1 영상 선택' });
     await user.click(openDialog().getByRole('button', { name: '노래 1 영상 선택' }));
     await openDialog().findByRole('button', { name: '영상 1 영상 신청' });
@@ -166,7 +168,8 @@ describe('/신청·검색·대기열 사용자 흐름', () => {
     const user = userEvent.setup();
     const chat = chatState();
     const { rerender } = render(<ChatRoomScreen chat={chat} />);
-    await user.click(screen.getByRole('button', { name: /대기열/ }));
+    await user.click(screen.getByRole('button', { name: '음악 플레이어 열기' }));
+    await user.click(openDialog().getByRole('button', { name: '대기열' }));
     await openDialog().findByRole('button', { name: '노래 1 신청 취소' });
     items = [queueItem(3)];
     version = 2;
@@ -191,7 +194,7 @@ describe('/신청·검색·대기열 사용자 흐름', () => {
   it('debounces search, shows empty/error states and closes with focus restoration', async () => {
     const user = userEvent.setup();
     render(<ChatRoomScreen chat={chatState()} />);
-    const trigger = screen.getByRole('button', { name: /음악 신청/ });
+    const trigger = screen.getByRole('button', { name: '음악 플레이어 열기' });
     await user.click(trigger);
     const search = openDialog().getByRole('searchbox');
     expect(search).not.toHaveFocus();
@@ -225,7 +228,7 @@ describe('/신청·검색·대기열 사용자 흐름', () => {
     const user = userEvent.setup();
     const chat = chatState();
     render(<ChatRoomScreen chat={chat} />);
-    expect(screen.queryByRole('button', { name: /음악 신청/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '음악 플레이어 열기' })).not.toBeInTheDocument();
     await user.type(screen.getByRole('textbox', { name: '메시지' }), '/신청');
     await user.keyboard('{Enter}');
     expect(chat.send).toHaveBeenCalledWith('/신청');
@@ -239,8 +242,12 @@ it('keeps request actions disabled on permission failure and revalidates only on
     musicResponse({ code: 'CHAT_VIEW_NOT_CONNECTED' }, 403),
   );
   render(<ChatRoomScreen chat={chatState()} />);
-  await screen.findByText('현재 이야기방 참여와 음악 이용 권한을 확인해 주세요.');
-  await user.click(screen.getByRole('button', { name: /음악 신청/ }));
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: '음악 플레이어 열기' })).toHaveAccessibleDescription(
+      expect.stringContaining('현재 이야기방 참여와 음악 이용 권한을 확인해 주세요.'),
+    ),
+  );
+  await user.click(screen.getByRole('button', { name: '음악 플레이어 열기' }));
   const dialog = openDialog();
   await waitFor(() =>
     expect(dialog.getByRole('button', { name: '노래 1 영상 선택' })).toBeDisabled(),
@@ -289,7 +296,7 @@ it('lists unregistered regional music without typing and restores the list after
     return musicResponse(queuePage());
   });
   render(<ChatRoomScreen chat={chatState()} />);
-  await user.click(screen.getByRole('button', { name: /음악 신청/ }));
+  await user.click(screen.getByRole('button', { name: '음악 플레이어 열기' }));
   const choose = await openDialog().findByRole('button', { name: '노래 1 영상 선택' });
   expect(openDialog().getByRole('searchbox')).not.toHaveFocus();
   const list = openDialog().getByLabelText('지역 음악 목록');
@@ -325,11 +332,117 @@ it('distinguishes an empty candidate result from a failed video search and retri
     return musicResponse(queuePage());
   });
   render(<ChatRoomScreen chat={chatState()} />);
-  await user.click(screen.getByRole('button', { name: /음악 신청/ }));
+  await user.click(screen.getByRole('button', { name: '음악 플레이어 열기' }));
   await user.click(await openDialog().findByRole('button', { name: '노래 1 영상 선택' }));
   await openDialog().findByRole('alert');
   expect(openDialog().queryByText('신청할 수 있는 영상을 찾지 못했어요.')).toBeNull();
   await user.click(openDialog().getByRole('button', { name: '영상 다시 찾기' }));
   await openDialog().findByText('신청할 수 있는 영상을 찾지 못했어요.');
   expect(attempts).toBe(2);
+});
+
+it('keeps one mounted player across FAB, request, queue and final close without a UI command', async () => {
+  vi.stubEnv('VITE_CHAT_MUSIC_PLAYER_ENABLED', 'true');
+  const user = userEvent.setup();
+  const { container } = render(<ChatRoomScreen chat={chatState()} />);
+  const player = container.querySelector('.chat-room-player');
+  const fab = screen.getByRole('button', { name: '음악 플레이어 열기' });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  await user.click(fab);
+  expect(openDialog().getByRole('region', { name: '공동 음악 재생' })).toBe(player);
+  await user.click(openDialog().getByRole('button', { name: '＋ 음악 신청' }));
+  expect(openDialog().getByRole('searchbox')).toBeVisible();
+  await user.click(openDialog().getByRole('button', { name: '대기열' }));
+  await user.click(openDialog().getByRole('button', { name: '플레이어' }));
+  expect(openDialog().getByRole('region', { name: '공동 음악 재생' })).toBe(player);
+  await user.click(openDialog().getByRole('button', { name: '음악 창 닫기' }));
+  expect(fab).toHaveFocus();
+  expect(container.querySelector('.chat-room-player')).toBe(player);
+  await user.click(fab);
+  expect(openDialog().getByRole('region', { name: '공동 음악 재생' })).toBe(player);
+  expect(container.querySelectorAll('dialog')).toHaveLength(1);
+  expect(
+    vi
+      .mocked(authenticatedFetchWithCurrentToken)
+      .mock.calls.filter(([, init]) => init?.method === 'POST'),
+  ).toHaveLength(0);
+});
+
+it.each([
+  { openerState: 'detached', isFabDisabled: false },
+  { openerState: 'disabled', isFabDisabled: false },
+  { openerState: 'detached', isFabDisabled: true },
+])(
+  'restores usable focus after closing with $openerState opener and FAB disabled=$isFabDisabled',
+  async ({ openerState, isFabDisabled }) => {
+    const user = userEvent.setup();
+    render(<ChatRoomScreen chat={chatState()} />);
+    const composer = screen.getByRole('textbox', { name: '메시지' });
+    const fab = screen.getByRole('button', { name: '음악 플레이어 열기' });
+    const opener = document.createElement('button');
+    opener.textContent = 'temporary opener';
+    document.body.append(opener);
+    try {
+      opener.focus();
+      fireEvent.change(composer, { target: { value: '/신청' } });
+      fireEvent.keyDown(composer, { key: 'Enter' });
+      expect(openDialog().getByRole('button', { name: '음악 창 닫기' })).toHaveFocus();
+      if (openerState === 'detached') opener.remove();
+      else opener.disabled = true;
+      if (isFabDisabled) fab.setAttribute('disabled', '');
+      await user.click(openDialog().getByRole('button', { name: '음악 창 닫기' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(isFabDisabled ? composer : fab).toHaveFocus();
+      expect(opener).not.toHaveFocus();
+    } finally {
+      opener.remove();
+    }
+  },
+);
+
+it('places the compact card directly after the header and shares the existing player and command controller', async () => {
+  vi.stubEnv('VITE_CHAT_MUSIC_PLAYER_ENABLED', 'true');
+  const user = userEvent.setup();
+  vi.mocked(authenticatedFetchWithCurrentToken).mockImplementation(async () =>
+    musicResponse(queuePage()),
+  );
+  const { container } = render(<ChatRoomScreen chat={chatState()} />);
+  const card = within(screen.getByRole('region', { name: '현재 방 음악' }));
+  expect(container.querySelector('.chat-entry-header')?.nextElementSibling).toBe(
+    container.querySelector('.chat-music'),
+  );
+  await card.findByText('노래 99');
+  const player = container.querySelector('.chat-room-player');
+  expect(container.querySelectorAll('.chat-room-player')).toHaveLength(1);
+  await user.click(card.getByRole('button', { name: '노래 99 / 가수 99 음악 플레이어 열기' }));
+  expect(openDialog().getByRole('region', { name: '공동 음악 재생' })).toBe(player);
+  await user.click(openDialog().getByRole('button', { name: '음악 창 닫기' }));
+  expect(card.getByRole('button', { name: /음악 플레이어 열기/ })).toHaveFocus();
+  expect(container.querySelector('.chat-room-player')).toBe(player);
+  expect(
+    vi
+      .mocked(authenticatedFetchWithCurrentToken)
+      .mock.calls.filter(([, init]) => init?.method === 'POST'),
+  ).toHaveLength(0);
+  await waitFor(() => expect(card.getByRole('button', { name: '전체 일시정지' })).toBeEnabled());
+  await user.click(card.getByRole('button', { name: '전체 일시정지' }));
+  await waitFor(() =>
+    expect(
+      vi
+        .mocked(authenticatedFetchWithCurrentToken)
+        .mock.calls.filter(
+          ([path, init]) => String(path).includes('playback/commands') && init?.method === 'POST',
+        ),
+    ).toHaveLength(1),
+  );
+  const [, init] = vi
+    .mocked(authenticatedFetchWithCurrentToken)
+    .mock.calls.find(
+      ([path, init]) => String(path).includes('playback/commands') && init?.method === 'POST',
+    )!;
+  expect(JSON.parse(String(init?.body))).toEqual({
+    action: 'PAUSE',
+    queue_item_id: 99,
+    expected_version: 1,
+  });
 });
