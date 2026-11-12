@@ -87,17 +87,18 @@ export function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-export function videoPage(musicId = 1) {
+export function videoPage(musicId = 1, count = 2) {
   const expiresAt = new Date(Date.now() + 3600000).toISOString();
   return {
     search_id: '550e8400-e29b-41d4-a716-446655440050',
     music_id: musicId,
     result_kind: 'READY',
     expires_at: expiresAt,
-    items: [1, 2].map((index) => ({
-      candidate_id: `550e8400-e29b-41d4-a716-44665544005${index}`,
+    items: Array.from({ length: count }, (_, offset) => offset + 1).map((index) => ({
+      candidate_id: `550e8400-e29b-41d4-a716-${String(index + 50).padStart(12, '0')}`,
       music_id: musicId,
-      video_id: index === 1 ? 'abcdefghijk' : 'ABCDEFGHIJK',
+      video_id:
+        index === 1 ? 'abcdefghijk' : index === 2 ? 'ABCDEFGHIJK' : String(index).padStart(11, '0'),
       title: `영상 ${index}`,
       channel_id: 'synthetic-channel',
       channel_title: '영상 채널',

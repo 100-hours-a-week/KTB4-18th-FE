@@ -258,3 +258,20 @@ describe('regional video selection contract', () => {
     });
   });
 });
+
+it('accepts all fifty video candidates and rejects fifty-one or duplicates', async () => {
+  const page = videoPage(1, 50);
+  vi.mocked(authenticatedFetchWithCurrentToken).mockResolvedValueOnce(musicResponse(page));
+  const parsed = await searchMusicVideos(musicSession(), 1, signal());
+  expect(parsed.items).toHaveLength(50);
+  expect(parsed.items[49].title).toBe('영상 50');
+  for (const invalid of [
+    videoPage(1, 51),
+    { ...page, items: [...page.items.slice(0, 49), page.items[0]] },
+  ]) {
+    vi.mocked(authenticatedFetchWithCurrentToken).mockResolvedValueOnce(musicResponse(invalid));
+    await expect(searchMusicVideos(musicSession(), 1, signal())).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  }
+});
