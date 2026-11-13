@@ -3,25 +3,11 @@ import './chatMusicFooter.css';
 
 type FeedbackState = Pick<MusicQueueState, 'isCoolingDown' | 'isMutating' | 'pending'>;
 interface ChatMusicFooterProps {
-  isPlayer: boolean;
-  count: string | null;
-  isReady: boolean;
   isMusicReady: boolean;
   feedback: FeedbackState;
-  onSearch: () => void;
-  onQueue: () => void;
   onRetry: () => void;
 }
-export function ChatMusicFooter({
-  isPlayer,
-  count,
-  isReady,
-  isMusicReady,
-  feedback,
-  onSearch,
-  onQueue,
-  onRetry,
-}: ChatMusicFooterProps) {
+export function ChatMusicFooter({ isMusicReady, feedback, onRetry }: ChatMusicFooterProps) {
   return (
     <footer
       className="chat-music-footer"
@@ -29,16 +15,6 @@ export function ChatMusicFooter({
       aria-label="음악 신청 상태"
       tabIndex={feedback.pending && !feedback.isMutating ? 0 : undefined}
     >
-      {isPlayer && (
-        <div className="chat-music-player-menu">
-          <button type="button" onClick={onSearch} disabled={!isReady}>
-            ＋ 음악 신청
-          </button>
-          <button type="button" onClick={onQueue} disabled={!isReady}>
-            대기열{count !== null ? ` ${count}` : ''}
-          </button>
-        </div>
-      )}
       <div className="chat-music-feedback">
         {feedback.pending && !feedback.isMutating && (
           <button

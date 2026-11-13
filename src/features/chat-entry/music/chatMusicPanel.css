@@ -186,7 +186,7 @@
   gap: 12px;
   align-items: center;
   padding: 12px;
-  background: var(--color-bg-secondary);
+  background: #ededed;
   border-radius: 12px;
 }
 .chat-music-current small {
@@ -243,7 +243,7 @@
   flex-shrink: 0;
 }
 .chat-music-sheet nav {
-  padding-block: 8px;
+  padding-block: 8px 16px;
 }
 .chat-music-scroll {
   flex: 1;
@@ -386,6 +386,8 @@ ol.chat-music-list .chat-music-item-text > small {
 }
 
 .chat-music-video-scroll {
+  margin-inline-end: calc(-1 * var(--chat-video-edge-inset, 16px));
+  padding-inline-end: var(--chat-video-edge-inset, 16px);
   scrollbar-width: thin;
   scrollbar-color: var(--color-border-secondary) transparent;
 }
@@ -403,9 +405,13 @@ ol.chat-music-list .chat-music-item-text > small {
   }
 }
 .chat-music-video-item .chat-music-cover {
-  flex-basis: var(--chat-video-cover-size, 50px);
-  width: var(--chat-video-cover-size, 50px);
-  height: var(--chat-video-cover-size, 50px);
+  flex-basis: calc(68px * 4 / 3);
+  width: calc(68px * 4 / 3);
+  height: 68px;
+  aspect-ratio: 4 / 3;
+}
+.chat-music-video-item .chat-music-cover img {
+  height: 68px;
 }
 .chat-music-video-item .chat-music-item-text {
   gap: 0;
@@ -429,4 +435,138 @@ ol.chat-music-list .chat-music-item-text > small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-music-compact .chat-music-video-scroll {
+  --chat-video-edge-inset: 8px;
+}
+.chat-music-search input[data-pointer-focus='true']:focus {
+  outline: none;
+}
+.chat-music-skeleton .chat-music-cover,
+.chat-music-skeleton .chat-music-item-text > span,
+.chat-music-skeleton-action {
+  display: block;
+  background: #edf0ed;
+  border-radius: 4px;
+}
+.chat-music-skeleton-title {
+  width: 80%;
+  height: 18px;
+}
+.chat-music-skeleton-artist {
+  width: 55%;
+  height: 16px;
+  margin-top: 1px;
+}
+.chat-music-skeleton-badge {
+  width: 72px;
+  height: 18px;
+  margin-top: 4px;
+}
+.chat-music-skeleton-action {
+  flex: 0 0 auto;
+  min-height: 36px;
+  box-sizing: border-box;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  color: transparent;
+  font: inherit;
+  font-size: 13px;
+}
+
+.chat-music-sheet > nav > button {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.chat-music-skeleton .chat-music-cover,
+.chat-music-skeleton .chat-music-item-text > span,
+.chat-music-skeleton-action {
+  background-image: linear-gradient(100deg, #edf0ed 20%, #fbfcfb 45%, #edf0ed 70%);
+  background-size: 220% 100%;
+  animation: chat-music-skeleton-shimmer 1.5s ease-in-out infinite;
+}
+@keyframes chat-music-skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-music-skeleton .chat-music-cover,
+  .chat-music-skeleton .chat-music-item-text > span,
+  .chat-music-skeleton-action {
+    animation: none;
+  }
+}
+
+.chat-music-video-feedback-mode {
+  display: flex;
+  flex-direction: column;
+}
+.chat-music-video-feedback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-block: auto;
+  padding-block: 16px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.chat-music-video-feedback p {
+  margin: 0;
+}
+.chat-music-video-feedback-mode > .chat-music-list:empty {
+  display: none;
+}
+.chat-music-skeleton-rank {
+  height: 16px;
+  border-radius: 4px;
+  background: #edf0ed;
+}
+.chat-music-skeleton[data-variant='video'] .chat-music-skeleton-title {
+  height: 36px;
+}
+.chat-music-skeleton[data-variant='video'] .chat-music-skeleton-artist,
+.chat-music-skeleton[data-variant='video'] .chat-music-skeleton-badge {
+  height: 16px;
+  margin-top: 0;
+}
+
+.chat-music-queue-heading {
+  flex-shrink: 0;
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 24px;
+}
+.chat-music-current + .chat-music-queue-heading {
+  margin-top: 48px;
+}
+.chat-music-queue-empty-with-current {
+  display: flex;
+  flex-direction: column;
+}
+.chat-music-queue-empty-with-current .chat-music-empty-queue {
+  position: static;
+  transform: none;
+  width: 100%;
+  margin-block: auto;
+  padding-block: 16px;
+}
+.chat-music-queue-empty-with-current > .chat-music-list:empty {
+  display: none;
+}
+.chat-music-short .chat-music-queue-sheet {
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.chat-music-short .chat-music-queue-sheet > .chat-music-scroll {
+  flex: 0 0 160px;
+  height: 160px;
+  min-height: 160px;
 }

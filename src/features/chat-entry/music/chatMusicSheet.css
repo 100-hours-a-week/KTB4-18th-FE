@@ -72,11 +72,6 @@
   overflow: auto;
   overscroll-behavior: contain;
 }
-.chat-music-player-menu {
-  display: flex;
-  gap: 12px;
-  padding-top: 12px;
-}
 .chat-music-compact .chat-music-player-pane {
   flex: none;
   overflow: visible;
@@ -114,12 +109,6 @@
   border: 0;
   background: transparent;
   padding: 6px;
-}
-.chat-music-player-menu {
-  justify-content: flex-end;
-}
-.chat-music-player-menu button {
-  flex: 0 0 auto;
 }
 
 .chat-music-player-dialog {

@@ -276,8 +276,10 @@ it('marks only actual local playback as running and holds the disc for pause, bu
   expect(disc).not.toHaveClass('is-playing');
   act(() => options.events.onStateChange({ data: 3 }));
   expect(disc).not.toHaveClass('is-playing');
+  expect(screen.queryByText('YouTube 영상을 불러오고 있어요.')).toBeNull();
   act(() => options.events.onStateChange({ data: 1 }));
   expect(disc).toHaveClass('is-playing');
   act(() => options.events.onError({ data: 150 }));
   expect(disc).not.toHaveClass('is-playing');
+  expect(screen.getByRole('alert')).toBeVisible();
 });

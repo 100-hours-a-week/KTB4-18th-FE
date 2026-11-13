@@ -263,7 +263,7 @@ try {
         .getByRole('region', { name: '현재 방 음악' })
         .getByRole('button', { name: /플레이어 열기$/ })
         .click();
-      await page.getByRole('button', { name: '＋ 음악 신청' }).click();
+      await page.getByRole('button', { name: '곡 찾기', exact: true }).click();
       await page.getByRole('button', { name: '대기열', exact: true }).click();
       await page.getByRole('button', { name: '플레이어', exact: true }).click();
       expect(

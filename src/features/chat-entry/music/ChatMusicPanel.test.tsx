@@ -120,6 +120,7 @@ describe('/신청·검색·대기열 사용자 흐름', () => {
     expect(add.closest('li')).toHaveClass('chat-music-video-item');
     expect(within(add.closest('li')!).getByText('영상 채널')).toHaveAttribute('title', '영상 채널');
     expect(openDialog().getByTitle('노래 1 · 가수 1')).toHaveClass('scrolling-track-title');
+    expect(openDialog().queryByText('함께 들을 YouTube 영상을 선택해 주세요.')).toBeNull();
     expect(openDialog().getByTitle('영상 1')).not.toHaveClass('scrolling-track-title');
     expect(
       openDialog().getByTitle('노래 1 · 가수 1').closest('.chat-music-video-heading'),
@@ -128,6 +129,14 @@ describe('/신청·검색·대기열 사용자 흐름', () => {
     fireEvent.click(add);
     await waitFor(() => expect(openDialog().queryByText('요청을 확인하고 있어요…')).toBeNull());
     expect(openDialog().queryByText('곡 신청을 확인했어요.')).toBeNull();
+    await waitFor(() =>
+      expect(document.querySelector('.chat-music-toast')).toHaveTextContent(
+        '음악 신청 성공했습니다',
+      ),
+    );
+    expect(screen.getByRole('region', { name: '이야기방 음악' })).not.toHaveAttribute(
+      'aria-describedby',
+    );
     expect(
       vi
         .mocked(authenticatedFetchWithCurrentToken)
@@ -389,7 +398,13 @@ it('keeps one mounted player across mini entry, request, queue and final close w
   expect(screen.queryByRole('dialog')).toBeNull();
   await user.click(mini);
   expect(openDialog().getByRole('region', { name: '공동 음악 재생' })).toBe(player);
-  await user.click(openDialog().getByRole('button', { name: '＋ 음악 신청' }));
+  expect(openDialog().getByRole('navigation', { name: '음악 메뉴' })).toBeVisible();
+  expect(openDialog().getByRole('button', { name: '플레이어' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  expect(openDialog().queryByRole('button', { name: '＋ 음악 신청' })).toBeNull();
+  await user.click(openDialog().getByRole('button', { name: '곡 찾기' }));
   expect(openDialog().getByRole('searchbox')).toBeVisible();
   await user.click(openDialog().getByRole('button', { name: '대기열' }));
   await user.click(openDialog().getByRole('button', { name: '플레이어' }));
@@ -522,4 +537,140 @@ it('shows all fifty candidates and submits the last selected video without anoth
       .mocked(authenticatedFetchWithCurrentToken)
       .mock.calls.filter(([path]) => String(path).includes('video-searches')),
   ).toHaveLength(1);
+});
+
+it('keeps loading rows decorative, retains prior songs on pagination and resets pointer focus', async () => {
+  const user = userEvent.setup();
+  let release: ((response: Response) => void) | undefined;
+  const original = vi.mocked(authenticatedFetchWithCurrentToken).getMockImplementation()!;
+  vi.mocked(authenticatedFetchWithCurrentToken).mockImplementation((path, init, token) =>
+    String(path).includes('requestable-music')
+      ? new Promise<Response>((resolve) => {
+          release = resolve;
+        })
+      : original(path, init, token),
+  );
+  render(<ChatRoomScreen chat={chatState()} />);
+  await openMusicSearch(user);
+  const list = openDialog().getByRole('list', { name: '신청 가능한 곡' });
+  await waitFor(() => expect(list).toHaveAttribute('aria-busy', 'true'));
+  expect(list.querySelectorAll('.chat-music-skeleton')).toHaveLength(6);
+  expect(list.querySelector('.chat-music-skeleton')).toHaveAttribute('aria-hidden', 'true');
+  expect(list.querySelector('button')).toBeNull();
+  expect(openDialog().getByRole('status')).toHaveClass('chat-music-accessible');
+  release!(musicResponse({ items: [candidate(1)], next_cursor: 'next' }));
+  await openDialog().findByRole('button', { name: '노래 1 영상 선택' });
+  await user.click(openDialog().getByRole('button', { name: '곡 더 보기' }));
+  await waitFor(() => expect(list.querySelectorAll('.chat-music-skeleton')).toHaveLength(2));
+  expect(openDialog().getByRole('button', { name: '노래 1 영상 선택' })).toBeVisible();
+  const search = openDialog().getByRole('searchbox');
+  fireEvent.pointerDown(search);
+  expect(search).toHaveAttribute('data-pointer-focus', 'true');
+  fireEvent.blur(search);
+  expect(search).not.toHaveAttribute('data-pointer-focus');
+  release!(musicResponse({ items: [candidate(2)], next_cursor: null }));
+  await waitFor(() => expect(list).toHaveAttribute('aria-busy', 'false'));
+  expect(list.querySelector('.chat-music-skeleton')).toBeNull();
+});
+
+it('delays video skeletons and preserves the selected heading until candidates arrive', async () => {
+  const user = userEvent.setup();
+  let release: ((response: Response) => void) | undefined;
+  const original = vi.mocked(authenticatedFetchWithCurrentToken).getMockImplementation()!;
+  vi.mocked(authenticatedFetchWithCurrentToken).mockImplementation((path, init, token) =>
+    String(path).includes('video-searches')
+      ? new Promise<Response>((resolve) => {
+          release = resolve;
+        })
+      : original(path, init, token),
+  );
+  render(<ChatRoomScreen chat={chatState()} />);
+  await openMusicSearch(user);
+  await user.click(await openDialog().findByRole('button', { name: '노래 1 영상 선택' }));
+  const list = openDialog().getByRole('list', { name: '선택 가능한 영상' });
+  expect(list).toHaveAttribute('aria-busy', 'true');
+  expect(list.querySelector('.chat-music-skeleton')).toBeNull();
+  await waitFor(() => expect(list.querySelectorAll('[data-variant="video"]')).toHaveLength(3));
+  expect(openDialog().getByTitle('노래 1 · 가수 1')).toHaveClass('scrolling-track-title');
+  release!(musicResponse(videoPage()));
+  await openDialog().findByRole('button', { name: '영상 1 영상 신청' });
+  expect(list).toHaveAttribute('aria-busy', 'false');
+  expect(list.querySelector('.chat-music-skeleton')).toBeNull();
+});
+
+it.each([202, 503])(
+  'does not present confirmed success for pending or failed add HTTP%s',
+  async (status) => {
+    const user = userEvent.setup();
+    const original = vi.mocked(authenticatedFetchWithCurrentToken).getMockImplementation()!;
+    vi.mocked(authenticatedFetchWithCurrentToken).mockImplementation((path, init, token) =>
+      String(path).includes('queue-items') && init?.method === 'POST'
+        ? Promise.resolve(
+            musicResponse(
+              status === 202 ? { status: 'PENDING' } : { code: 'REQUEST_FAILED' },
+              status,
+            ),
+          )
+        : original(path, init, token),
+    );
+    render(<ChatRoomScreen chat={chatState()} />);
+    await openMusicSearch(user);
+    await user.click(await openDialog().findByRole('button', { name: '노래 1 영상 선택' }));
+    await user.click(await openDialog().findByRole('button', { name: '영상 1 영상 신청' }));
+    await waitFor(() =>
+      expect(openDialog().getByRole('region', { name: '음악 신청 상태' })).toHaveAttribute(
+        'tabindex',
+        '0',
+      ),
+    );
+    expect(openDialog().getByRole('button', { name: '신청 결과 다시 확인' })).toBeVisible();
+    expect(document.querySelector('.chat-music-toast')).not.toHaveTextContent(
+      '음악 신청 성공했습니다',
+    );
+  },
+);
+
+it('separates current and queued sections without replacing real ranks or cancel actions', async () => {
+  const user = userEvent.setup();
+  render(<ChatRoomScreen chat={chatState()} />);
+  await openMusicSearch(user);
+  await user.click(openDialog().getByRole('button', { name: '대기열' }));
+  const currentHeading = await openDialog().findByRole('heading', { name: '현재 곡' });
+  const waitingHeading = openDialog().getByRole('heading', { name: '대기 곡' });
+  const card = document.querySelector('.chat-music-current')!;
+  expect(
+    currentHeading.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    card.compareDocumentPosition(waitingHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    openDialog().queryByText('모든 참여자가 대기 곡을 신청하거나 취소할 수 있어요.'),
+  ).toBeNull();
+  expect(openDialog().getByLabelText('대기 1번째')).toHaveTextContent('1');
+  expect(openDialog().getByRole('button', { name: '노래 1 신청 취소' })).toBeVisible();
+});
+it.each([true, false])('preserves empty-queue entry with current=%s', async (withCurrent) => {
+  const user = userEvent.setup();
+  const original = vi.mocked(authenticatedFetchWithCurrentToken).getMockImplementation()!;
+  vi.mocked(authenticatedFetchWithCurrentToken).mockImplementation((path, init, token) =>
+    String(path).includes('queue-items') && init?.method !== 'POST'
+      ? Promise.resolve(
+          musicResponse({
+            ...queuePage(1, []),
+            state: withCurrent ? 'PLAYING' : 'IDLE',
+            current: withCurrent ? queueItem(99, 'PLAYING') : null,
+          }),
+        )
+      : original(path, init, token),
+  );
+  render(<ChatRoomScreen chat={chatState()} />);
+  await openMusicSearch(user);
+  await user.click(openDialog().getByRole('button', { name: '대기열' }));
+  await openDialog().findByRole('heading', { name: '대기 곡' });
+  const action = await openDialog().findByRole('button', { name: '곡 신청하기' });
+  expect(openDialog().queryByRole('heading', { name: '현재 곡' }) !== null).toBe(withCurrent);
+  expect(action.closest('.chat-music-queue-empty-with-current') !== null).toBe(withCurrent);
+  await user.click(action);
+  expect(openDialog().getByRole('searchbox')).toBeVisible();
 });
