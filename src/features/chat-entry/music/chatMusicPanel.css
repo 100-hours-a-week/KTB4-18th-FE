@@ -403,16 +403,22 @@ ol.chat-music-list .chat-music-item-text > small {
   }
 }
 .chat-music-video-item .chat-music-cover {
-  flex-basis: 50px;
-  width: 50px;
-  height: 50px;
+  flex-basis: var(--chat-video-cover-size, 50px);
+  width: var(--chat-video-cover-size, 50px);
+  height: var(--chat-video-cover-size, 50px);
 }
 .chat-music-video-item .chat-music-item-text {
   gap: 0;
 }
 .chat-music-video-item .chat-music-item-text > strong {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  max-height: 36px;
   margin: 0;
   line-height: 18px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .chat-music-video-item .chat-music-item-text > span,
 .chat-music-video-item .chat-music-item-text > small {

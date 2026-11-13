@@ -120,7 +120,10 @@ describe('/신청·검색·대기열 사용자 흐름', () => {
     expect(add.closest('li')).toHaveClass('chat-music-video-item');
     expect(within(add.closest('li')!).getByText('영상 채널')).toHaveAttribute('title', '영상 채널');
     expect(openDialog().getByTitle('노래 1 · 가수 1')).toHaveClass('scrolling-track-title');
-    expect(openDialog().getByTitle('영상 1')).toHaveClass('scrolling-track-title');
+    expect(openDialog().getByTitle('영상 1')).not.toHaveClass('scrolling-track-title');
+    expect(
+      openDialog().getByTitle('노래 1 · 가수 1').closest('.chat-music-video-heading'),
+    ).not.toBeNull();
     fireEvent.click(add);
     fireEvent.click(add);
     await waitFor(() => expect(openDialog().queryByText('요청을 확인하고 있어요…')).toBeNull());
