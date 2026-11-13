@@ -76,6 +76,10 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 const openDialog = () => within(screen.getByRole('dialog'));
+async function closeMusicDialog(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(openDialog().getByRole('button', { name: '음악 창 닫기' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+}
 async function openMusicSearch(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByRole('textbox', { name: '메시지' }), '/신청');
   await user.keyboard('{Enter}');
@@ -91,12 +95,32 @@ describe('/신청·검색·대기열 사용자 흐름', () => {
     await user.keyboard('{Enter}');
     expect(chat.send).not.toHaveBeenCalled();
     expect(composer).toHaveValue('');
-    expect(openDialog().getByRole('searchbox')).toHaveValue('윤하');
+    expect(openDialog().getByRole('searchbox', { name: '제목 또는 가수' })).toHaveValue('윤하');
+    expect(openDialog().getByRole('searchbox')).toHaveAttribute(
+      'placeholder',
+      '듣고 싶은 곡 또는 가수를 찾아보세요',
+    );
+    expect(document.querySelector('label[for="chat-music-query"]')).toHaveClass(
+      'chat-music-accessible',
+    );
+    expect(openDialog().queryByRole('button', { name: '검색' })).toBeNull();
+    expect(
+      openDialog().queryByText('이 지역에서 내가 기록했거나 AI에게 추천받은 음악이에요.'),
+    ).toBeNull();
+    expect(openDialog().queryByText('신청한 곡은 대기 순서대로 재생돼요.')).toBeNull();
+    expect(document.querySelector('.chat-music-search-icon')).toHaveAttribute('alt', '');
     await openDialog().findByRole('button', { name: '노래 1 영상 선택' });
+    expect(openDialog().getByTitle('노래 1')).toHaveClass('scrolling-track-title');
+    expect(openDialog().getByTitle('노래 1')).not.toHaveClass('scrolling-track-title--fade');
     expect(openDialog().getAllByText('지역 기록')).toHaveLength(2);
     expect(openDialog().getAllByText('내 추천')).toHaveLength(2);
     await user.click(openDialog().getByRole('button', { name: '노래 1 영상 선택' }));
     const add = await openDialog().findByRole('button', { name: '영상 1 영상 신청' });
+    expect(add.closest('.chat-music-video-scroll')).not.toBeNull();
+    expect(add.closest('li')).toHaveClass('chat-music-video-item');
+    expect(within(add.closest('li')!).getByText('영상 채널')).toHaveAttribute('title', '영상 채널');
+    expect(openDialog().getByTitle('노래 1 · 가수 1')).toHaveClass('scrolling-track-title');
+    expect(openDialog().getByTitle('영상 1')).toHaveClass('scrolling-track-title');
     fireEvent.click(add);
     fireEvent.click(add);
     await waitFor(() => expect(openDialog().queryByText('요청을 확인하고 있어요…')).toBeNull());
@@ -131,6 +155,8 @@ describe('/신청·검색·대기열 사용자 흐름', () => {
     await user.click(openDialog().getByRole('button', { name: '대기열' }));
     await openDialog().findByRole('button', { name: '노래 1 신청 취소' });
     expect(openDialog().getByRole('region', { name: '현재 곡' })).toHaveTextContent('노래 99');
+    expect(openDialog().getByTitle('노래 99')).toHaveClass('scrolling-track-title');
+    expect(openDialog().getByTitle('노래 1')).toHaveClass('scrolling-track-title');
     expect(openDialog().getByText('이웃 신청')).toBeVisible();
     expect(
       openDialog().queryByRole('button', { name: '노래 99 신청 취소' }),
@@ -220,7 +246,7 @@ describe('/신청·검색·대기열 사용자 흐름', () => {
       );
     expect(searches).toHaveLength(1);
     vi.mocked(authenticatedFetchWithCurrentToken).mockResolvedValueOnce(musicResponse(null, 503));
-    await user.click(openDialog().getByRole('button', { name: '검색' }));
+    await user.keyboard('{Enter}');
     await openDialog().findByText(
       '음악 서비스에 잠시 연결할 수 없어요. 잠시 후 다시 확인해 주세요.',
     );
@@ -277,7 +303,7 @@ it('does not let a late native close event dismiss a reopened music request dial
   const input = screen.getByRole('textbox', { name: '메시지' });
   await user.type(input, '/신청');
   await user.keyboard('{Enter}');
-  await user.click(openDialog().getByRole('button', { name: '음악 창 닫기' }));
+  await closeMusicDialog(user);
   await user.type(input, '/신청 다시');
   await user.keyboard('{Enter}');
   const reopened = screen.getByRole('dialog');
@@ -308,8 +334,10 @@ it('lists unregistered regional music without typing and restores the list after
   list.scrollTop = 200;
   await user.click(choose);
   await openDialog().findByRole('button', { name: '영상 1 영상 신청' });
-  expect(openDialog().getByText(/공식 여부 미확인/)).toBeVisible();
-  expect(openDialog().getByText(/공식 확인/)).toBeVisible();
+  const videos = within(openDialog().getByRole('list', { name: '선택 가능한 영상' }));
+  expect(videos.queryByText('공식 여부 미확인')).toBeNull();
+  expect(videos.queryByText('공식 확인')).toBeNull();
+  expect(videos.getAllByText('2:00')).toHaveLength(2);
   await user.click(openDialog().getByRole('button', { name: '← 지역 음악' }));
   await waitFor(() =>
     expect(openDialog().getByRole('button', { name: '노래 1 영상 선택' })).toHaveFocus(),
@@ -363,7 +391,7 @@ it('keeps one mounted player across mini entry, request, queue and final close w
   await user.click(openDialog().getByRole('button', { name: '대기열' }));
   await user.click(openDialog().getByRole('button', { name: '플레이어' }));
   expect(openDialog().getByRole('region', { name: '공동 음악 재생' })).toBe(player);
-  await user.click(openDialog().getByRole('button', { name: '음악 창 닫기' }));
+  await closeMusicDialog(user);
   expect(mini).toHaveFocus();
   expect(container.querySelector('.chat-room-player')).toBe(player);
   await user.click(mini);
@@ -401,7 +429,7 @@ it.each([
       if (openerState === 'detached') opener.remove();
       else opener.disabled = true;
       if (isMiniDisabled) mini?.setAttribute('disabled', '');
-      await user.click(openDialog().getByRole('button', { name: '음악 창 닫기' }));
+      await closeMusicDialog(user);
       expect(screen.queryByRole('dialog')).toBeNull();
       expect(playerEnabled && !isMiniDisabled ? mini : composer).toHaveFocus();
       expect(opener).not.toHaveFocus();
@@ -427,7 +455,7 @@ it('places the compact card directly after the header and shares the existing pl
   expect(container.querySelectorAll('.chat-room-player')).toHaveLength(1);
   await user.click(card.getByRole('button', { name: '노래 99 / 가수 99 음악 플레이어 열기' }));
   expect(openDialog().getByRole('region', { name: '공동 음악 재생' })).toBe(player);
-  await user.click(openDialog().getByRole('button', { name: '음악 창 닫기' }));
+  await closeMusicDialog(user);
   expect(card.getByRole('button', { name: /음악 플레이어 열기/ })).toHaveFocus();
   expect(container.querySelector('.chat-room-player')).toBe(player);
   expect(

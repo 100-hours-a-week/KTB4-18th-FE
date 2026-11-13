@@ -27,20 +27,41 @@
   color: var(--color-text-primary);
   overscroll-behavior: contain;
 }
+.chat-music-dialog {
+  translate: 0 var(--music-drag-y, 0px);
+  transition: translate 180ms ease-out;
+}
+.chat-music-dialog.chat-music-drag-closing {
+  pointer-events: none;
+}
+.chat-music-dialog.chat-music-dragging {
+  transition: none;
+}
 .chat-music-dialog[open] {
   animation: chat-music-rise 180ms ease-out;
 }
 .chat-music-dialog::backdrop {
   background: rgb(0 0 0 / 0.4);
 }
-.chat-music-sheet::before {
+.chat-music-drag-handle {
+  display: flex;
+  flex: 0 0 16px;
+  justify-content: center;
+  align-self: center;
+  width: 60px;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+.chat-music-drag-handle::before {
   content: '';
-  flex: 0 0 4px;
   width: 36px;
+  height: 4px;
   border-radius: 4px;
   background: #d9d9d4;
-  align-self: center;
-  margin-bottom: 12px;
+}
+.chat-music-drag-handle:active {
+  cursor: grabbing;
 }
 .chat-music-sheet [hidden] {
   display: none;
@@ -71,6 +92,9 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .chat-music-dialog {
+    transition: none;
+  }
   .chat-music-dialog[open] {
     animation: none;
   }

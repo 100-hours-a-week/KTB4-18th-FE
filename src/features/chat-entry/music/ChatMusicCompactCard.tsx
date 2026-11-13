@@ -84,6 +84,7 @@ export function ChatMusicCompactCard({
         ) : (
           <span className="chat-now-playing-empty">
             {"'/신청'을 입력해서 "}
+            <br />
             {regionName || '이 지역'}에서의 음악을 신청해보세요
           </span>
         )}

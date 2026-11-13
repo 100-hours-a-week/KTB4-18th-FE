@@ -1,3 +1,4 @@
+import { ScrollingTrackTitle } from '../../../components/ScrollingTrackTitle';
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { ChatMusicPlayer, type TimedPlayback } from './chatMusicPlayer';
 import type { PlaybackAction } from './chatMusicApi';
@@ -81,26 +82,6 @@ export function ChatMusicPlayerView({
       className={`chat-room-player${hasTrack ? '' : ' chat-room-player-empty'}`}
       aria-label="공동 음악 재생"
     >
-      <div className="chat-room-view-options" role="group" aria-label="플레이어 표시 방식">
-        <button type="button" aria-pressed={!isVideo} onClick={() => setPresentation('album')}>
-          앨범 보기
-        </button>
-        <button
-          type="button"
-          aria-pressed={isVideo}
-          disabled={!hasVideo}
-          onClick={() => setPresentation('video')}
-        >
-          영상 보기
-        </button>
-      </div>
-      {!hasVideo && (
-        <p className="chat-room-view-note">
-          {hasTrack
-            ? '영상 정보가 준비되면 영상 보기를 사용할 수 있어요.'
-            : '곡을 신청하면 영상도 볼 수 있어요.'}
-        </p>
-      )}
       <div className={`chat-room-artwork-stage${isVideo ? ' chat-room-video-stage' : ''}`}>
         <div className="chat-room-provider" inert aria-hidden="true">
           <div ref={container} className="chat-room-youtube" />
@@ -146,7 +127,11 @@ export function ChatMusicPlayerView({
       <div className="chat-room-metadata-row">
         <div className="chat-room-player-heading">
           <div className="chat-room-player-track">
-            <strong>{s?.current?.title ?? '함께 들을 곡을 신청해 보세요'}</strong>
+            {s?.current ? (
+              <ScrollingTrackTitle as="strong" title={s.current.title} fadeEdges={false} />
+            ) : (
+              <strong>함께 들을 곡을 신청해 보세요</strong>
+            )}
             {s?.current && <small>{s.current.artistName}</small>}
           </div>
         </div>
@@ -185,6 +170,34 @@ export function ChatMusicPlayerView({
             <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="currentColor">
               <path d="M4 4l13 8-13 8zm14 0h3v16h-3z" />
             </svg>
+          </button>
+        </div>
+      </div>
+      <div className="chat-room-view-row">
+        {!hasVideo && (
+          <p className="chat-room-view-note">
+            {hasTrack
+              ? '영상 정보가 준비되면 영상 보기를 사용할 수 있어요.'
+              : '곡을 신청하면 영상도 볼 수 있어요.'}
+          </p>
+        )}
+        <div
+          className="chat-room-view-options"
+          role="group"
+          aria-label="플레이어 표시 방식"
+          data-presentation={isVideo ? 'video' : 'album'}
+        >
+          <span className="chat-room-view-indicator" aria-hidden="true" />
+          <button type="button" aria-pressed={!isVideo} onClick={() => setPresentation('album')}>
+            앨범 보기
+          </button>
+          <button
+            type="button"
+            aria-pressed={isVideo}
+            disabled={!hasVideo}
+            onClick={() => setPresentation('video')}
+          >
+            영상 보기
           </button>
         </div>
       </div>
