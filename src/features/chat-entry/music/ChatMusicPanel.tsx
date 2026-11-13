@@ -13,6 +13,7 @@ import { ChatMusicPlayerView } from './ChatMusicPlayerView';
 import { ChatMusicCompactCard } from './ChatMusicCompactCard';
 import { ChatMusicFooter } from './ChatMusicFooter';
 import { ChatMusicToast } from './ChatMusicToast';
+import { ChatMusicVideoCandidateRow } from './ChatMusicVideoCandidateRow';
 import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
 import { chatMusicPlayerEnabled } from './chatMusicCommands';
 import { ScrollingTrackTitle } from '../../../components/ScrollingTrackTitle';
@@ -422,27 +423,15 @@ export function ChatMusicPanel({
                   )}
                 <ul className="chat-music-list" aria-label="선택 가능한 영상">
                   {state.videos?.items.map((video) => (
-                    <li key={video.candidateId} className="chat-music-item chat-music-video-item">
-                      <MusicCover url={video.thumbnailUrl} />
-                      <div className="chat-music-item-text">
-                        <ScrollingTrackTitle as="strong" title={video.title} fadeEdges={false} />
-                        <span title={video.channelTitle}>{video.channelTitle}</span>
-                        <small>
-                          {Math.floor(video.durationMillis / 60000)}:
-                          {String(Math.floor(video.durationMillis / 1000) % 60).padStart(2, '0')}
-                        </small>
-                      </div>
-                      <button
-                        type="button"
-                        disabled={isWriteDisabled || state.isVideoCoolingDown}
-                        aria-label={`${video.title} 영상 신청`}
-                        onClick={() => {
-                          if (state.selectedSong) controller.add(state.selectedSong, video);
-                        }}
-                      >
-                        신청
-                      </button>
-                    </li>
+                    <ChatMusicVideoCandidateRow
+                      key={video.candidateId}
+                      video={video}
+                      cover={<MusicCover url={video.thumbnailUrl} />}
+                      disabled={isWriteDisabled || state.isVideoCoolingDown}
+                      onSelect={() => {
+                        if (state.selectedSong) controller.add(state.selectedSong, video);
+                      }}
+                    />
                   ))}
                 </ul>
               </div>
