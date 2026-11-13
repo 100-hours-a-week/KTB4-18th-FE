@@ -27,6 +27,7 @@ export function useMusicDialogBounds(ref: RefObject<HTMLDialogElement | null>, i
       dialog.style.setProperty('--music-width', `${width}px`);
       dialog.style.setProperty('--music-height', `${height}px`);
       dialog.classList.toggle('chat-music-compact', height < 300);
+      dialog.classList.toggle('chat-music-short', height < 520);
     };
     update();
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : null;

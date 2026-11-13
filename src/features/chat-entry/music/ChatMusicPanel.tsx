@@ -12,8 +12,11 @@ import { useMusicDialogBounds } from './useMusicDialogBounds';
 import { ChatMusicPlayerView } from './ChatMusicPlayerView';
 import { ChatMusicCompactCard } from './ChatMusicCompactCard';
 import { ChatMusicFooter } from './ChatMusicFooter';
+import { ChatMusicToast } from './ChatMusicToast';
 import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
 import { chatMusicPlayerEnabled } from './chatMusicCommands';
+import { ScrollingTrackTitle } from '../../../components/ScrollingTrackTitle';
+import { useMusicSheetDrag } from './useMusicSheetDrag';
 
 export interface MusicSearchRequest {
   sequence: number;
@@ -177,11 +180,18 @@ export function ChatMusicPanel({
   const count = state.queue
     ? `${state.queue.items.length}${state.queue.nextCursor ? '+' : ''}`
     : null;
-  const close = () => {
+  const finishClose = () => {
     setTab(null);
     controller.cancelSearch();
     controller.cancelVideos();
   };
+  const sheetDrag = useMusicSheetDrag(
+    dialog,
+    tab !== null,
+    finishClose,
+    tab === null ? null : `${tab}:${request.sequence}`,
+  );
+  const close = sheetDrag.requestClose;
   const showSearch = () => {
     controller.cancelVideos();
     setQuery('');
@@ -201,7 +211,7 @@ export function ChatMusicPanel({
       )}
       <MusicCover url={song.albumCoverUrl} />
       <div className="chat-music-item-text">
-        <strong>{song.title}</strong>
+        <ScrollingTrackTitle as="strong" title={song.title} fadeEdges={false} />
         <span>{song.artistName}</span>
         {'sources' in song ? (
           <div className="chat-music-sources">
@@ -292,6 +302,7 @@ export function ChatMusicPanel({
         }}
       >
         <div className="chat-music-sheet">
+          <div className="chat-music-drag-handle" aria-hidden="true" {...sheetDrag.handleProps} />
           <header>
             <h2 id="chat-music-title">{tab === 'queue' ? '음악 대기열' : '음악 신청'}</h2>
             <button type="button" aria-label="음악 창 닫기" onClick={close}>
@@ -379,13 +390,15 @@ export function ChatMusicPanel({
                 >
                   ← 지역 음악
                 </button>
-                <strong>
-                  {state.selectedSong.title} · {state.selectedSong.artistName}
-                </strong>
+                <ScrollingTrackTitle
+                  as="strong"
+                  title={`${state.selectedSong.title} · ${state.selectedSong.artistName}`}
+                  fadeEdges={false}
+                />
               </div>
               <p className="chat-music-description">함께 들을 YouTube 영상을 선택해 주세요.</p>
               <div
-                className="chat-music-scroll"
+                className="chat-music-scroll chat-music-video-scroll"
                 ref={scroller}
                 tabIndex={0}
                 aria-label="영상 후보 목록"
@@ -409,15 +422,14 @@ export function ChatMusicPanel({
                   )}
                 <ul className="chat-music-list" aria-label="선택 가능한 영상">
                   {state.videos?.items.map((video) => (
-                    <li key={video.candidateId} className="chat-music-item">
+                    <li key={video.candidateId} className="chat-music-item chat-music-video-item">
                       <MusicCover url={video.thumbnailUrl} />
                       <div className="chat-music-item-text">
-                        <strong>{video.title}</strong>
-                        <span>{video.channelTitle}</span>
+                        <ScrollingTrackTitle as="strong" title={video.title} fadeEdges={false} />
+                        <span title={video.channelTitle}>{video.channelTitle}</span>
                         <small>
                           {Math.floor(video.durationMillis / 60000)}:
-                          {String(Math.floor(video.durationMillis / 1000) % 60).padStart(2, '0')} ·{' '}
-                          {video.officialStatus === 'CONFIRMED' ? '공식 확인' : '공식 여부 미확인'}
+                          {String(Math.floor(video.durationMillis / 1000) % 60).padStart(2, '0')}
                         </small>
                       </div>
                       <button
@@ -444,15 +456,24 @@ export function ChatMusicPanel({
                   if (!isComposing && isReady) void controller.search(query);
                 }}
               >
-                <label htmlFor="chat-music-query">제목 또는 가수</label>
+                <label className="chat-music-accessible" htmlFor="chat-music-query">
+                  제목 또는 가수
+                </label>
                 <div>
+                  <img
+                    className="chat-music-search-icon"
+                    src="/icons/chat/Search.svg"
+                    alt=""
+                    aria-hidden="true"
+                    draggable={false}
+                  />
                   <input
                     ref={input}
                     id="chat-music-query"
                     type="search"
                     value={query}
                     maxLength={100}
-                    placeholder="듣고 싶은 곡을 찾아보세요"
+                    placeholder="듣고 싶은 곡 또는 가수를 찾아보세요"
                     disabled={!isReady}
                     onChange={(event) => {
                       controller.cancelSearch();
@@ -461,16 +482,10 @@ export function ChatMusicPanel({
                     onCompositionStart={() => setIsComposing(true)}
                     onCompositionEnd={() => setIsComposing(false)}
                   />
-                  <button type="submit" disabled={!isReady || isComposing}>
-                    검색
-                  </button>
                 </div>
               </form>
-              <p className="chat-music-description">
-                이 지역에서 내가 기록했거나 AI에게 추천받은 음악이에요.
-              </p>
               <div
-                className="chat-music-scroll"
+                className="chat-music-scroll chat-music-song-scroll"
                 ref={scroller}
                 tabIndex={0}
                 aria-label="지역 음악 목록"
@@ -535,7 +550,7 @@ export function ChatMusicPanel({
                   <MusicCover url={current.albumCoverUrl} />
                   <div>
                     <small>{stateLabel}</small>
-                    <strong>{current.title}</strong>
+                    <ScrollingTrackTitle as="strong" title={current.title} fadeEdges={false} />
                     <span>{current.artistName}</span>
                   </div>
                 </section>
@@ -574,7 +589,7 @@ export function ChatMusicPanel({
                   </p>
                 )}
                 {!state.queueLoading && !state.queueError && state.queue?.items.length === 0 && (
-                  <p className="chat-music-empty">
+                  <p className="chat-music-empty chat-music-empty-queue">
                     대기 중인 곡이 없어요.
                     <button type="button" onClick={showSearch} disabled={!isReady}>
                       곡 신청하기
@@ -604,7 +619,6 @@ export function ChatMusicPanel({
             isReady={isReady}
             isMusicReady={isMusicReady}
             feedback={state}
-            notice={notice}
             onSearch={showSearch}
             onQueue={() => {
               controller.cancelVideos();
@@ -614,6 +628,13 @@ export function ChatMusicPanel({
             onRetry={() => controller.retryMutation()}
           />
         </div>
+        <ChatMusicToast
+          dialog={dialog}
+          isOpen={tab !== null}
+          notice={notice}
+          isCoolingDown={state.isCoolingDown}
+          isVideoCoolingDown={state.isVideoCoolingDown}
+        />
       </dialog>
     </section>
   );

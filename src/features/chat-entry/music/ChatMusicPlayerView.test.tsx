@@ -75,6 +75,19 @@ it('preserves the SDK iframe, local settings and commands through presentation h
   await waitFor(() => expect(api.loadVideoById).toHaveBeenCalledTimes(1));
   const iframe = container.querySelector('iframe');
   expect(iframe?.closest('[inert]')).toHaveAttribute('aria-hidden', 'true');
+  const modeGroup = screen.getByRole('group', { name: '플레이어 표시 방식' });
+  const indicator = modeGroup.querySelector('.chat-room-view-indicator');
+  expect(modeGroup.querySelectorAll('.chat-room-view-indicator')).toHaveLength(1);
+  expect(indicator).toHaveAttribute('aria-hidden', 'true');
+  expect(modeGroup).toHaveAttribute('data-presentation', 'album');
+  const modeRow = container.querySelector('.chat-room-view-row');
+  expect(container.querySelector('.chat-room-metadata-row')?.nextElementSibling).toBe(modeRow);
+  expect(modeGroup.parentElement).toBe(modeRow);
+  expect(modeRow?.nextElementSibling).toBe(container.querySelector('.chat-room-player-status'));
+  expect(screen.getByTitle(value.snapshot.current!.title)).toHaveClass('scrolling-track-title');
+  expect(screen.getByTitle(value.snapshot.current!.title)).not.toHaveClass(
+    'scrolling-track-title--fade',
+  );
   const slider = screen.getByRole('slider', { name: '내 음량' });
   expect(slider).toHaveAttribute('min', '0');
   expect(slider).toHaveAttribute('max', '100');
@@ -91,6 +104,7 @@ it('preserves the SDK iframe, local settings and commands through presentation h
   video.focus();
   await user.keyboard('{Enter}');
   expect(video).toHaveAttribute('aria-pressed', 'true');
+  expect(modeGroup).toHaveAttribute('data-presentation', 'video');
   expect(iframe?.closest('.chat-room-provider')).toHaveAttribute('inert');
   expect(iframe?.closest('.chat-room-provider')).toHaveAttribute('aria-hidden', 'true');
   expect(container.querySelector('.chat-room-video-shield')).not.toHaveAttribute('hidden');
@@ -104,6 +118,8 @@ it('preserves the SDK iframe, local settings and commands through presentation h
   album.focus();
   await user.keyboard(' ');
   expect(album).toHaveAttribute('aria-pressed', 'true');
+  expect(modeGroup).toHaveAttribute('data-presentation', 'album');
+  expect(modeGroup.querySelector('.chat-room-view-indicator')).toBe(indicator);
   expect(iframe?.closest('.chat-room-provider')).toHaveAttribute('inert');
   expect(iframe?.closest('.chat-room-provider')).toHaveAttribute('aria-hidden', 'true');
   expect(container.querySelector('.chat-room-artwork')).not.toHaveAttribute('hidden');
@@ -185,6 +201,10 @@ it('defaults to the album and disables video without a current track or playable
   expect(screen.getByRole('button', { name: '앨범 보기' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.getByRole('button', { name: '영상 보기' })).toBeDisabled();
   expect(screen.getByText('곡을 신청하면 영상도 볼 수 있어요.')).toBeVisible();
+  expect(container.querySelector('.scrolling-track-title')).toBeNull();
+  expect(screen.getByText('곡을 신청하면 영상도 볼 수 있어요.').nextElementSibling).toBe(
+    screen.getByRole('group', { name: '플레이어 표시 방식' }),
+  );
   const value = playback();
   rerender(
     <ChatMusicPlayerView
