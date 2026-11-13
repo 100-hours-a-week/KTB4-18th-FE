@@ -4,30 +4,19 @@ import { ChatMusicFooter } from './ChatMusicFooter';
 import type { MusicQueueState } from './chatMusicQueueController';
 
 const props = () => ({
-  isPlayer: true,
-  count: '0',
-  isReady: true,
   isMusicReady: true,
   feedback: { isCoolingDown: false, isMutating: false, pending: null } as Pick<
     MusicQueueState,
     'isCoolingDown' | 'isMutating' | 'pending'
   >,
-  onSearch: vi.fn(),
-  onQueue: vi.fn(),
   onRetry: vi.fn(),
 });
 afterEach(cleanup);
-it('retains menu callbacks without descriptions, statuses or an empty focus stop', () => {
-  const value = props();
-  const { rerender } = render(<ChatMusicFooter {...value} />);
-  fireEvent.click(screen.getByRole('button', { name: '＋ 음악 신청' }));
-  fireEvent.click(screen.getByRole('button', { name: '대기열 0' }));
-  expect(value.onSearch).toHaveBeenCalledOnce();
-  expect(value.onQueue).toHaveBeenCalledOnce();
+it('keeps only mutation recovery with no navigation or empty focus stop', () => {
+  render(<ChatMusicFooter {...props()} />);
+  expect(screen.queryByRole('button')).toBeNull();
   expect(screen.queryByRole('status')).toBeNull();
   expect(screen.getByRole('region')).not.toHaveAttribute('tabindex');
-  rerender(<ChatMusicFooter {...value} isPlayer={false} />);
-  expect(screen.queryByText('신청한 곡은 대기 순서대로 재생돼요.')).toBeNull();
 });
 it.each([
   ['playback', '재생 요청 결과 다시 확인'],

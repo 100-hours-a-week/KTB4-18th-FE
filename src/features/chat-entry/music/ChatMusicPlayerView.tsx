@@ -207,7 +207,10 @@ export function ChatMusicPlayerView({
       >
         {!isReady ? '연결을 확인하고 있어요. 재생은 연결 후 이어져요.' : labels[state.status]}
       </div>
-      {state.message && <p role={state.status === 'error' ? 'alert' : 'status'}>{state.message}</p>}
+      {state.message &&
+        !(state.status === 'buffering' && state.message === 'YouTube 영상을 불러오고 있어요.') && (
+          <p role={state.status === 'error' ? 'alert' : 'status'}>{state.message}</p>
+        )}
       {state.status === 'blocked' && (
         <button
           type="button"

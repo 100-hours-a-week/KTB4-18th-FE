@@ -32,7 +32,6 @@ export function ChatMusicToast({
   dialog,
   isOpen,
   notice,
-  isCoolingDown,
   isVideoCoolingDown,
 }: ChatMusicToastProps) {
   const toast = useRef<HTMLDivElement>(null);
@@ -43,11 +42,13 @@ export function ChatMusicToast({
   useEffect(() => {
     const messages = [
       ...(isVideoCoolingDown ? ['영상 검색·신청은 잠시 후 다시 이용해 주세요.'] : []),
-      ...(isCoolingDown ? ['잠시 후 다음 요청을 보낼 수 있어요.'] : []),
       ...(notice ? [notice] : []),
     ];
-    const fresh = messages.filter((message) => !previous.current.has(message));
-    previous.current = new Set(messages);
+    const visibleMessages = messages.filter(
+      (message) => message !== '잠시 후 다음 요청을 보낼 수 있어요.',
+    );
+    const fresh = visibleMessages.filter((message) => !previous.current.has(message));
+    previous.current = new Set(visibleMessages);
     if (!isOpen) {
       generation.current++;
       if (timer.current) clearTimeout(timer.current);
@@ -75,7 +76,7 @@ export function ChatMusicToast({
         timer.current = null;
       }, 5000);
     });
-  }, [dialog, isOpen, notice, isCoolingDown, isVideoCoolingDown]);
+  }, [dialog, isOpen, notice, isVideoCoolingDown]);
 
   useEffect(() => {
     if (!isOpen) return;
