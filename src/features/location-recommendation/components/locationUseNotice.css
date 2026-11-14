@@ -3,15 +3,16 @@
   z-index: 1200;
   inset: 0;
   display: grid;
-  place-items: center;
+  place-items: safe center center;
+  overflow-y: auto;
+  overscroll-behavior-y: none;
   padding: 20px;
   background: rgb(22 23 24 / 54%);
 }
 
 .location-notice {
+  box-sizing: border-box;
   width: min(100%, 520px);
-  max-height: min(90vh, 720px);
-  overflow: auto;
   padding: 28px;
   border-radius: 20px;
   background: var(--color-bg-primary, #fff);
@@ -28,6 +29,7 @@
 
 .location-notice h2 {
   margin: 0 0 18px;
+  overflow-wrap: anywhere;
   font-size: 22px;
   line-height: 1.35;
 }

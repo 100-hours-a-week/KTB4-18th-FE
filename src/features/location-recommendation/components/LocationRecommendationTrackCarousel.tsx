@@ -1,19 +1,26 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { resolveItunesTrack } from '../api/itunesTrackSearch';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
+} from 'react';
 import type { LocationRecommendationTrack } from '../locationRecommendationTypes';
+import { ScrollingTrackTitle } from '../../../components/ScrollingTrackTitle';
 import './locationRecommendationTrackCarousel.css';
 
 const TRACK_SWIPE_THRESHOLD_PX = 48;
 const TRACK_DRAG_ACTIVATION_PX = 8;
-const ITUNES_LOOKUP_TIMEOUT_MS = 8_000;
+const TRACK_WHEEL_THRESHOLD_PX = 48;
+const TRACK_WHEEL_COOLDOWN_MS = 400;
+const TRACK_SELECTION_STEP_MS = 80;
+const TRACK_SELECTION_SETTLE_MS = 180;
 const MAX_DRAG_PROGRESS = 0.34;
-const SIDE_CARD_POSITION_PERCENT = 16;
-const CENTER_POSITION_PERCENT = 50;
-const SIDE_CARD_SCALE = 0.68;
+const SIDE_CARD_SCALE = 0.82;
+const SIDE_CARD_OFFSET = 0.49;
 
 type SlidePosition = 'previous' | 'current' | 'next';
-
-type ResolvedTrackMedia = Record<string, LocationRecommendationTrack>;
 
 type MusicPreviewState = {
   activeTrack: string | null;
@@ -27,44 +34,26 @@ type MusicPreviewState = {
 type LocationRecommendationTrackCarouselProps = {
   tracks: LocationRecommendationTrack[];
   isPreviewAllowed: boolean;
+  onRefresh?: () => void;
+  onRecordTrack: (track: LocationRecommendationTrack) => void;
   preview: MusicPreviewState;
 };
-
-function withoutRecommendationMedia(track: LocationRecommendationTrack) {
-  return { ...track, previewUrl: null, artworkUrl: null, storeUrl: null };
-}
-
-function getTrackKey(track: LocationRecommendationTrack) {
-  return JSON.stringify([track.trackId, track.title, track.artist]);
-}
 
 export function LocationRecommendationTrackCarousel({
   tracks,
   isPreviewAllowed,
+  onRefresh,
+  onRecordTrack,
   preview,
 }: LocationRecommendationTrackCarouselProps) {
-  const isDevelopmentBuild = import.meta.env.DEV;
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(tracks[0]?.trackId ?? null);
-  const [resolvedTrackMedia, setResolvedTrackMedia] = useState<ResolvedTrackMedia>({});
   const [unavailableArtworkUrls, setUnavailableArtworkUrls] = useState<Set<string>>(
     () => new Set(),
   );
   const [isDragging, setIsDragging] = useState(false);
+  const [isStepping, setIsStepping] = useState(false);
   const [dragProgress, setDragProgress] = useState(0);
-  const mediaTracks = isDevelopmentBuild
-    ? tracks.map(
-        (item) => resolvedTrackMedia[getTrackKey(item)] ?? withoutRecommendationMedia(item),
-      )
-    : tracks;
-  const resolvingTrackIds = new Set(
-    isDevelopmentBuild
-      ? tracks
-          .filter(
-            (item) => !Object.prototype.hasOwnProperty.call(resolvedTrackMedia, getTrackKey(item)),
-          )
-          .map((item) => item.trackId)
-      : [],
-  );
+  const mediaTracks = tracks;
   const selectedTrackIndex = Math.max(
     0,
     mediaTracks.findIndex((item) => item.trackId === selectedTrackId),
@@ -76,32 +65,32 @@ export function LocationRecommendationTrackCarousel({
     startY: number;
     stageWidth: number;
   } | null>(null);
+  const wheelGestureRef = useRef({ delta: 0, lastEventAt: 0, lastChangeAt: 0 });
+  const selectionTimerRef = useRef<number | null>(null);
   const track = mediaTracks[selectedTrackIndex];
   const hasMultipleTracks = mediaTracks.length > 1;
   const isTrackActive = preview.activeTrack === track.trackId;
 
-  useEffect(() => {
-    if (!isDevelopmentBuild || tracks.length === 0) return;
-    let isCurrent = true;
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), ITUNES_LOOKUP_TIMEOUT_MS);
-    void Promise.all(
-      tracks.map(async (item) => {
-        const resolvedTrack = await resolveItunesTrack(item, controller.signal);
-        if (!isCurrent) return;
-        setResolvedTrackMedia((current) => ({ ...current, [getTrackKey(item)]: resolvedTrack }));
-      }),
-    ).finally(() => window.clearTimeout(timeout));
+  useEffect(
+    () => () => {
+      if (selectionTimerRef.current !== null) {
+        window.clearTimeout(selectionTimerRef.current);
+      }
+    },
+    [],
+  );
 
-    return () => {
-      isCurrent = false;
-      window.clearTimeout(timeout);
-      controller.abort();
-    };
-  }, [isDevelopmentBuild, tracks]);
+  const cancelTrackSelectionAnimation = () => {
+    if (selectionTimerRef.current !== null) {
+      window.clearTimeout(selectionTimerRef.current);
+      selectionTimerRef.current = null;
+    }
+    setIsStepping(false);
+  };
 
   const selectTrack = (index: number) => {
     if (mediaTracks.length === 0) return;
+    cancelTrackSelectionAnimation();
     const nextIndex = ((index % mediaTracks.length) + mediaTracks.length) % mediaTracks.length;
     if (nextIndex === selectedTrackIndex) return;
     preview.stop();
@@ -109,11 +98,44 @@ export function LocationRecommendationTrackCarousel({
     setDragProgress(0);
   };
 
+  const animateTrackSelection = (targetIndex: number) => {
+    if (mediaTracks.length === 0) return;
+    cancelTrackSelectionAnimation();
+    if (targetIndex === selectedTrackIndex) return;
+
+    const direction = targetIndex > selectedTrackIndex ? 1 : -1;
+    let currentIndex = selectedTrackIndex;
+    preview.stop();
+    setIsStepping(true);
+    setDragProgress(0);
+
+    const advance = () => {
+      currentIndex += direction;
+      setSelectedTrackId(mediaTracks[currentIndex].trackId);
+      if (currentIndex === targetIndex) {
+        selectionTimerRef.current = window.setTimeout(() => {
+          selectionTimerRef.current = null;
+          setIsStepping(false);
+        }, TRACK_SELECTION_SETTLE_MS);
+        return;
+      }
+      selectionTimerRef.current = window.setTimeout(advance, TRACK_SELECTION_STEP_MS);
+    };
+
+    advance();
+  };
+
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (
       !hasMultipleTracks ||
       !event.isPrimary ||
       (event.pointerType === 'mouse' && event.button !== 0)
+    ) {
+      return;
+    }
+    if (
+      event.target instanceof Element &&
+      !event.target.closest('.location-recommendation-carousel__slide--current')
     ) {
       return;
     }
@@ -143,6 +165,32 @@ export function LocationRecommendationTrackCarousel({
       Math.max(-1, Math.min(1, deltaX / (pointerStart.stageWidth * MAX_DRAG_PROGRESS))),
     );
     event.preventDefault();
+  };
+
+  const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (
+      !hasMultipleTracks ||
+      !(event.target instanceof Element) ||
+      !event.target.closest('.location-recommendation-carousel__slide--current')
+    ) {
+      return;
+    }
+    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+    if (delta === 0) return;
+
+    event.preventDefault();
+    const now = event.timeStamp;
+    const gesture = wheelGestureRef.current;
+    if (now - gesture.lastEventAt > 180) gesture.delta = 0;
+    gesture.lastEventAt = now;
+    if (now - gesture.lastChangeAt < TRACK_WHEEL_COOLDOWN_MS) return;
+    gesture.delta += delta;
+    if (Math.abs(gesture.delta) < TRACK_WHEEL_THRESHOLD_PX) return;
+
+    const direction = gesture.delta > 0 ? -1 : 1;
+    gesture.delta = 0;
+    gesture.lastChangeAt = now;
+    selectTrack(selectedTrackIndex + direction);
   };
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -178,27 +226,22 @@ export function LocationRecommendationTrackCarousel({
 
   const getSlideStyle = (position: SlidePosition) => {
     const dragAmount = Math.abs(dragProgress);
-    let left = CENTER_POSITION_PERCENT;
+    let offset: number;
     let scale: number;
     let zIndex = 2;
 
     if (position === 'current') {
-      left += dragProgress * (CENTER_POSITION_PERCENT - SIDE_CARD_POSITION_PERCENT);
-      scale = 1 - dragAmount * 0.28;
+      offset = dragProgress * SIDE_CARD_OFFSET;
+      scale = 1 - dragAmount * (1 - SIDE_CARD_SCALE);
     } else if (position === 'previous') {
-      left =
-        SIDE_CARD_POSITION_PERCENT +
-        Math.max(dragProgress, 0) * (CENTER_POSITION_PERCENT - SIDE_CARD_POSITION_PERCENT);
+      offset = -SIDE_CARD_OFFSET * (1 - Math.max(dragProgress, 0));
       scale =
         dragProgress > 0
           ? SIDE_CARD_SCALE + dragProgress * (1 - SIDE_CARD_SCALE)
           : SIDE_CARD_SCALE - dragAmount * 0.12;
       zIndex = dragProgress > 0 ? 3 : 1;
     } else {
-      left =
-        100 -
-        SIDE_CARD_POSITION_PERCENT +
-        Math.min(dragProgress, 0) * (CENTER_POSITION_PERCENT - SIDE_CARD_POSITION_PERCENT);
+      offset = SIDE_CARD_OFFSET * (1 + Math.min(dragProgress, 0));
       scale =
         dragProgress < 0
           ? SIDE_CARD_SCALE + dragAmount * (1 - SIDE_CARD_SCALE)
@@ -207,10 +250,11 @@ export function LocationRecommendationTrackCarousel({
     }
 
     return {
-      left: `${left}%`,
+      '--album-offset': offset,
+      '--album-scale': scale,
       transform: `translate(-50%, -50%) scale(${scale})`,
       zIndex,
-    };
+    } as CSSProperties;
   };
 
   const getArtwork = (item: LocationRecommendationTrack) =>
@@ -220,16 +264,32 @@ export function LocationRecommendationTrackCarousel({
 
   return (
     <div
-      className={`location-recommendation-carousel${isDragging ? ' location-recommendation-carousel--dragging' : ''}`}
+      className={`location-recommendation-carousel${isDragging ? ' location-recommendation-carousel--dragging' : ''}${isStepping ? ' location-recommendation-carousel--stepping' : ''}`}
       role="group"
-      aria-label="지역 추천 음악. 좌우로 드래그하거나 탐색 버튼을 눌러 곡을 넘길 수 있어요."
+      aria-label="지역 추천 음악. 앨범을 좌우로 드래그하거나 스크롤하고, 탐색 버튼을 눌러 곡을 넘길 수 있어요."
       aria-roledescription="carousel"
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerCancel}
     >
-      <div className="location-recommendation-carousel__stage" ref={stageRef}>
+      <div className="location-recommendation-carousel__background" aria-hidden="true">
+        {mediaTracks.map((item) =>
+          item.artworkUrl && !unavailableArtworkUrls.has(item.artworkUrl) ? (
+            <img
+              key={item.trackId}
+              src={item.artworkUrl}
+              alt=""
+              data-active={item.trackId === track.trackId}
+            />
+          ) : null,
+        )}
+      </div>
+      <div
+        className="location-recommendation-carousel__stage"
+        ref={stageRef}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onWheel={handleWheel}
+      >
         {slides.map(({ track: slideTrack, position }) => (
           <div
             className={`location-recommendation-carousel__slide location-recommendation-carousel__slide--${position}`}
@@ -255,40 +315,57 @@ export function LocationRecommendationTrackCarousel({
         ))}
       </div>
       <div className="location-recommendation-carousel__copy" aria-live="polite">
-        <p className="location-recommendation-carousel__title">{track.title}</p>
+        <ScrollingTrackTitle
+          key={track.trackId}
+          className="location-recommendation-carousel__title"
+          title={track.title}
+        />
         <p className="location-recommendation-carousel__artist">{track.artist}</p>
-        <button
-          className="location-recommendation-carousel__preview"
-          type="button"
-          disabled={!track.previewUrl || !isPreviewAllowed}
-          aria-label={`${isTrackActive && preview.isPlaying ? '미리 듣기 중지' : '미리 듣기'}: ${track.title}`}
-          onClick={() => {
-            if (track.previewUrl && isPreviewAllowed) {
-              void preview.toggle(track.trackId, track.previewUrl);
-            }
-          }}
-        >
-          {!track.previewUrl && resolvingTrackIds.has(track.trackId)
-            ? '미리 듣기 찾는 중…'
-            : isTrackActive && (preview.isPlaying || preview.isLoading)
-              ? '중지 ■'
-              : track.previewUrl
-                ? '미리 듣기 ▶'
-                : '미리 듣기 없음'}
-        </button>
-        {(track.previewUrl || track.storeUrl) && (
-          <p className="location-recommendation-carousel__attribution">iTunes에서 제공</p>
-        )}
-        {track.storeUrl && (
-          <a
-            className="location-recommendation-carousel__store-link"
-            href={track.storeUrl}
-            target="_blank"
-            rel="noreferrer"
+        <div className="location-recommendation-carousel__actions">
+          {onRefresh ? (
+            <button
+              className="location-recommendation-carousel__preview"
+              type="button"
+              onClick={onRefresh}
+            >
+              추천 다시 받기
+            </button>
+          ) : (
+            <button
+              className="location-recommendation-carousel__preview"
+              type="button"
+              disabled={!track.previewUrl || !isPreviewAllowed}
+              aria-label={`${isTrackActive && preview.isPlaying ? '미리 듣기 중지' : '미리 듣기'}: ${track.title}`}
+              onClick={() => {
+                if (track.previewUrl && isPreviewAllowed) {
+                  void preview.toggle(track.trackId, track.previewUrl);
+                }
+              }}
+            >
+              {isTrackActive && (preview.isPlaying || preview.isLoading) ? (
+                <>
+                  중지
+                  <img src="/icons/location-recommendation/stop.svg" alt="" aria-hidden="true" />
+                </>
+              ) : track.previewUrl ? (
+                <>
+                  미리 듣기
+                  <img src="/icons/location-recommendation/play.svg" alt="" aria-hidden="true" />
+                </>
+              ) : (
+                '미리 듣기 없음'
+              )}
+            </button>
+          )}
+          <button
+            className="location-recommendation-carousel__preview location-recommendation-carousel__record"
+            type="button"
+            aria-label="이 곡으로 음악 기록 작성"
+            onClick={() => onRecordTrack(track)}
           >
-            Apple Music에서 보기
-          </a>
-        )}
+            <img src="/icons/location-recommendation/write.svg" alt="" />
+          </button>
+        </div>
       </div>
       {hasMultipleTracks && (
         <div className="location-recommendation-carousel__navigation">
@@ -298,7 +375,7 @@ export function LocationRecommendationTrackCarousel({
             aria-label="이전 추천곡"
             onClick={() => selectTrack(selectedTrackIndex - 1)}
           >
-            ‹
+            <img src="/icons/location-recommendation/arrow-left.svg" alt="" aria-hidden="true" />
           </button>
           <div className="location-recommendation-carousel__indicators" aria-label="추천곡 선택">
             {mediaTracks.map((item, index) => (
@@ -308,7 +385,7 @@ export function LocationRecommendationTrackCarousel({
                 key={item.trackId}
                 aria-label={`추천곡 ${index + 1}: ${item.title} 선택`}
                 aria-pressed={index === selectedTrackIndex}
-                onClick={() => selectTrack(index)}
+                onClick={() => animateTrackSelection(index)}
               >
                 <span aria-hidden="true" />
               </button>
@@ -323,7 +400,7 @@ export function LocationRecommendationTrackCarousel({
             aria-label="다음 추천곡"
             onClick={() => selectTrack(selectedTrackIndex + 1)}
           >
-            ›
+            <img src="/icons/location-recommendation/arrow-right.svg" alt="" aria-hidden="true" />
           </button>
         </div>
       )}

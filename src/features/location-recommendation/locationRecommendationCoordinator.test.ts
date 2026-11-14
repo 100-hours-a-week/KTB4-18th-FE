@@ -4,6 +4,7 @@ import {
   getLocationSampleAgeMs,
   getLocationSample,
   isPersistedPageReentry,
+  isLocalLocationRecommendationTestHost,
   isValidLocationSample,
   LocationRecommendationCoordinator,
   reserveAccessSequence,
@@ -115,6 +116,41 @@ describe('location recommendation coordination helpers', () => {
     expect(internals.displayedCandidate).toBe(candidate);
   });
 
+  it('enables repeated map recommendations only on localhost and IPv4 loopback', () => {
+    expect(isLocalLocationRecommendationTestHost('localhost')).toBe(true);
+    expect(isLocalLocationRecommendationTestHost('127.0.0.1')).toBe(true);
+    expect(isLocalLocationRecommendationTestHost('192.168.0.10')).toBe(false);
+    expect(isLocalLocationRecommendationTestHost('dev.meomuneum.com')).toBe(false);
+  });
+
+  it('starts another local recommendation when re-entering the ready main map', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const coordinator = new LocationRecommendationCoordinator('local-map-repeat-test', () => {});
+    const beginAccessEvent = vi.fn();
+    const internals = coordinator as unknown as {
+      serviceRoute: boolean;
+      isActive: boolean;
+      lastActive: boolean;
+      started: boolean;
+      hasEnteredReadyMap: boolean;
+      hasReceivedWorkerState: boolean;
+      beginAccessEvent: typeof beginAccessEvent;
+      setMapState: (isMapRoute: boolean, isMapReady: boolean) => void;
+    };
+    internals.serviceRoute = true;
+    internals.isActive = true;
+    internals.lastActive = true;
+    internals.started = false;
+    internals.hasEnteredReadyMap = true;
+    internals.hasReceivedWorkerState = true;
+    internals.beginAccessEvent = beginAccessEvent;
+
+    internals.setMapState(false, false);
+    internals.setMapState(true, true);
+
+    expect(beginAccessEvent).toHaveBeenCalledOnce();
+  });
+
   it('preserves an unclosed recommendation when temporarily leaving service routes', () => {
     const coordinator = new LocationRecommendationCoordinator('auth-epoch', () => undefined);
     const internals = coordinator as unknown as {
@@ -130,6 +166,32 @@ describe('location recommendation coordination helpers', () => {
     internals.stop(false, false);
 
     expect(internals.displayedCandidate).toBe(candidate);
+  });
+
+  it('clears the previous worker snapshot before a later client connection', () => {
+    const coordinator = new LocationRecommendationCoordinator('worker-reconnect-test', () => {});
+    const deactivate = vi.fn();
+    const close = vi.fn();
+    const internals = coordinator as unknown as {
+      started: boolean;
+      currentState: LocationRecommendationState | null;
+      hasReceivedWorkerState: boolean;
+      waitingForWorkerState: boolean;
+      client: { deactivate: typeof deactivate; close: typeof close };
+      stop: (resetAuth: boolean, preserveLogicalActivity: boolean) => void;
+    };
+    internals.started = true;
+    internals.currentState = {} as LocationRecommendationState;
+    internals.hasReceivedWorkerState = true;
+    internals.waitingForWorkerState = true;
+    internals.client = { deactivate, close };
+
+    internals.stop(false, false);
+
+    expect(internals.currentState).toBeNull();
+    expect(internals.hasReceivedWorkerState).toBe(false);
+    expect(internals.waitingForWorkerState).toBe(false);
+    expect(close).toHaveBeenCalledOnce();
   });
 
   it('does not close a displayed recommendation when geolocation permission changes', () => {
@@ -299,9 +361,11 @@ describe('location recommendation coordination helpers', () => {
       currentOperationUUID: string | null;
       isActive: boolean;
       isMapRoute: boolean;
+      isMapEligible: boolean;
       serviceRoute: boolean;
       started: boolean;
       client: { deactivate: typeof deactivate };
+      hasReceivedWorkerState: boolean;
       pauseAfterAuthorizationFailure: (error: unknown) => void;
       handleAuthorizationChange: () => void;
       acquireLeaderAndStart: typeof acquireLeaderAndStart;
@@ -314,6 +378,8 @@ describe('location recommendation coordination helpers', () => {
     internals.currentOperationUUID = grant.operationUUID;
     internals.isActive = true;
     internals.isMapRoute = true;
+    internals.isMapEligible = true;
+    internals.hasReceivedWorkerState = true;
     internals.serviceRoute = true;
     internals.started = true;
     internals.client = { deactivate };
@@ -336,7 +402,7 @@ describe('location recommendation coordination helpers', () => {
     window.removeEventListener(ACCESS_TOKEN_CHANGED_EVENT, handleAuthorizationChange);
   });
 
-  it('starts one access check on service entry before the map route is ready', () => {
+  it('defers access checks on non-map service routes', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const coordinator = new LocationRecommendationCoordinator(
       'service-entry-test',
@@ -350,6 +416,7 @@ describe('location recommendation coordination helpers', () => {
       lastActive: boolean;
       started: boolean;
       noticeAcknowledged: boolean;
+      hasReceivedWorkerState: boolean;
       beginAccessEvent: typeof beginAccessEvent;
       checkActivity: () => void;
     };
@@ -357,12 +424,649 @@ describe('location recommendation coordination helpers', () => {
     internals.isMapRoute = false;
     internals.started = true;
     internals.noticeAcknowledged = true;
+    internals.hasReceivedWorkerState = true;
     internals.beginAccessEvent = beginAccessEvent;
     internals.checkActivity();
 
     expect(internals.isActive).toBe(true);
     expect(internals.lastActive).toBe(true);
     expect(internals.isMapRoute).toBe(false);
+    expect(beginAccessEvent).not.toHaveBeenCalled();
+  });
+
+  it('starts the first map access check when the authenticated map becomes ready', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const coordinator = new LocationRecommendationCoordinator('first-map-entry-test', () => {});
+    const beginAccessEvent = vi.fn();
+    const internals = coordinator as unknown as {
+      serviceRoute: boolean;
+      isMapRoute: boolean;
+      isMapEligible: boolean;
+      isActive: boolean;
+      lastActive: boolean;
+      started: boolean;
+      noticeAcknowledged: boolean;
+      hasReceivedWorkerState: boolean;
+      currentAccessEventId: string | null;
+      beginAccessEvent: typeof beginAccessEvent;
+      checkActivity: () => void;
+      setMapState: (isMapRoute: boolean, isMapReady: boolean) => void;
+    };
+    internals.serviceRoute = true;
+    internals.isMapRoute = true;
+    internals.isMapEligible = false;
+    internals.started = true;
+    internals.noticeAcknowledged = true;
+    internals.hasReceivedWorkerState = true;
+    internals.beginAccessEvent = beginAccessEvent;
+
+    internals.checkActivity();
+
+    expect(internals.isActive).toBe(true);
+    expect(beginAccessEvent).not.toHaveBeenCalled();
+
+    internals.setMapState(true, true);
+
+    expect(beginAccessEvent).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['unclaimed', null],
+    ['already claimed by this tab', grant.tabId],
+  ] as const)(
+    'revalidates and displays a ready recommendation from the initial worker snapshot (%s)',
+    async (_grantState, displayGrantedTabId) => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      const views: Array<{ candidate: LocationRecommendationCandidate | null }> = [];
+      const coordinator = new LocationRecommendationCoordinator('auth-epoch', (view) => {
+        views.push(view);
+      });
+      const requestDisplayGrant = vi.fn();
+      const readyCandidate = { ...candidate, authEpoch: 'auth-epoch' };
+      const readyState: LocationRecommendationState = {
+        authEpoch: 'auth-epoch',
+        workerInstanceId: 'shared-worker',
+        stateRevision: 1,
+        activeTabId: grant.tabId,
+        leaderEpoch: grant.leaderEpoch,
+        accessEventId: readyCandidate.accessEventId,
+        operationUUID: readyCandidate.operationUUID,
+        accessSequence: readyCandidate.accessSequence,
+        phase: 'REQUEST_SENT',
+        status: 'READY',
+        requestId: readyCandidate.requestId,
+        region: readyCandidate.region,
+        tracks: readyCandidate.tracks,
+        scopeGeneration: readyCandidate.scopeGeneration,
+        cancelEpoch: readyCandidate.cancelEpoch,
+        remainingTtlMs: readyCandidate.remainingTtlMs,
+        displayGrantedTabId,
+        cancelMarker: null,
+        candidate: readyCandidate,
+      };
+      requestDisplayGrant.mockResolvedValue({ ...readyState, displayGrantedTabId: grant.tabId });
+      vi.mocked(getLocationRecommendationStatus).mockResolvedValue({
+        requestId: readyCandidate.requestId,
+        status: 'READY',
+        reason: null,
+        region: readyCandidate.region,
+        tracks: readyCandidate.tracks,
+        scopeGeneration: readyCandidate.scopeGeneration,
+        cancelEpoch: readyCandidate.cancelEpoch,
+        remainingTtlMs: readyCandidate.remainingTtlMs,
+      });
+      vi.mocked(getLocationRecommendationContext).mockResolvedValue({
+        scopeGeneration: readyCandidate.scopeGeneration,
+        cancelEpoch: readyCandidate.cancelEpoch,
+        kstDate: '2026-11-06',
+        activeRequestId: null,
+      });
+      vi.mocked(claimLocationRecommendationDisplay).mockResolvedValue({
+        requestId: readyCandidate.requestId,
+        displayAllowed: true,
+        reason: null,
+      });
+      const internals = coordinator as unknown as {
+        isActive: boolean;
+        isMapEligible: boolean;
+        isMapRoute: boolean;
+        serviceRoute: boolean;
+        setMapState: (isMapRoute: boolean, isMapReady: boolean) => void;
+        currentAccessEventId: string | null;
+        currentOperationUUID: string | null;
+        started: boolean;
+        client: {
+          tabId: string;
+          requestDisplayGrant: typeof requestDisplayGrant;
+          setMapEligibility: ReturnType<typeof vi.fn>;
+        };
+        handleWorkerState: (state: LocationRecommendationState, isInitial: boolean) => void;
+      };
+      internals.isActive = true;
+      internals.isMapEligible = false;
+      internals.isMapRoute = true;
+      internals.serviceRoute = true;
+      internals.started = true;
+      internals.currentAccessEventId = null;
+      internals.currentOperationUUID = null;
+      internals.client = {
+        tabId: grant.tabId,
+        requestDisplayGrant,
+        setMapEligibility: vi.fn(),
+      };
+
+      internals.setMapState(true, true);
+      expect(views.at(-1)?.candidate).toBeNull();
+
+      internals.handleWorkerState(readyState, true);
+      await vi.waitFor(() => expect(views.at(-1)?.candidate).toEqual(readyCandidate));
+
+      expect(internals.currentAccessEventId).toBe(readyCandidate.accessEventId);
+      expect(internals.currentOperationUUID).toBe(readyCandidate.operationUUID);
+      expect(getLocationRecommendationStatus).toHaveBeenCalledOnce();
+      expect(claimLocationRecommendationDisplay).toHaveBeenCalledTimes(
+        displayGrantedTabId === null ? 1 : 0,
+      );
+      expect(requestDisplayGrant).toHaveBeenCalledTimes(displayGrantedTabId === null ? 1 : 0);
+    },
+  );
+
+  it('starts a map access check when the map page is entered again without a URL change', () => {
+    const coordinator = new LocationRecommendationCoordinator('same-url-map-entry-test', () => {});
+    const startMapAccessIfReady = vi.fn();
+    const internals = coordinator as unknown as {
+      started: boolean;
+      serviceRoute: boolean;
+      isMapRoute: boolean;
+      isMapEligible: boolean;
+      isActive: boolean;
+      startMapAccessIfReady: typeof startMapAccessIfReady;
+    };
+    internals.started = true;
+    internals.serviceRoute = true;
+    internals.isMapRoute = true;
+    internals.isMapEligible = true;
+    internals.isActive = true;
+    internals.startMapAccessIfReady = startMapAccessIfReady;
+
+    coordinator.handleMapPageEntry();
+
+    expect(startMapAccessIfReady).toHaveBeenCalledOnce();
+    expect(startMapAccessIfReady).toHaveBeenCalledWith(true);
+  });
+
+  it('starts a new recommendation access event when the active map tab resumes', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const coordinator = new LocationRecommendationCoordinator('map-resume-test', () => {});
+    const beginAccessEvent = vi.fn();
+    const internals = coordinator as unknown as {
+      serviceRoute: boolean;
+      isMapRoute: boolean;
+      isMapEligible: boolean;
+      isActive: boolean;
+      lastActive: boolean;
+      started: boolean;
+      noticeAcknowledged: boolean;
+      hasReceivedWorkerState: boolean;
+      currentAccessEventId: string | null;
+      currentOperationUUID: string | null;
+      beginAccessEvent: typeof beginAccessEvent;
+      checkActivity: () => void;
+    };
+    internals.serviceRoute = true;
+    internals.isMapRoute = true;
+    internals.isMapEligible = true;
+    internals.isActive = false;
+    internals.lastActive = false;
+    internals.started = true;
+    internals.noticeAcknowledged = true;
+    internals.hasReceivedWorkerState = true;
+    internals.currentAccessEventId = grant.accessEventId;
+    internals.currentOperationUUID = grant.operationUUID;
+    internals.beginAccessEvent = beginAccessEvent;
+
+    internals.checkActivity();
+
+    expect(beginAccessEvent).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['before map readiness', false],
+    ['after map readiness', true],
+  ] as const)(
+    'starts a fresh map check when an empty worker snapshot arrives %s',
+    (_timing, mapReadyFirst) => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      const coordinator = new LocationRecommendationCoordinator('initial-empty-map-test', () => {});
+      const beginAccessEvent = vi.fn();
+      const internals = coordinator as unknown as {
+        serviceRoute: boolean;
+        isMapRoute: boolean;
+        isMapEligible: boolean;
+        isActive: boolean;
+        lastActive: boolean;
+        started: boolean;
+        noticeAcknowledged: boolean;
+        client: { setMapEligibility: ReturnType<typeof vi.fn> };
+        beginAccessEvent: typeof beginAccessEvent;
+        handleWorkerState: (state: LocationRecommendationState, isInitial: boolean) => void;
+        setMapState: (isMapRoute: boolean, isMapReady: boolean) => void;
+      };
+      internals.serviceRoute = true;
+      internals.isMapRoute = true;
+      internals.isMapEligible = false;
+      internals.isActive = true;
+      internals.lastActive = true;
+      internals.started = true;
+      internals.noticeAcknowledged = true;
+      internals.client = { setMapEligibility: vi.fn() };
+      internals.beginAccessEvent = beginAccessEvent;
+
+      if (mapReadyFirst) internals.setMapState(true, true);
+
+      internals.handleWorkerState(
+        {
+          authEpoch: 'initial-empty-map-test',
+          workerInstanceId: 'shared-worker',
+          stateRevision: 1,
+          activeTabId: null,
+          leaderEpoch: 0,
+          accessEventId: grant.accessEventId,
+          operationUUID: grant.operationUUID,
+          accessSequence: 1,
+          phase: 'ABORTED_UNKNOWN',
+          status: 'EMPTY',
+          requestId: null,
+          region: null,
+          tracks: [],
+          scopeGeneration: null,
+          cancelEpoch: null,
+          remainingTtlMs: 0,
+          displayGrantedTabId: null,
+          cancelMarker: null,
+          candidate: null,
+        },
+        true,
+      );
+
+      if (!mapReadyFirst) internals.setMapState(true, true);
+
+      expect(beginAccessEvent).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('starts a new access event when a restored READY candidate fails backend revalidation', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const coordinator = new LocationRecommendationCoordinator('stale-ready-test', () => {});
+    const beginAccessEvent = vi.fn();
+    const readyCandidate = { ...candidate, authEpoch: 'stale-ready-test' };
+    const requestDisplayGrant = vi.fn();
+    vi.mocked(getLocationRecommendationStatus).mockResolvedValue({
+      requestId: readyCandidate.requestId,
+      status: 'EMPTY',
+      reason: 'EXPIRED',
+      region: readyCandidate.region,
+      tracks: [],
+      scopeGeneration: readyCandidate.scopeGeneration,
+      cancelEpoch: readyCandidate.cancelEpoch,
+      remainingTtlMs: 0,
+    });
+    const internals = coordinator as unknown as {
+      serviceRoute: boolean;
+      isMapRoute: boolean;
+      isMapEligible: boolean;
+      isActive: boolean;
+      lastActive: boolean;
+      started: boolean;
+      currentAccessEventId: string | null;
+      currentOperationUUID: string | null;
+      client: { tabId: string; requestDisplayGrant: typeof requestDisplayGrant };
+      beginAccessEvent: typeof beginAccessEvent;
+      handleWorkerState: (state: LocationRecommendationState) => void;
+    };
+    internals.serviceRoute = true;
+    internals.isMapRoute = true;
+    internals.isMapEligible = true;
+    internals.isActive = true;
+    internals.lastActive = true;
+    internals.started = true;
+    internals.currentAccessEventId = null;
+    internals.currentOperationUUID = null;
+    internals.client = { tabId: grant.tabId, requestDisplayGrant };
+    internals.beginAccessEvent = beginAccessEvent;
+
+    internals.handleWorkerState({
+      authEpoch: 'stale-ready-test',
+      workerInstanceId: 'shared-worker',
+      stateRevision: 1,
+      activeTabId: grant.tabId,
+      leaderEpoch: grant.leaderEpoch,
+      accessEventId: readyCandidate.accessEventId,
+      operationUUID: readyCandidate.operationUUID,
+      accessSequence: readyCandidate.accessSequence,
+      phase: 'REQUEST_SENT',
+      status: 'READY',
+      requestId: readyCandidate.requestId,
+      region: readyCandidate.region,
+      tracks: readyCandidate.tracks,
+      scopeGeneration: readyCandidate.scopeGeneration,
+      cancelEpoch: readyCandidate.cancelEpoch,
+      remainingTtlMs: readyCandidate.remainingTtlMs,
+      displayGrantedTabId: null,
+      cancelMarker: null,
+      candidate: readyCandidate,
+    });
+    await vi.waitFor(() => expect(beginAccessEvent).toHaveBeenCalledOnce());
+    expect(claimLocationRecommendationDisplay).not.toHaveBeenCalled();
+    expect(requestDisplayGrant).not.toHaveBeenCalled();
+  });
+
+  it('does not let a stale READY check replace a newer event after the tab resumes', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const coordinator = new LocationRecommendationCoordinator('stale-resume-test', () => {});
+    const beginAccessEvent = vi.fn();
+    const readyCandidate = { ...candidate, authEpoch: 'stale-resume-test' };
+    const requestDisplayGrant = vi.fn();
+    let resolveStatus: (
+      result: Awaited<ReturnType<typeof getLocationRecommendationStatus>>,
+    ) => void = () => undefined;
+    vi.mocked(getLocationRecommendationStatus).mockReturnValue(
+      new Promise((resolve) => {
+        resolveStatus = resolve;
+      }),
+    );
+    const internals = coordinator as unknown as {
+      serviceRoute: boolean;
+      isMapRoute: boolean;
+      isMapEligible: boolean;
+      isActive: boolean;
+      lastActive: boolean;
+      started: boolean;
+      currentAccessEventId: string | null;
+      currentOperationUUID: string | null;
+      client: { tabId: string; requestDisplayGrant: typeof requestDisplayGrant };
+      beginAccessEvent: typeof beginAccessEvent;
+      handleWorkerState: (state: LocationRecommendationState) => void;
+    };
+    internals.serviceRoute = true;
+    internals.isMapRoute = true;
+    internals.isMapEligible = true;
+    internals.isActive = true;
+    internals.lastActive = true;
+    internals.started = true;
+    internals.currentAccessEventId = null;
+    internals.currentOperationUUID = null;
+    internals.client = { tabId: grant.tabId, requestDisplayGrant };
+    internals.beginAccessEvent = beginAccessEvent;
+
+    internals.handleWorkerState({
+      authEpoch: 'stale-resume-test',
+      workerInstanceId: 'shared-worker',
+      stateRevision: 1,
+      activeTabId: grant.tabId,
+      leaderEpoch: grant.leaderEpoch,
+      accessEventId: readyCandidate.accessEventId,
+      operationUUID: readyCandidate.operationUUID,
+      accessSequence: readyCandidate.accessSequence,
+      phase: 'REQUEST_SENT',
+      status: 'READY',
+      requestId: readyCandidate.requestId,
+      region: readyCandidate.region,
+      tracks: readyCandidate.tracks,
+      scopeGeneration: readyCandidate.scopeGeneration,
+      cancelEpoch: readyCandidate.cancelEpoch,
+      remainingTtlMs: readyCandidate.remainingTtlMs,
+      displayGrantedTabId: null,
+      cancelMarker: null,
+      candidate: readyCandidate,
+    });
+    await vi.waitFor(() => expect(getLocationRecommendationStatus).toHaveBeenCalledOnce());
+
+    const resumedEventId = crypto.randomUUID();
+    const resumedOperationUUID = crypto.randomUUID();
+    internals.currentAccessEventId = resumedEventId;
+    internals.currentOperationUUID = resumedOperationUUID;
+    resolveStatus({
+      requestId: readyCandidate.requestId,
+      status: 'EMPTY',
+      reason: 'EXPIRED',
+      region: readyCandidate.region,
+      tracks: [],
+      scopeGeneration: readyCandidate.scopeGeneration,
+      cancelEpoch: readyCandidate.cancelEpoch,
+      remainingTtlMs: 0,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(beginAccessEvent).not.toHaveBeenCalled();
+    expect(internals.currentAccessEventId).toBe(resumedEventId);
+    expect(internals.currentOperationUUID).toBe(resumedOperationUUID);
+  });
+
+  it('does not display a same-tab READY candidate after its event is superseded during verification', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const views: Array<{ candidate: LocationRecommendationCandidate | null }> = [];
+    const coordinator = new LocationRecommendationCoordinator('late-ready-resume-test', (view) => {
+      views.push(view);
+    });
+    const readyCandidate = { ...candidate, authEpoch: 'late-ready-resume-test' };
+    const requestDisplayGrant = vi.fn();
+    let resolveStatus: (
+      result: Awaited<ReturnType<typeof getLocationRecommendationStatus>>,
+    ) => void = () => undefined;
+    vi.mocked(getLocationRecommendationStatus).mockReturnValue(
+      new Promise((resolve) => {
+        resolveStatus = resolve;
+      }),
+    );
+    vi.mocked(getLocationRecommendationContext).mockResolvedValue({
+      scopeGeneration: readyCandidate.scopeGeneration,
+      cancelEpoch: readyCandidate.cancelEpoch,
+      kstDate: '2026-11-06',
+      activeRequestId: null,
+    });
+    const internals = coordinator as unknown as {
+      serviceRoute: boolean;
+      isMapRoute: boolean;
+      isMapEligible: boolean;
+      isActive: boolean;
+      lastActive: boolean;
+      started: boolean;
+      currentAccessEventId: string | null;
+      currentOperationUUID: string | null;
+      displayedCandidate: LocationRecommendationCandidate | null;
+      client: { tabId: string; requestDisplayGrant: typeof requestDisplayGrant };
+      handleWorkerState: (state: LocationRecommendationState) => void;
+    };
+    internals.serviceRoute = true;
+    internals.isMapRoute = true;
+    internals.isMapEligible = true;
+    internals.isActive = true;
+    internals.lastActive = true;
+    internals.started = true;
+    internals.currentAccessEventId = null;
+    internals.currentOperationUUID = null;
+    internals.displayedCandidate = null;
+    internals.client = { tabId: grant.tabId, requestDisplayGrant };
+
+    internals.handleWorkerState({
+      authEpoch: 'late-ready-resume-test',
+      workerInstanceId: 'shared-worker',
+      stateRevision: 1,
+      activeTabId: grant.tabId,
+      leaderEpoch: grant.leaderEpoch,
+      accessEventId: readyCandidate.accessEventId,
+      operationUUID: readyCandidate.operationUUID,
+      accessSequence: readyCandidate.accessSequence,
+      phase: 'REQUEST_SENT',
+      status: 'READY',
+      requestId: readyCandidate.requestId,
+      region: readyCandidate.region,
+      tracks: readyCandidate.tracks,
+      scopeGeneration: readyCandidate.scopeGeneration,
+      cancelEpoch: readyCandidate.cancelEpoch,
+      remainingTtlMs: readyCandidate.remainingTtlMs,
+      displayGrantedTabId: grant.tabId,
+      cancelMarker: null,
+      candidate: readyCandidate,
+    });
+    await vi.waitFor(() => expect(getLocationRecommendationStatus).toHaveBeenCalledOnce());
+
+    const resumedEventId = crypto.randomUUID();
+    const resumedOperationUUID = crypto.randomUUID();
+    internals.currentAccessEventId = resumedEventId;
+    internals.currentOperationUUID = resumedOperationUUID;
+    resolveStatus({
+      requestId: readyCandidate.requestId,
+      status: 'READY',
+      reason: null,
+      region: readyCandidate.region,
+      tracks: readyCandidate.tracks,
+      scopeGeneration: readyCandidate.scopeGeneration,
+      cancelEpoch: readyCandidate.cancelEpoch,
+      remainingTtlMs: readyCandidate.remainingTtlMs,
+    });
+    await vi.waitFor(() => expect(getLocationRecommendationContext).toHaveBeenCalledOnce());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(internals.displayedCandidate).toBeNull();
+    expect(views.at(-1)?.candidate).toBeNull();
+    expect(requestDisplayGrant).not.toHaveBeenCalled();
+    expect(internals.currentAccessEventId).toBe(resumedEventId);
+    expect(internals.currentOperationUUID).toBe(resumedOperationUUID);
+  });
+
+  it('does not display an unclaimed candidate when its worker grant arrives after a new event', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const views: Array<{ candidate: LocationRecommendationCandidate | null }> = [];
+    const coordinator = new LocationRecommendationCoordinator('late-grant-test', (view) => {
+      views.push(view);
+    });
+    const readyCandidate = { ...candidate, authEpoch: 'late-grant-test' };
+    let resolveDisplayGrant: (state: LocationRecommendationState | null) => void = () => undefined;
+    const requestDisplayGrant = vi.fn(
+      () =>
+        new Promise<LocationRecommendationState | null>((resolve) => {
+          resolveDisplayGrant = resolve;
+        }),
+    );
+    const readyState: LocationRecommendationState = {
+      authEpoch: 'late-grant-test',
+      workerInstanceId: 'shared-worker',
+      stateRevision: 1,
+      activeTabId: grant.tabId,
+      leaderEpoch: grant.leaderEpoch,
+      accessEventId: readyCandidate.accessEventId,
+      operationUUID: readyCandidate.operationUUID,
+      accessSequence: readyCandidate.accessSequence,
+      phase: 'REQUEST_SENT',
+      status: 'READY',
+      requestId: readyCandidate.requestId,
+      region: readyCandidate.region,
+      tracks: readyCandidate.tracks,
+      scopeGeneration: readyCandidate.scopeGeneration,
+      cancelEpoch: readyCandidate.cancelEpoch,
+      remainingTtlMs: readyCandidate.remainingTtlMs,
+      displayGrantedTabId: null,
+      cancelMarker: null,
+      candidate: readyCandidate,
+    };
+    vi.mocked(getLocationRecommendationStatus).mockResolvedValue({
+      requestId: readyCandidate.requestId,
+      status: 'READY',
+      reason: null,
+      region: readyCandidate.region,
+      tracks: readyCandidate.tracks,
+      scopeGeneration: readyCandidate.scopeGeneration,
+      cancelEpoch: readyCandidate.cancelEpoch,
+      remainingTtlMs: readyCandidate.remainingTtlMs,
+    });
+    vi.mocked(getLocationRecommendationContext).mockResolvedValue({
+      scopeGeneration: readyCandidate.scopeGeneration,
+      cancelEpoch: readyCandidate.cancelEpoch,
+      kstDate: '2026-11-06',
+      activeRequestId: null,
+    });
+    vi.mocked(claimLocationRecommendationDisplay).mockResolvedValue({
+      requestId: readyCandidate.requestId,
+      displayAllowed: true,
+      reason: null,
+    });
+    const internals = coordinator as unknown as {
+      serviceRoute: boolean;
+      isMapRoute: boolean;
+      isMapEligible: boolean;
+      isActive: boolean;
+      lastActive: boolean;
+      started: boolean;
+      currentAccessEventId: string | null;
+      currentOperationUUID: string | null;
+      displayedCandidate: LocationRecommendationCandidate | null;
+      client: { tabId: string; requestDisplayGrant: typeof requestDisplayGrant };
+      handleWorkerState: (state: LocationRecommendationState) => void;
+    };
+    internals.serviceRoute = true;
+    internals.isMapRoute = true;
+    internals.isMapEligible = true;
+    internals.isActive = true;
+    internals.lastActive = true;
+    internals.started = true;
+    internals.currentAccessEventId = null;
+    internals.currentOperationUUID = null;
+    internals.displayedCandidate = null;
+    internals.client = { tabId: grant.tabId, requestDisplayGrant };
+
+    internals.handleWorkerState(readyState);
+    await vi.waitFor(() => expect(requestDisplayGrant).toHaveBeenCalledOnce());
+
+    const nextEventId = crypto.randomUUID();
+    const nextOperationUUID = crypto.randomUUID();
+    internals.currentAccessEventId = nextEventId;
+    internals.currentOperationUUID = nextOperationUUID;
+    resolveDisplayGrant({ ...readyState, displayGrantedTabId: grant.tabId });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(internals.displayedCandidate).toBeNull();
+    expect(views.at(-1)?.candidate).toBeNull();
+    expect(internals.currentAccessEventId).toBe(nextEventId);
+    expect(internals.currentOperationUUID).toBe(nextOperationUUID);
+  });
+
+  it('starts the first map access check when focus returns after map readiness', () => {
+    let hasFocus = true;
+    vi.spyOn(document, 'hasFocus').mockImplementation(() => hasFocus);
+    const coordinator = new LocationRecommendationCoordinator('map-focus-race-test', () => {});
+    const beginAccessEvent = vi.fn();
+    const internals = coordinator as unknown as {
+      serviceRoute: boolean;
+      isMapRoute: boolean;
+      isMapEligible: boolean;
+      isActive: boolean;
+      lastActive: boolean;
+      started: boolean;
+      noticeAcknowledged: boolean;
+      hasReceivedWorkerState: boolean;
+      currentAccessEventId: string | null;
+      beginAccessEvent: typeof beginAccessEvent;
+      checkActivity: () => void;
+      setMapState: (isMapRoute: boolean, isMapReady: boolean) => void;
+    };
+    internals.serviceRoute = true;
+    internals.isMapRoute = true;
+    internals.isMapEligible = false;
+    internals.started = true;
+    internals.noticeAcknowledged = true;
+    internals.hasReceivedWorkerState = true;
+    internals.beginAccessEvent = beginAccessEvent;
+
+    internals.checkActivity();
+    hasFocus = false;
+    internals.setMapState(true, true);
+    expect(beginAccessEvent).not.toHaveBeenCalled();
+
+    hasFocus = true;
+    internals.checkActivity();
+
     expect(beginAccessEvent).toHaveBeenCalledOnce();
   });
 
@@ -828,10 +1532,10 @@ describe('location recommendation coordination helpers', () => {
     await recreatedInternals.reconcilePendingMarkers();
 
     expect(cancelLocationRecommendation).toHaveBeenCalledTimes(2);
-    expect(cancelLocationRecommendation.mock.calls[1][0]).toEqual(
-      cancelLocationRecommendation.mock.calls[0][0],
+    expect(vi.mocked(cancelLocationRecommendation).mock.calls[1][0]).toEqual(
+      vi.mocked(cancelLocationRecommendation).mock.calls[0][0],
     );
-    expect(cancelLocationRecommendation.mock.calls[1][0]).toMatchObject({
+    expect(vi.mocked(cancelLocationRecommendation).mock.calls[1][0]).toMatchObject({
       requestId,
       scopeGeneration,
       cancelEpoch: candidate.cancelEpoch,
@@ -897,7 +1601,7 @@ describe('location recommendation coordination helpers', () => {
     await vi.advanceTimersByTimeAsync(LOCATION_RECOMMENDATION_STATUS_INTERVAL_MS);
     await recovery;
 
-    expect(getLocationRecommendationStatus.mock.calls.map(([id]) => id)).toEqual([
+    expect(vi.mocked(getLocationRecommendationStatus).mock.calls.map(([id]) => id)).toEqual([
       grant.operationUUID,
       requestId,
     ]);
@@ -922,7 +1626,11 @@ describe('location recommendation coordination helpers', () => {
       cancelEpoch: 2,
       remainingTtlMs: 0,
     });
-    vi.mocked(cancelLocationRecommendation).mockResolvedValue(undefined);
+    vi.mocked(cancelLocationRecommendation).mockResolvedValue({
+      status: 'CANCELLED',
+      scopeGeneration,
+      cancelEpoch: 3,
+    });
     const coordinator = new LocationRecommendationCoordinator('auth-epoch', () => undefined);
     const internals = coordinator as unknown as {
       activeGrant: WorkerGrant | null;

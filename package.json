@@ -19,7 +19,16 @@
     "verify:chat:tab-types": "tsc -p tsconfig.chatTabE2e.json",
     "verify:auth:tabs": "playwright test -c playwright.auth.config.ts",
     "verify:auth:types": "tsc -p tsconfig.authVerification.json",
-    "verify:chat:distributed": "node scripts/runChatDistributedRecovery.mjs"
+    "verify:chat:distributed": "node scripts/runChatDistributedRecovery.mjs",
+    "verify:chat:music:integration": "node scripts/runChatMusicRequestIntegration.mjs",
+    "verify:chat:music:browser": "node scripts/runChatMusicRequestBrowser.mjs",
+    "verify:chat:music:player:integration": "node scripts/runChatMusicRequestIntegration.mjs --player",
+    "verify:chat:music:player:browser": "node scripts/runChatMusicPlayerBrowser.mjs",
+    "verify:chat:music:sync:integration": "node scripts/runChatMusicRequestIntegration.mjs --sync",
+    "verify:chat:music:sync:browser": "node scripts/runChatMusicPlayerBrowser.mjs --sync",
+    "verify:chat:music:release": "node scripts/runChatMusicRequestIntegration.mjs --release",
+    "verify:chat:music:contracts": "node scripts/verifyChatMusicContracts.mjs",
+    "verify:chat:music:readiness": "python3 ../meomuneum-backend/scripts/verify-chat-music-release.py"
   },
   "dependencies": {
     "@karrotmarket/react-monochrome-icon": "^1.27.0",

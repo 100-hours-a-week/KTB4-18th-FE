@@ -7,6 +7,17 @@ import {
 
 const PREFIX = 'meomuneum:direct-auth-operation:';
 const MAX_TTL_MS = 900_000;
+const OPERATION_KINDS: DirectAuthOperationKind[] = [
+  'BOOTSTRAP',
+  'LOGIN',
+  'LOGIN_RECOVERY',
+  'REFRESH',
+  'LOGOUT',
+  'REBOOTSTRAP',
+  'REFRESH_RECOVERY',
+];
+
+export type DirectAuthOperationSnapshot = Record<DirectAuthOperationKind, string | null>;
 
 export class DirectAuthStorageError extends Error {
   constructor() {
@@ -111,6 +122,39 @@ export function sameDirectAuthOperation(a: DirectAuthOperation, b: DirectAuthOpe
     a.operationId === b.operationId &&
     a.expiresAt === b.expiresAt
   );
+}
+
+export function snapshotDirectAuthOperations(
+  storage: Storage = sessionStorage,
+): DirectAuthOperationSnapshot {
+  try {
+    return Object.fromEntries(
+      OPERATION_KINDS.map((kind) => [kind, storage.getItem(PREFIX + kind)]),
+    ) as DirectAuthOperationSnapshot;
+  } catch {
+    throw new DirectAuthStorageError();
+  }
+}
+
+export function clearExpiredDirectAuthRefreshOperation(
+  snapshot: DirectAuthOperationSnapshot,
+  expected: DirectAuthOperation,
+  storage: Storage = sessionStorage,
+  now = Date.now(),
+): boolean {
+  if (!Number.isSafeInteger(now) || expected.expiresAt > now) return false;
+  if (OPERATION_KINDS.some((kind) => kind !== 'REFRESH' && snapshot[kind] !== null)) return false;
+  const expectedRaw = JSON.stringify(expected);
+  if (snapshot.REFRESH !== expectedRaw) return false;
+  try {
+    const current = snapshotDirectAuthOperations(storage);
+    if (OPERATION_KINDS.some((kind) => current[kind] !== snapshot[kind])) return false;
+    storage.removeItem(PREFIX + 'REFRESH');
+    if (storage.getItem(PREFIX + 'REFRESH') !== null) throw new DirectAuthStorageError();
+    return true;
+  } catch {
+    throw new DirectAuthStorageError();
+  }
 }
 
 export function clearDirectAuthOperation(

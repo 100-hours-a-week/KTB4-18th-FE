@@ -44,7 +44,10 @@ export type CreatedRecord = Pick<
   MusicRecord,
   'record_id' | 'map_dot_id' | 'region' | 'custom_place_name' | 'created_at'
 >;
-export type MusicRecordDetail = MusicRecord & { updated_at: string | null };
+export type MusicRecordDetail = MusicRecord & {
+  updated_at: string | null;
+  preview_url?: string | null;
+};
 export type MusicRecordChanges = Partial<
   Pick<MusicRecordDetail, 'custom_place_name' | 'emotion_memo'>
 > & {

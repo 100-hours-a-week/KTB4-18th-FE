@@ -47,6 +47,7 @@ export type LocationRecommendationResult = {
   reason: string | null;
   region: LocationRecommendationRegion;
   tracks: LocationRecommendationTrack[];
+  recommendationMessage?: string;
   scopeGeneration: string;
   cancelEpoch: number;
   remainingTtlMs: number;
@@ -86,6 +87,7 @@ export type LocationRecommendationCandidate = {
   requestId: string;
   region: LocationRecommendationRegion;
   tracks: LocationRecommendationTrack[];
+  recommendationMessage?: string;
   scopeGeneration: string;
   cancelEpoch: number;
   remainingTtlMs: number;

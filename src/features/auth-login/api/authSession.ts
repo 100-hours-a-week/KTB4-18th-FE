@@ -4,8 +4,12 @@ import {
   clearDirectSession,
   directAuthenticatedFetch,
   getDirectAccessToken,
+  directAuthFlow,
+  directAuthVersion,
   DIRECT_AUTH_CHANGED_EVENT,
+  beginDirectAuthChecking,
   directFetchWithinTransition,
+  setDirectAuthRecoveryUnavailable,
   isDirectTransitionToken,
   runDirectAuthTransition,
 } from './directAuthSessionState';
@@ -15,6 +19,9 @@ import {
   syncChatCacheAccount,
 } from '../../chat-entry/services/chatConversationCache';
 import { probeAuthCapabilities } from './authCapabilities';
+import { isDirectRefreshVerified } from './authProtocolMode';
+import { restoreVerifiedDirectSession } from './directAuthSessionRefresh';
+import { DirectAuthApiError } from './directAuthTypes';
 import {
   authFlowHeaders,
   getAuthFlow,
@@ -110,6 +117,10 @@ function sharedAuthEpoch(): string {
   } catch {
     throw new AuthRequestError(null);
   }
+}
+
+export function getSharedAuthEpoch(): string {
+  return sharedAuthEpoch();
 }
 
 export function getAuthRestoreState(): AuthRestoreState {
@@ -750,7 +761,55 @@ export async function authenticatedFetch(
   init: RequestInit = {},
   options: AuthenticatedFetchOptions = {},
 ): Promise<Response> {
-  if (isDirectAuthEnabled()) return directAuthenticatedFetch(input, init);
+  if (isDirectAuthEnabled()) {
+    const originalToken = getDirectAccessToken();
+    const requestVersion = directAuthVersion();
+    const requestFlowId = directAuthFlow()?.flowId;
+    const response = await directAuthenticatedFetch(input, init);
+    if (response.status !== 401) return response;
+    abortIfNeeded(init.signal);
+
+    // A protected-resource 401 is the refresh trigger. Keep auth-state observers
+    // from routing this tab to login while the cookie-backed refresh is in flight.
+    const finishAuthCheck = beginDirectAuthChecking();
+    try {
+      const restoreResult = isDirectRefreshVerified()
+        ? await restoreVerifiedDirectSession()
+        : 'INVALID';
+      if (directAuthVersion() !== requestVersion) throw new Error('Authentication changed');
+      const refreshedToken = getDirectAccessToken();
+      const refreshedFlowId = directAuthFlow()?.flowId;
+      if (
+        restoreResult === 'REFRESHED' &&
+        refreshedToken &&
+        refreshedToken !== originalToken &&
+        refreshedFlowId === requestFlowId
+      ) {
+        if (!isReplayableBody(init.body)) return response;
+        abortIfNeeded(init.signal);
+        const retry = await directAuthenticatedFetch(input, init, refreshedToken);
+        if (retry.status === 401) clearDirectSession();
+        return retry;
+      }
+      if (restoreResult === 'VALID' || restoreResult === 'UNAVAILABLE') return response;
+      if (restoreResult === 'SUPERSEDED') throw new Error('Authentication changed');
+      if (restoreResult === 'INVALID' && directAuthVersion() === requestVersion) {
+        if (refreshedToken && directAuthFlow()?.flowId !== requestFlowId)
+          throw new Error('Authentication changed');
+        clearDirectSession();
+      }
+      return response;
+    } catch (error) {
+      if (init.signal?.aborted) throw error;
+      if (directAuthVersion() !== requestVersion) throw error;
+      const invalidSession = error instanceof DirectAuthApiError && error.status === 401;
+      if (invalidSession) clearDirectSession();
+      setDirectAuthRecoveryUnavailable(!invalidSession);
+      throw error;
+    } finally {
+      finishAuthCheck();
+    }
+  }
   assertAuthCapabilities();
   if (typeof Request !== 'undefined' && input instanceof Request) {
     throw new AuthRequestError(null);

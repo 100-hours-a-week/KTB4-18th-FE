@@ -221,6 +221,27 @@ async function renderAuthenticatedMyPage() {
 }
 
 describe('탭 간 인증 세션 복구', () => {
+  it('로그인 페이지에 남은 브라우저 세션을 복구하면 기본 경로인 메인 지도로 이동한다', async () => {
+    const restored = accessTokenWithExpiration(Date.now() + 60 * 60 * 1000);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL) =>
+        Promise.resolve(
+          String(input).endsWith('/token/csrf')
+            ? Response.json({ data: { csrf_token: 'csrf' } })
+            : Response.json({ data: { access_token: restored } }),
+        ),
+      ),
+    );
+    window.history.replaceState(null, '', '/login');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: '음악 지도' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
+    expect(getAccessToken()).toBe(restored);
+  });
+
   it('로그인 URL의 새 탭은 refresh 성공 뒤 원래 보호 경로로 돌아간다', async () => {
     const restored = accessTokenWithExpiration(Date.now() + 60 * 60 * 1000);
     const fetcher = vi.fn((input: string | URL) =>
@@ -955,6 +976,48 @@ describe('로그인과 회원가입 화면 연결', () => {
     });
   });
 
+  it('로그아웃 상태에서 메인 지도에 접근하면 로그인으로 보내고 원래 경로를 보존한다', async () => {
+    resetAuthSessionForTests();
+    sessionStorage.clear();
+    localStorage.removeItem('meomuneum:auth-epoch');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith('/token/csrf')) {
+          return Promise.resolve(Response.json({ data: { csrf_token: 'csrf' } }));
+        }
+        if (url.endsWith('/token/refresh')) {
+          return Promise.resolve(
+            Response.json({ message: 'unauthorized', data: null }, { status: 401 }),
+          );
+        }
+        return Promise.resolve(Response.json({ data: null }));
+      }),
+    );
+    window.history.replaceState(null, '', '/');
+
+    render(<App />);
+
+    expect(await screen.findByLabelText('이메일')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/login');
+    expect(new URLSearchParams(window.location.search).get('returnTo')).toBe('/');
+    expect(screen.queryByRole('heading', { name: '음악 지도' })).not.toBeInTheDocument();
+  });
+
+  it('브라우저에 유효한 로그인 정보가 있으면 메인 지도에 접근할 수 있다', async () => {
+    resetAuthSessionForTests();
+    sessionStorage.clear();
+    setAccessToken(accessTokenWithExpiration(Date.now() + 60 * 60 * 1000));
+    window.history.replaceState(null, '', '/');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: '음악 지도' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
+    expect(screen.queryByLabelText('이메일')).not.toBeInTheDocument();
+  });
+
   it('인증된 사용자는 보호 경로에서 로그인 화면으로 이동하지 않는다', async () => {
     resetAuthSessionForTests();
     sessionStorage.clear();
@@ -1315,8 +1378,7 @@ describe('로그인과 회원가입 화면 연결', () => {
     expect(logout).not.toHaveBeenCalled();
   });
 
-  it('일시적인 sessionStorage 접근 오류 후 보호 경로에서 재시도해 복구한다', async () => {
-    const user = userEvent.setup();
+  it('일시적인 인증 복구 오류는 보호 경로를 열지 않고 로그인 경로를 안내한다', async () => {
     resetAuthSessionForTests();
     sessionStorage.clear();
     window.history.replaceState(null, '', '/chatbot');
@@ -1348,13 +1410,14 @@ describe('로그인과 회원가입 화면 연결', () => {
     );
     render(<App />);
 
-    const retry = await screen.findByRole('button', { name: '다시 시도' });
+    const login = await screen.findByRole('link', { name: '로그인' });
+    expect(login).toHaveAttribute('href', '/login?returnTo=%2Fchatbot');
+    expect(screen.getByRole('alert')).toHaveTextContent('인증 서버에 연결할 수 없어요.');
     expect(screen.queryByRole('heading', { name: '음악 찾기' })).not.toBeInTheDocument();
     expect(recommend).not.toHaveBeenCalled();
-    await user.click(retry);
-
-    expect(await screen.findByRole('heading', { name: '음악 찾기' })).toBeInTheDocument();
-    expect(getAccessToken()).toBe('restored-token');
+    expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument();
+    expect(csrfCount).toBe(1);
+    expect(getAccessToken()).toBeNull();
   });
 
   it('데이터 401 뒤 refresh도 401이면 메인 인증 상태를 guest로 바꾼다', async () => {
@@ -1482,8 +1545,12 @@ describe('로그인과 회원가입 화면 연결', () => {
     });
 
     expect(screen.getByRole('alert')).toHaveTextContent(message);
-    expect(screen.getByRole('button', { name: '다시 시도' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '로그인' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '로그인' })).toHaveAttribute(
+      'href',
+      '/login?returnTo=%2Fmy',
+    );
+    expect(logout).toHaveBeenCalledOnce();
     expect(screen.queryByRole('heading', { name: '내 공간' })).not.toBeInTheDocument();
   });
 });
@@ -1610,8 +1677,8 @@ describe('음악 기록 생성·상세 경로 연결', () => {
     render(<App />);
     await user.type(await screen.findByRole('textbox', { name: '음악 검색' }), '밤편지');
     await user.click(await screen.findByRole('button', { name: /^밤편지아이유$/ }));
-    await user.click(screen.getByRole('button', { name: '이 곡으로 기록하기' }));
-    await user.type(await screen.findByRole('textbox', { name: '오늘의 기분과 한 줄' }), '작성 중');
+    await user.click(screen.getByRole('button', { name: '선택하기' }));
+    await user.type(await screen.findByRole('textbox', { name: '지금 느끼는 것 기록' }), '작성 중');
     await user.click(await screen.findByRole('button', { name: '뒤로가기' }));
     await user.click(await screen.findByRole('button', { name: '확인' }));
     expect(await screen.findByRole('heading', { name: '음악 지도' })).toBeInTheDocument();

@@ -84,6 +84,17 @@
   padding: 0 24px;
 }
 
+.login-signup-link {
+  display: block;
+  width: fit-content;
+  margin: 18px auto 0;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 20px;
+  text-align: center;
+  text-decoration: none;
+}
+
 .login-divider {
   display: flex;
   width: min(100%, 480px);

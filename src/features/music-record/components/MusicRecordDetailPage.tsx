@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 
 import { MusicRecordDetailSkeleton } from '../../../components/RouteLoadSkeleton';
 import { navigate } from '../../../shared/navigation';
-import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
 import {
   deleteMusicRecord,
   getMusicRecord,
@@ -13,9 +12,14 @@ import {
   type MusicRecordDetail,
 } from '../api/musicRecordsApi';
 import { formatMusicRecordDate } from '../model/formatMusicRecordDate';
+import {
+  getMusicRecordTransitionPreview,
+  openMusicRecordList,
+} from '../model/musicRecordTransition';
 import { musicRecordFilterPath, readMusicRecordSidoCode } from '../model/musicRecordFilterPath';
 import { invalidateMapDotsCache } from '../../mainMap/mapApi';
 import { MusicRecordDeleteDialog } from './MusicRecordDeleteDialog';
+import { MusicRecordHero } from './MusicRecordHero';
 import { UnsavedChangesDialog } from './UnsavedChangesDialog';
 import { useDelayedPending } from '../../../hooks/useDelayedPending';
 
@@ -66,6 +70,7 @@ function parseReplacementDraft(value: unknown): MusicReplacementDraft | null {
 export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) {
   const selectedSidoCode = readMusicRecordSidoCode();
   const listPath = musicRecordFilterPath('/music-records', selectedSidoCode);
+  const [transitionPreview] = useState(() => getMusicRecordTransitionPreview(recordId));
   const [record, setRecord] = useState<MusicRecordDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadRequestId, setLoadRequestId] = useState(0);
@@ -172,7 +177,7 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
   const requestExit = (destination: string, trigger: HTMLButtonElement | null) => {
     if (isSaving || isDeleting || isDeleteOpen) return;
     if (!hasChanges) {
-      navigate(destination);
+      openMusicRecordList(destination, recordId);
       return;
     }
     exitIntent.current = { destination, trigger };
@@ -264,7 +269,8 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
       setError('임시 입력 내용을 안전하게 정리하지 못했습니다. 현재 화면에서 다시 시도해 주세요.');
       return;
     }
-    navigate(exitIntent.current.destination);
+    setShowExitWarning(false);
+    openMusicRecordList(exitIntent.current.destination, recordId);
   };
 
   const save = async () => {
@@ -355,9 +361,10 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
     }
   };
 
-  const coverUrl = getHighResolutionArtworkUrl(
-    selectedMusic?.album_cover_url ?? record?.music.album_cover_url ?? null,
-  );
+  const previewMusic =
+    isLoading && !error && transitionPreview?.record_id === recordId
+      ? transitionPreview.music
+      : null;
 
   return (
     <main className="music-page music-detail-page" aria-busy={!record && isLoading}>
@@ -383,32 +390,24 @@ export function MusicRecordDetailPage({ recordId }: MusicRecordDetailPageProps) 
         </p>
       )}
       {!record ? (
-        !error && isSkeletonVisible && <MusicRecordDetailSkeleton />
+        previewMusic ? (
+          <section className="music-form">
+            <MusicRecordHero recordId={recordId} music={previewMusic} isChangeDisabled />
+          </section>
+        ) : (
+          !error && isSkeletonVisible && <MusicRecordDetailSkeleton />
+        )
       ) : (
         <section className="music-form" aria-label="음악 기록 상세 및 수정">
-          <article className="music-selected-content">
-            {coverUrl ? (
-              <>
-                <img className="music-hero-backdrop" src={coverUrl} alt="" aria-hidden="true" />
-                <img src={coverUrl} alt="" />
-              </>
-            ) : (
-              <span className="music-cover-placeholder" aria-hidden="true" />
-            )}
-            <div>
-              <p className="music-hero-eyebrow">그날의 한 곡</p>
-              <strong>{selectedMusic?.title ?? record.music.title}</strong>
-              <span>{selectedMusic?.artist_name ?? record.music.artist_name}</span>
-            </div>
-            <button
-              type="button"
-              className="music-change-button"
-              disabled={isSaving || isDeleting || isDeleteOpen}
-              onClick={openMusicSearch}
-            >
-              음악 변경
-            </button>
-          </article>
+          <MusicRecordHero
+            recordId={recordId}
+            music={selectedMusic ?? record.music}
+            previewUrl={selectedMusic ? selectedMusic.preview_url : record.preview_url}
+            previewTrackId={selectedMusic?.external_music_id}
+            albumCoverUrl={selectedMusic?.album_cover_url ?? record.music.album_cover_url}
+            isChangeDisabled={isSaving || isDeleting || isDeleteOpen}
+            onChange={openMusicSearch}
+          />
           <label>
             저장 날짜
             <input value={formatMusicRecordDate(record.created_at)} readOnly aria-readonly="true" />

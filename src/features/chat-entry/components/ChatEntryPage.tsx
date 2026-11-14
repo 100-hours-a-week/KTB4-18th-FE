@@ -4,6 +4,8 @@ import type { ChatRoomMembership, ChatRoomSummary } from '../../../api/chatRooms
 import { useChatParticipation } from '../hooks/useChatParticipation';
 import { navigate, navigateBack } from '../../../shared/navigation';
 import './ChatEntryPage.css';
+import { ChatMusicPanel } from '../music/ChatMusicPanel';
+import { chatMusicEnabled, musicCommand } from '../music/chatMusicCommands';
 
 export interface ActiveChatRoom {
   room: ChatRoomSummary;
@@ -18,6 +20,7 @@ export function ChatEntryPage() {
 export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatParticipation> }) {
   const [draft, setDraft] = useState('');
   const [inputNotice, setInputNotice] = useState('');
+  const [musicSearch, setMusicSearch] = useState({ sequence: 0, query: '' });
   const screen = useRef<HTMLElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -87,6 +90,20 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
   const text = draft.trim();
   const length = Array.from(text).length;
   const submit = () => {
+    if (chatMusicEnabled()) {
+      const query = musicCommand(draft);
+      if (query !== null) {
+        if (!chat.isReady || !chat.musicSession) return;
+        if (query.length > 100) {
+          setInputNotice('검색어는 100자까지 입력해 주세요.');
+          return;
+        }
+        setMusicSearch((value) => ({ sequence: value.sequence + 1, query }));
+        setDraft('');
+        setInputNotice('');
+        return;
+      }
+    }
     if (!text || length > 300) {
       setInputNotice(!text ? '메시지를 입력해 주세요.' : '메시지는 300자까지 보낼 수 있어요.');
       return;
@@ -163,6 +180,17 @@ export function ChatRoomScreen({ chat }: { chat: ReturnType<typeof useChatPartic
             <span>/{capacity ?? '-'}</span>
           </div>
         </header>
+        {chatMusicEnabled() && chat.musicSession && (
+          <ChatMusicPanel
+            key={chat.musicSession.key}
+            session={chat.musicSession}
+            isReady={chat.isReady}
+            event={chat.musicEvent}
+            currentUserId={chat.currentUserId}
+            request={musicSearch}
+            regionName={regionName}
+          />
+        )}
         <div className="region-chat-toast" aria-live="polite" aria-atomic="true">
           {chat.showDisconnectToast && <p>채팅 연결이 끊겼어요.</p>}
         </div>

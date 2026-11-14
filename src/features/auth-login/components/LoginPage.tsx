@@ -1,6 +1,7 @@
 import type { LoginSuccessResponse } from '../api/loginTypes';
 import { isDirectAuthEnabled } from '../api/authProtocolMode';
 import { DirectLoginPage } from './DirectLoginPage';
+import './LoginPage.css';
 
 export type LoginPageProps = {
   authCapabilityMessage?: string;

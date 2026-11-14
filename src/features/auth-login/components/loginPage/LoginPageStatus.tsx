@@ -26,7 +26,6 @@ export function LoginPageToast({ requestToast, clearRequestToast }: LoginPageToa
 type LoginPageNoticesProps = {
   authCapabilityMessage?: string;
   authRestoreError?: string;
-  onRetryAuthRestore?: () => void;
   passwordChangedNotice?: boolean;
   onPasswordChangedNoticeDismiss?: () => void;
 };
@@ -34,7 +33,6 @@ type LoginPageNoticesProps = {
 export function LoginPageNotices({
   authCapabilityMessage,
   authRestoreError,
-  onRetryAuthRestore,
   passwordChangedNotice,
   onPasswordChangedNoticeDismiss,
 }: LoginPageNoticesProps) {
@@ -47,10 +45,7 @@ export function LoginPageNotices({
       )}
       {authRestoreError && (
         <p className="login-notice" role="alert">
-          {authRestoreError}{' '}
-          <button type="button" onClick={onRetryAuthRestore}>
-            다시 시도
-          </button>
+          {authRestoreError}
         </p>
       )}
       {passwordChangedNotice && (

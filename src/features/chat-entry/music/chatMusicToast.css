@@ -1,0 +1,39 @@
+.chat-music-toast {
+  position: fixed;
+  inset: auto;
+  top: var(--toast-top, 16px);
+  left: var(--toast-left, 50vw);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: var(--toast-width, calc(100vw - 32px));
+  max-height: var(--toast-height, calc(100dvh - 32px));
+  box-sizing: border-box;
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid #007b45;
+  border-radius: 20px;
+  background: #fefffe;
+  color: #17231b;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.08);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  overflow: auto;
+  pointer-events: none;
+  z-index: 10;
+}
+.chat-music-toast[data-visible='false'] {
+  display: none;
+}
+.chat-music-toast[data-visible='true'] {
+  display: block;
+}
+
+.chat-music-toast[data-fallback='true'] {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - 32px);
+}

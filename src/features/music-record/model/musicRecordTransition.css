@@ -1,0 +1,127 @@
+:root[data-music-record-transition='']
+  [data-music-record-transition-card]
+  [data-music-record-part='background'],
+:root:is([data-music-record-transition='detail'], [data-music-record-transition='list'])
+  [data-music-record-transition-card] {
+  view-transition-name: music-record-background;
+}
+:root[data-music-record-transition]
+  [data-music-record-transition-card]
+  [data-music-record-part='artwork'] {
+  view-transition-name: music-record-artwork;
+}
+:root[data-music-record-transition]
+  [data-music-record-transition-card]
+  [data-music-record-part='title'] {
+  view-transition-name: music-record-title;
+}
+:root[data-music-record-transition]
+  [data-music-record-transition-card]
+  [data-music-record-part='artist'] {
+  view-transition-name: music-record-artist;
+}
+
+:root[data-music-record-transition]::view-transition-group(music-record-background),
+:root[data-music-record-transition]::view-transition-group(music-record-artwork),
+:root[data-music-record-transition]::view-transition-group(music-record-title),
+:root[data-music-record-transition]::view-transition-group(music-record-artist) {
+  animation-duration: 340ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:root[data-music-record-transition='list'] .music-record-list-page > .music-page-header {
+  view-transition-name: music-record-list-header;
+}
+
+:root[data-music-record-transition='list']::view-transition-group(music-record-list-header) {
+  z-index: 3;
+  animation: none;
+}
+
+:root[data-music-record-transition='list']::view-transition-new(music-record-list-header) {
+  animation: none;
+}
+
+:root[data-music-record-transition]::view-transition-group(root) {
+  z-index: 0;
+}
+
+:root[data-music-record-transition]::view-transition-group(music-record-background) {
+  z-index: 1;
+}
+
+:root[data-music-record-transition]::view-transition-group(music-record-artwork),
+:root[data-music-record-transition]::view-transition-group(music-record-title),
+:root[data-music-record-transition]::view-transition-group(music-record-artist) {
+  z-index: 2;
+}
+
+:root[data-music-record-transition]::view-transition-old(root) {
+  animation: none;
+  opacity: 0;
+}
+
+:root[data-music-record-transition]::view-transition-new(root) {
+  animation: none;
+}
+
+:root:is(
+    [data-music-record-transition='detail'],
+    [data-music-record-transition='list']
+  )::view-transition-old(music-record-background),
+:root:is(
+    [data-music-record-transition='detail'],
+    [data-music-record-transition='list']
+  )::view-transition-old(music-record-artwork),
+:root:is(
+    [data-music-record-transition='detail'],
+    [data-music-record-transition='list']
+  )::view-transition-old(music-record-title),
+:root:is(
+    [data-music-record-transition='detail'],
+    [data-music-record-transition='list']
+  )::view-transition-old(music-record-artist) {
+  animation: none;
+  opacity: 0;
+}
+
+:root:is(
+    [data-music-record-transition='detail'],
+    [data-music-record-transition='list']
+  )::view-transition-new(music-record-background),
+:root:is(
+    [data-music-record-transition='detail'],
+    [data-music-record-transition='list']
+  )::view-transition-new(music-record-artwork),
+:root:is(
+    [data-music-record-transition='detail'],
+    [data-music-record-transition='list']
+  )::view-transition-new(music-record-title),
+:root:is(
+    [data-music-record-transition='detail'],
+    [data-music-record-transition='list']
+  )::view-transition-new(music-record-artist) {
+  animation: none;
+  mix-blend-mode: normal;
+  opacity: 1;
+}
+
+:root:is(
+    [data-music-record-transition='detail'],
+    [data-music-record-transition='list']
+  )::view-transition-new(music-record-background) {
+  height: 100%;
+}
+
+:root:is(
+    [data-music-record-transition='detail'],
+    [data-music-record-transition='list']
+  )::view-transition-new(music-record-title),
+:root:is(
+    [data-music-record-transition='detail'],
+    [data-music-record-transition='list']
+  )::view-transition-new(music-record-artist) {
+  height: 100%;
+  object-fit: contain;
+  object-position: left top;
+}

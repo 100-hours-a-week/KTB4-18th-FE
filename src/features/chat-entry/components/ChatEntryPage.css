@@ -166,7 +166,8 @@
   overflow-x: hidden;
   overflow-y: auto;
   padding: 20px;
-  overscroll-behavior: contain;
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: none;
   scrollbar-width: none;
 }
 
@@ -377,4 +378,8 @@
 
 .region-chat-composer {
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+.chat-entry-screen .chat-entry-shell > .chat-entry-header {
+  border-bottom: 0;
 }

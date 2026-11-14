@@ -2,8 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMusicPreview } from '../../music-record/hooks/useMusicPreview';
 import { LocationRecommendationTrackCarousel } from './LocationRecommendationTrackCarousel';
-import type { LocationRecommendationCandidate } from '../locationRecommendationTypes';
+import { navigate } from '../../../shared/navigation';
+import type { Music } from '../../music-record/api/musicRecordsApi';
+import type {
+  LocationRecommendationCandidate,
+  LocationRecommendationTrack,
+} from '../locationRecommendationTypes';
 import './locationRecommendationDialog.css';
+
+const STATUS_RETRY_DELAY_MS = 500;
 
 type LocationRecommendationDialogProps = {
   candidate: LocationRecommendationCandidate;
@@ -13,6 +20,7 @@ type LocationRecommendationDialogProps = {
   ) => Promise<boolean>;
   onCancel: () => void;
   onDismiss: () => void;
+  onRefresh?: () => void;
 };
 
 export function LocationRecommendationDialog({
@@ -20,14 +28,33 @@ export function LocationRecommendationDialog({
   verifyStatus,
   onCancel,
   onDismiss,
+  onRefresh,
 }: LocationRecommendationDialogProps) {
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const portalTarget = document.querySelector<HTMLElement>('.location-recommendation-portal-root');
   const preview = useMusicPreview();
   const [isStatusVerified, setIsStatusVerified] = useState(true);
+  const [hasVerificationFailed, setHasVerificationFailed] = useState(false);
   const [escapeNotice, setEscapeNotice] = useState(false);
   const stopPreview = preview.stop;
+
+  const recordTrack = (track: LocationRecommendationTrack) => {
+    const initialMusic: Music = {
+      music_id: null,
+      provider: 'ITUNES',
+      external_music_id: track.trackId,
+      title: track.title,
+      artist_name: track.artist,
+      album_cover_url: track.artworkUrl,
+      preview_url: track.previewUrl,
+      youtube_video_id: null,
+      is_queueable: false,
+    };
+    stopPreview();
+    onDismiss();
+    navigate('/music-records/new', { initialMusic });
+  };
 
   useEffect(() => {
     if (!portalTarget) return;
@@ -35,7 +62,7 @@ export function LocationRecommendationDialog({
     const inertSiblings: { element: HTMLElement; wasInert: boolean }[] = [];
     let branch: HTMLElement | null = portalTarget;
     while (branch?.parentElement) {
-      const parent = branch.parentElement;
+      const parent: HTMLElement = branch.parentElement;
       Array.from(parent.children).forEach((sibling) => {
         if (sibling === branch || !(sibling instanceof HTMLElement)) return;
         inertSiblings.push({ element: sibling, wasInert: sibling.inert });
@@ -106,52 +133,62 @@ export function LocationRecommendationDialog({
     let isCurrent = true;
     let isChecking = false;
     let checkGeneration = 0;
-    let shouldCheckContextOnVisible = false;
-    const checkStatus = async (verifyContext = false) => {
-      if (document.visibilityState !== 'visible') return;
-      if (isChecking) {
-        if (verifyContext) shouldCheckContextOnVisible = true;
+    let lastStartedGeneration = -1;
+    let retryTimer: number | undefined;
+    const checkStatus = async (isRetry = false) => {
+      if (
+        isChecking ||
+        document.visibilityState !== 'visible' ||
+        (!isRetry && lastStartedGeneration === checkGeneration)
+      ) {
         return;
       }
       isChecking = true;
-      const generation = ++checkGeneration;
-      const isValid = await verifyStatus(candidate, verifyContext).catch(() => false);
+      const generation = checkGeneration;
+      lastStartedGeneration = generation;
+      setHasVerificationFailed(false);
+      setIsStatusVerified(false);
+      let isValid: boolean;
+      try {
+        isValid = await verifyStatus(candidate, true);
+      } catch {
+        isValid = false;
+      }
       isChecking = false;
-      if (!isCurrent) return;
-      if (generation !== checkGeneration || document.visibilityState !== 'visible') {
-        if (document.visibilityState === 'visible' && shouldCheckContextOnVisible) {
-          shouldCheckContextOnVisible = false;
+      if (!isCurrent || document.visibilityState !== 'visible') return;
+      if (generation !== checkGeneration) {
+        void checkStatus();
+        return;
+      }
+      if (isValid) {
+        setIsStatusVerified(true);
+        return;
+      }
+      stopPreview();
+      if (!isRetry) {
+        retryTimer = window.setTimeout(() => {
+          retryTimer = undefined;
           void checkStatus(true);
-        }
-        return;
-      }
-      if (!isValid) {
-        stopPreview();
-        setIsStatusVerified(false);
-        return;
-      }
-      setIsStatusVerified(true);
-      if (shouldCheckContextOnVisible) {
-        shouldCheckContextOnVisible = false;
-        setIsStatusVerified(false);
-        void checkStatus(true);
+        }, STATUS_RETRY_DELAY_MS);
+      } else {
+        setHasVerificationFailed(true);
       }
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         checkGeneration += 1;
-        shouldCheckContextOnVisible = true;
+        window.clearTimeout(retryTimer);
+        retryTimer = undefined;
         stopPreview();
         setIsStatusVerified(false);
       } else {
-        shouldCheckContextOnVisible = true;
-        void checkStatus(true);
+        void checkStatus();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       isCurrent = false;
-      checkGeneration += 1;
+      window.clearTimeout(retryTimer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [candidate, stopPreview, verifyStatus]);
@@ -202,14 +239,13 @@ export function LocationRecommendationDialog({
           key={candidate.requestId}
           tracks={candidate.tracks}
           isPreviewAllowed={isStatusVerified}
+          onRefresh={hasVerificationFailed ? onRefresh : undefined}
+          onRecordTrack={recordTrack}
           preview={preview}
         />
         <p className="location-recommendation-dialog__message">
-          지역에 어울리는 추천곡을 준비했어요. 곡을 넘겨보고 미리 들어보세요.
-        </p>
-        <p className="location-recommendation-dialog__footnote">
-          미리 듣기는 직접 누르면 최대 30초 동안 재생돼요. 추천은 음악 기록에 자동 저장되지 않아요.
-          미리 듣기·앨범 아트 제공: iTunes.
+          {candidate.recommendationMessage ||
+            '지역에 어울리는 추천곡을 준비했어요. 곡을 넘겨보고 미리 들어보세요.'}
         </p>
       </section>
     </div>,

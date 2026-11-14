@@ -223,7 +223,7 @@ describe('음악 기록 다중 선택 삭제', () => {
     select(7);
     select(8);
     confirm();
-    await screen.findByText('아직 비어 있는 음악 기록이에요.');
+    await screen.findByText('아직 기록한 음악이 없어요.');
     expect(screen.getByText('2개의 기록이 삭제되었어요')).toBeInTheDocument();
     expect(deleteCalls()).toHaveLength(1);
     const options = deleteCalls()[0][1]!;
@@ -274,10 +274,32 @@ describe('음악 기록 다중 선택 삭제', () => {
 
   it('더 불러온 기록도 기존 선택을 유지하며 함께 선택한다', async () => {
     hasNext = true;
+    let onIntersect: IntersectionObserverCallback = () => undefined;
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          onIntersect = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
     render(<MusicRecordListPage />);
     await enter();
     select(7);
-    fireEvent.click(screen.getByRole('button', { name: '더 불러오기' }));
+    expect(screen.queryByRole('button', { name: '더 불러오기' })).not.toBeInTheDocument();
+    const priorCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(([url]) => String(url).endsWith('?cursor=next')).length;
+    await act(async () => {
+      const entries = [{ isIntersecting: true } as IntersectionObserverEntry];
+      onIntersect(entries, {} as IntersectionObserver);
+      onIntersect(entries, {} as IntersectionObserver);
+    });
+    expect(
+      vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith('?cursor=next')),
+    ).toHaveLength(priorCalls + 1);
     await screen.findByRole('button', { name: '노래 9 기록 선택' });
     select(9);
     expect(screen.getByText('삭제할 음악 기록 2곡')).toBeInTheDocument();
