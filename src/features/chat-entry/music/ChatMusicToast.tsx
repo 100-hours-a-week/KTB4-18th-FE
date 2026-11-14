@@ -19,7 +19,7 @@ function hideToast(element: HTMLDivElement | null) {
 
 function positionToast(element: HTMLDivElement, modal: HTMLDialogElement) {
   const box = modal.getBoundingClientRect();
-  element.style.setProperty('--toast-left', `${box.left + 16}px`);
+  element.style.setProperty('--toast-left', `${box.left + box.width / 2}px`);
   element.style.setProperty('--toast-width', `${Math.max(0, box.width - 32)}px`);
   element.style.setProperty('--toast-top', `${(window.visualViewport?.offsetTop ?? 0) + 16}px`);
   element.style.setProperty(

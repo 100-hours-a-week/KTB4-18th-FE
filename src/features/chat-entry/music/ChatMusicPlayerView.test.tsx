@@ -158,7 +158,9 @@ it('renders finite readonly timeline and opaque safe fallback, keeping actionabl
   options.events.onError({ data: 150 });
   await screen.findByRole('alert');
   await waitFor(() =>
-    expect(attention).toHaveBeenLastCalledWith(expect.stringContaining('재생할 수 없어요')),
+    expect(attention).toHaveBeenLastCalledWith(
+      expect.stringContaining('음악 재생을 시작하지 못했어요'),
+    ),
   );
   expect(screen.getByRole('button', { name: 'YouTube 다시 연결' })).toBeEnabled();
   rerender(

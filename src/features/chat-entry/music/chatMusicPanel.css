@@ -92,7 +92,7 @@
   min-width: 0;
   flex: 1;
   border: 0;
-  border-radius: 10px;
+  border-radius: 100px;
   padding: 10px 12px 10px 44px;
   background: #f5f5f5;
   color: inherit;
@@ -351,19 +351,6 @@ ol.chat-music-list .chat-music-item-text > small {
   transform: translateY(-50%);
   pointer-events: none;
 }
-.chat-music-song-scroll {
-  margin-inline-end: -12px;
-  padding-inline-end: 12px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-border-secondary) transparent;
-}
-.chat-music-song-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-.chat-music-song-scroll::-webkit-scrollbar-thumb {
-  border-radius: 3px;
-  background: var(--color-border-secondary);
-}
 
 .chat-music-empty-queue {
   position: absolute;
@@ -385,6 +372,7 @@ ol.chat-music-list .chat-music-item-text > small {
   padding-block: 16px;
 }
 
+.chat-music-song-scroll,
 .chat-music-video-scroll {
   margin-inline-end: calc(-1 * var(--chat-video-edge-inset, 16px));
   padding-inline-end: var(--chat-video-edge-inset, 16px);
@@ -392,13 +380,16 @@ ol.chat-music-list .chat-music-item-text > small {
   scrollbar-color: var(--color-border-secondary) transparent;
 }
 @supports selector(::-webkit-scrollbar) {
+  .chat-music-song-scroll,
   .chat-music-video-scroll {
     scrollbar-width: auto;
     scrollbar-color: auto;
   }
+  .chat-music-song-scroll::-webkit-scrollbar,
   .chat-music-video-scroll::-webkit-scrollbar {
     width: 3px;
   }
+  .chat-music-song-scroll::-webkit-scrollbar-thumb,
   .chat-music-video-scroll::-webkit-scrollbar-thumb {
     border-radius: 3px;
     background: var(--color-border-secondary);
@@ -437,6 +428,7 @@ ol.chat-music-list .chat-music-item-text > small {
   white-space: nowrap;
 }
 
+.chat-music-compact .chat-music-song-scroll,
 .chat-music-compact .chat-music-video-scroll {
   --chat-video-edge-inset: 8px;
 }
@@ -545,7 +537,7 @@ ol.chat-music-list .chat-music-item-text > small {
   line-height: 24px;
 }
 .chat-music-current + .chat-music-queue-heading {
-  margin-top: 48px;
+  margin-top: 24px;
 }
 .chat-music-queue-empty-with-current {
   display: flex;

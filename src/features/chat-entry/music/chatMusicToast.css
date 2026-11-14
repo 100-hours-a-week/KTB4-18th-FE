@@ -2,8 +2,10 @@
   position: fixed;
   inset: auto;
   top: var(--toast-top, 16px);
-  left: var(--toast-left, 16px);
-  width: var(--toast-width, calc(100vw - 32px));
+  left: var(--toast-left, 50vw);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: var(--toast-width, calc(100vw - 32px));
   max-height: var(--toast-height, calc(100dvh - 32px));
   box-sizing: border-box;
   margin: 0;
@@ -30,7 +32,8 @@
 .chat-music-toast[data-fallback='true'] {
   position: absolute;
   top: 16px;
-  left: 16px;
-  width: calc(100% - 32px);
+  left: 50%;
+  width: max-content;
+  max-width: calc(100% - 32px);
   max-height: calc(100% - 32px);
 }

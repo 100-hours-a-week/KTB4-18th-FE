@@ -199,7 +199,6 @@ export class ChatMusicQueueController {
     this.update({
       recoveryStatus: 'recovering',
       recoveryMessage: '최신 음악 상태를 다시 확인하고 있어요.',
-      playback: null,
       isQueueStale: true,
     });
     if (!this.queueRequest) void this.loadQueue();

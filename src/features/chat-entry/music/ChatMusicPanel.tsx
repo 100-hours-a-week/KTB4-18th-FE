@@ -9,6 +9,7 @@ import { useChatMusicQueue } from './useChatMusicQueue';
 import './chatMusicPanel.css';
 import './chatMusicSheet.css';
 import { useMusicDialogBounds } from './useMusicDialogBounds';
+import { useMusicSheetHeight } from './useMusicSheetHeight';
 import { ChatMusicPlayerView } from './ChatMusicPlayerView';
 import { ChatMusicCompactCard } from './ChatMusicCompactCard';
 import { ChatMusicFooter } from './ChatMusicFooter';
@@ -101,6 +102,7 @@ export function ChatMusicPanel({
     if (tab !== null && document.activeElement?.closest('[hidden]'))
       element.querySelector<HTMLButtonElement>('header button')?.focus();
   }, [tab]);
+  useMusicSheetHeight(dialog, tab !== null, chatMusicPlayerEnabled());
   useEffect(() => {
     if (tab !== 'search' || state.selectedSong || !isReady || isComposing) {
       controller.cancelSearch();
@@ -284,7 +286,7 @@ export function ChatMusicPanel({
       )}
       <dialog
         ref={dialog}
-        className={`chat-music-dialog${tab === 'player' ? ' chat-music-player-dialog' : ''}`}
+        className={`chat-music-dialog${chatMusicPlayerEnabled() ? ' chat-music-player-dialog' : ''}`}
         aria-modal="true"
         aria-labelledby="chat-music-title"
         onCancel={(event) => {
@@ -374,7 +376,7 @@ export function ChatMusicPanel({
             {chatMusicPlayerEnabled() && (
               <ChatMusicPlayerView
                 playback={state.playback}
-                isReady={isMusicReady}
+                isReady={isReady}
                 isCommandDisabled={isWriteDisabled || !state.playback}
                 onCommand={(action) => controller.control(action)}
                 onRefresh={() => controller.recover()}
@@ -586,7 +588,7 @@ export function ChatMusicPanel({
               )}
               <h3 className="chat-music-queue-heading">대기 곡</h3>
               <div
-                className={`chat-music-scroll${current && !state.queueLoading && !state.queueError && state.queue?.items.length === 0 ? ' chat-music-queue-empty-with-current' : ''}`}
+                className={`chat-music-scroll chat-music-song-scroll${current && !state.queueLoading && !state.queueError && state.queue?.items.length === 0 ? ' chat-music-queue-empty-with-current' : ''}`}
                 ref={scroller}
                 tabIndex={0}
                 aria-label="음악 대기 목록"

@@ -26,6 +26,17 @@ export function playbackPosition(timed: TimedPlayback, now = performance.now()) 
     Math.max(0, s.positionSeconds + elapsed),
   );
 }
+const PLAYBACK_FAILURE_MESSAGE = '음악 재생을 시작하지 못했어요. 다시 시도해 주세요.';
+
+type PlaybackFailureReason =
+  | 'PLAYER_READY_TIMEOUT'
+  | 'AUTOPLAY_BLOCKED'
+  | 'VIDEO_UNAVAILABLE'
+  | 'PLAYER_ENVIRONMENT_ERROR'
+  | 'PLAYER_ERROR'
+  | 'SDK_TIMEOUT'
+  | 'SDK_LOAD_FAILED';
+
 export class ChatMusicPlayer {
   private state: RoomPlayerState = {
     status: 'waiting',
@@ -45,6 +56,7 @@ export class ChatMusicPlayer {
   private loadedItem: number | undefined;
   private timer: ReturnType<typeof setInterval> | undefined;
   private readyTimeout: ReturnType<typeof setTimeout> | undefined;
+  private readyVisibilityListener: (() => void) | undefined;
   private lastAttempt = -Infinity;
   private lastSeek = -Infinity;
   getSnapshot = () => this.state;
@@ -101,13 +113,7 @@ export class ChatMusicPlayer {
       }
       const child = document.createElement('div');
       this.target.replaceChildren(child);
-      this.readyTimeout = setTimeout(() => {
-        if (!owns()) return;
-        if (retryOnTimeout) {
-          this.disconnect();
-          void this.connect(false);
-        } else this.fail('YouTube 플레이어에 연결하지 못했어요. 다시 시도해 주세요.');
-      }, 15_000);
+      this.waitForReady(generation, retryOnTimeout);
       this.player = new api.Player(child, {
         videoId: snapshot.sourceVideoId,
         width: '100%',
@@ -124,7 +130,7 @@ export class ChatMusicPlayer {
           onReady: ({ target }) => {
             if (!owns()) return;
             this.player = target;
-            clearTimeout(this.readyTimeout);
+            this.clearReadyWait();
             this.isPlayerReady = true;
             this.isConnecting = false;
             this.applyVolume();
@@ -149,31 +155,70 @@ export class ChatMusicPlayer {
               this.publish({ status: 'waiting', message: '서버의 다음 곡을 기다리고 있어요.' });
           },
           onAutoplayBlocked: () => {
-            if (owns())
-              this.publish({
-                status: 'blocked',
-                message: '브라우저가 자동재생을 차단했어요. 재생을 허용해 주세요.',
-              });
+            if (!owns()) return;
+            if (this.state.status !== 'blocked') this.logFailure('AUTOPLAY_BLOCKED');
+            this.publish({ status: 'blocked', message: PLAYBACK_FAILURE_MESSAGE });
           },
           onError: ({ data }) => {
             if (!owns()) return;
-            const message = [100, 101, 150].includes(data)
-              ? '이 YouTube 영상을 재생할 수 없어요. 다른 곡으로 건너뛸 수 있어요.'
-              : data === 153
-                ? 'YouTube에서 재생 환경을 확인하지 못했어요. 사이트 설정을 확인해 주세요.'
-                : 'YouTube 재생에 문제가 생겼어요. 다시 시도해 주세요.';
-            this.fail(message);
+            this.logFailure(
+              [100, 101, 150].includes(data)
+                ? 'VIDEO_UNAVAILABLE'
+                : data === 153
+                  ? 'PLAYER_ENVIRONMENT_ERROR'
+                  : 'PLAYER_ERROR',
+              data,
+            );
+            this.fail();
           },
         },
       });
-    } catch {
-      if (owns()) this.fail('YouTube에 연결하지 못했어요. 다시 시도해 주세요.');
+    } catch (error) {
+      if (!owns()) return;
+      this.logFailure(
+        error instanceof Error && error.message === 'YouTube API timeout'
+          ? 'SDK_TIMEOUT'
+          : 'SDK_LOAD_FAILED',
+      );
+      this.fail();
     }
   }
-  private fail(message: string) {
+  private logFailure(reason: PlaybackFailureReason, providerCode?: number) {
+    console.warn('[chat-music-player]', {
+      reason,
+      ...(providerCode === undefined ? {} : { providerCode }),
+      visibility: document.visibilityState,
+    });
+  }
+  private clearReadyWait() {
     clearTimeout(this.readyTimeout);
+    this.readyTimeout = undefined;
+    if (this.readyVisibilityListener)
+      document.removeEventListener('visibilitychange', this.readyVisibilityListener);
+    this.readyVisibilityListener = undefined;
+  }
+  private waitForReady(generation: number, retryOnTimeout: boolean) {
+    const arm = () => {
+      clearTimeout(this.readyTimeout);
+      if (generation !== this.generation || !this.isReady || document.hidden) return;
+      this.readyTimeout = setTimeout(() => {
+        if (generation !== this.generation || !this.isReady || document.hidden) return;
+        this.logFailure('PLAYER_READY_TIMEOUT');
+        if (retryOnTimeout) {
+          this.disconnect();
+          void this.connect(false);
+        } else this.fail();
+      }, 15_000);
+    };
+    this.clearReadyWait();
+    this.readyVisibilityListener = arm;
+    document.addEventListener('visibilitychange', arm);
+    arm();
+  }
+  private fail() {
+    this.clearReadyWait();
     this.isConnecting = false;
-    this.publish({ status: 'error', message });
+    this.publish({ status: 'error', message: PLAYBACK_FAILURE_MESSAGE });
     if (this.isPlayerReady) this.player?.pauseVideo();
   }
   tick(force = false) {
@@ -258,7 +303,7 @@ export class ChatMusicPlayer {
   private disconnect() {
     this.generation++;
     clearInterval(this.timer);
-    clearTimeout(this.readyTimeout);
+    this.clearReadyWait();
     this.player?.destroy();
     this.player = undefined;
     this.isConnecting = false;
