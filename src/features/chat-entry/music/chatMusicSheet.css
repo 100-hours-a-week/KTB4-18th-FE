@@ -126,3 +126,37 @@
 .chat-music-player-dialog .chat-music-empty-queue-notice {
   text-align: right;
 }
+
+.chat-music-dialog[data-music-album-height] {
+  height: min(var(--music-album-height, var(--music-height)), var(--music-height));
+}
+[data-music-album-height] .chat-music-sheet {
+  height: 100%;
+  max-height: 100%;
+  padding-bottom: max(40px, env(safe-area-inset-bottom));
+}
+[data-music-album-height] .chat-music-player-pane {
+  flex: 1;
+}
+[data-music-album-height].chat-music-compact .chat-music-player-pane {
+  flex: none;
+}
+.chat-music-dialog[data-music-measuring-album] .chat-music-player-pane {
+  display: block;
+  position: absolute;
+  inset: 0 16px auto;
+  height: auto;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  visibility: hidden;
+}
+.chat-music-dialog.chat-music-compact[data-music-measuring-album] .chat-music-player-pane {
+  inset-inline: 8px;
+}
+.chat-music-dialog[data-music-measuring-album] .chat-room-artwork-stage {
+  width: 100%;
+  margin-inline: 0;
+  aspect-ratio: var(--chat-album-aspect-ratio);
+}

@@ -271,3 +271,118 @@ it.each([101, 150, 153])('never automatically reconnects for YouTube error %i', 
   expect(loadYouTubeApi).toHaveBeenCalledTimes(1);
   expect(player.getSnapshot().status).toBe('error');
 });
+
+it('keeps a pending iframe throughout background time and gives foreground readiness a fresh grace', async () => {
+  let visibility: DocumentVisibilityState = 'visible';
+  vi.spyOn(document, 'hidden', 'get').mockImplementation(() => visibility === 'hidden');
+  vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  player.update(timed(), true);
+  await settle();
+  await vi.advanceTimersByTimeAsync(14000);
+  visibility = 'hidden';
+  document.dispatchEvent(new Event('visibilitychange'));
+  await vi.advanceTimersByTimeAsync(300000);
+  expect(loadYouTubeApi).toHaveBeenCalledTimes(1);
+  expect(apiPlayer.destroy).not.toHaveBeenCalled();
+  expect(warning).not.toHaveBeenCalled();
+  visibility = 'visible';
+  document.dispatchEvent(new Event('visibilitychange'));
+  await vi.advanceTimersByTimeAsync(14999);
+  expect(apiPlayer.destroy).not.toHaveBeenCalled();
+  await ready();
+  await vi.advanceTimersByTimeAsync(30000);
+  expect(apiPlayer.destroy).not.toHaveBeenCalled();
+  expect(loadYouTubeApi).toHaveBeenCalledTimes(1);
+  warning.mockRestore();
+  vi.restoreAllMocks();
+});
+
+it('waits without a timer when created hidden and cancels the foreground listener on disposal', async () => {
+  let visibility: DocumentVisibilityState = 'hidden';
+  vi.spyOn(document, 'hidden', 'get').mockImplementation(() => visibility === 'hidden');
+  vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
+  player.update(timed(), true);
+  await settle();
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(loadYouTubeApi).toHaveBeenCalledTimes(1);
+  player.dispose();
+  visibility = 'visible';
+  document.dispatchEvent(new Event('visibilitychange'));
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(loadYouTubeApi).toHaveBeenCalledTimes(1);
+  expect(apiPlayer.destroy).toHaveBeenCalledTimes(1);
+  vi.restoreAllMocks();
+});
+
+it('reuses the ready player for the next track and preserves local settings', async () => {
+  player.update(timed(), true);
+  await ready();
+  player.volume(23);
+  player.mute();
+  player.update(timed(snapshot(2, 'PLAYING', 100)), true);
+  expect(loadYouTubeApi).toHaveBeenCalledTimes(1);
+  expect(apiPlayer.destroy).not.toHaveBeenCalled();
+  expect(apiPlayer.loadVideoById).toHaveBeenCalledTimes(2);
+  expect(player.getSnapshot()).toMatchObject({ volume: 23, isMuted: true });
+});
+
+it.each([
+  [100, 'VIDEO_UNAVAILABLE'],
+  [150, 'VIDEO_UNAVAILABLE'],
+  [153, 'PLAYER_ENVIRONMENT_ERROR'],
+  [5, 'PLAYER_ERROR'],
+])(
+  'logs provider failure %i without placing the reason or code in the UI message',
+  async (code, reason) => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    player.update(timed(), true);
+    await ready();
+    options.events.onError({ data: code as number });
+    expect(warning).toHaveBeenLastCalledWith('[chat-music-player]', {
+      reason,
+      providerCode: code,
+      visibility: 'visible',
+    });
+    expect(player.getSnapshot().message).toBe('음악 재생을 시작하지 못했어요. 다시 시도해 주세요.');
+    expect(JSON.stringify(warning.mock.calls)).not.toContain('abcdefghijk');
+    warning.mockRestore();
+  },
+);
+
+it('logs blocked autoplay separately and logs a bounded readiness timeout with the same generic UI', async () => {
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  player.update(timed(), true);
+  await ready();
+  options.events.onAutoplayBlocked();
+  options.events.onAutoplayBlocked();
+  expect(warning).toHaveBeenCalledTimes(1);
+  expect(warning).toHaveBeenLastCalledWith('[chat-music-player]', {
+    reason: 'AUTOPLAY_BLOCKED',
+    visibility: 'visible',
+  });
+  const generic = player.getSnapshot().message;
+  player.retry();
+  await settle();
+  await vi.advanceTimersByTimeAsync(30000);
+  expect(player.getSnapshot()).toMatchObject({ status: 'error', message: generic });
+  expect(
+    warning.mock.calls.filter(([, detail]) => detail.reason === 'PLAYER_READY_TIMEOUT'),
+  ).toHaveLength(2);
+  expect(loadYouTubeApi).toHaveBeenCalledTimes(3);
+  warning.mockRestore();
+});
+
+it.each([
+  ['YouTube API timeout', 'SDK_TIMEOUT'],
+  ['sensitive request URL must not be logged', 'SDK_LOAD_FAILED'],
+])('logs SDK failures safely: %s', async (message, reason) => {
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  vi.mocked(loadYouTubeApi).mockRejectedValueOnce(new Error(message));
+  player.update(timed(), true);
+  await settle();
+  expect(warning).toHaveBeenCalledWith('[chat-music-player]', { reason, visibility: 'visible' });
+  expect(player.getSnapshot().message).toBe('음악 재생을 시작하지 못했어요. 다시 시도해 주세요.');
+  expect(JSON.stringify(warning.mock.calls)).not.toContain(message);
+  warning.mockRestore();
+});

@@ -1,4 +1,5 @@
 .chat-room-player {
+  --chat-album-aspect-ratio: 1.5;
   padding: 8px 8px 16px;
 }
 .chat-room-artwork-stage {
@@ -7,7 +8,7 @@
   overflow: hidden;
   width: 100%;
   height: auto;
-  aspect-ratio: 1.5;
+  aspect-ratio: var(--chat-album-aspect-ratio);
   min-width: 200px;
   min-height: 200px;
 }
@@ -402,7 +403,17 @@
 .chat-room-artwork[hidden] {
   display: none;
 }
+.chat-music-player-pane:has(.chat-room-video-stage) {
+  --chat-video-sheet-inset: 16px;
+  margin-inline: calc(-1 * var(--chat-video-sheet-inset));
+  padding-inline: var(--chat-video-sheet-inset);
+}
+.chat-music-compact .chat-music-player-pane:has(.chat-room-video-stage) {
+  --chat-video-sheet-inset: 8px;
+}
 .chat-room-video-stage {
+  width: calc(var(--music-width, 100vw) - 2px);
+  margin-inline: calc(-1 * (var(--chat-video-sheet-inset, 16px) + 8px));
   aspect-ratio: 16 / 9;
   background: #111;
 }

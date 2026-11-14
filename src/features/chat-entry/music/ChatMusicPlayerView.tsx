@@ -48,7 +48,7 @@ export function ChatMusicPlayerView({
     playing: '내 기기에서 재생 중',
     paused: '내 기기에서 일시정지',
     buffering: '버퍼링 중',
-    blocked: '자동재생 차단',
+    blocked: '재생 확인 필요',
     error: '재생 오류',
   };
   const hasTrack = !!s?.current;

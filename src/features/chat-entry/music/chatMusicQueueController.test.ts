@@ -341,3 +341,30 @@ it('keeps playback controls usable when the video provider daily budget is exhau
       ),
   ).toBe(true);
 });
+
+it('keeps validated playback during a soft refresh, locks commands, and stops on a failed refresh', async () => {
+  const original = controller.getSnapshot().playback;
+  const pending = deferred<Response>();
+  vi.mocked(authenticatedFetchWithCurrentToken).mockReturnValueOnce(pending.promise);
+  controller.recover();
+  expect(controller.getSnapshot().playback).toBe(original);
+  expect(controller.getSnapshot().recoveryStatus).toBe('recovering');
+  controller.control('PAUSE');
+  expect(
+    vi
+      .mocked(authenticatedFetchWithCurrentToken)
+      .mock.calls.some(([, init]) => init?.method === 'POST'),
+  ).toBe(false);
+  pending.resolve(musicResponse(queuePage(2)));
+  await settle();
+  expect(controller.getSnapshot().recoveryStatus).toBe('ready');
+  expect(controller.getSnapshot().playback?.snapshot.version).toBe(2);
+  const denied = deferred<Response>();
+  vi.mocked(authenticatedFetchWithCurrentToken).mockReturnValueOnce(denied.promise);
+  controller.recover();
+  expect(controller.getSnapshot().playback).not.toBeNull();
+  denied.resolve(musicResponse({ code: 'FORBIDDEN' }, 403));
+  await settle();
+  expect(controller.getSnapshot().playback).toBeNull();
+  expect(controller.getSnapshot().recoveryStatus).toBe('denied');
+});
