@@ -328,6 +328,9 @@ export default function ChatbotPage() {
                 글로 적어 주시거나 음성으로 말해도 좋아요.
                 <br />
                 지금 딱 어울리는 음악을 골라드릴게요.
+                <br />
+                <br />
+                곡만 빠르게 받고 싶다면 "고속 모드 켜줘"라고 해보세요.
               </p>
               <p className="welcome-hint">
                 추천받은 곡은 내 공간의 지난 선곡에서 다시 볼 수 있어요.

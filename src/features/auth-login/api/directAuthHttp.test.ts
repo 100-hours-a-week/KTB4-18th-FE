@@ -20,6 +20,29 @@ const lease = {
 };
 
 describe('direct route response validation', () => {
+  it('accepts current-operation authentication errors that the backend can return', () => {
+    for (const [status, message] of [
+      [400, 'INVALID_LOGIN_PROTOCOL'],
+      [401, 'AUTH_SESSION_INVALID'],
+      [404, 'AUTH_FLOW_NOT_FOUND'],
+      [409, 'AUTH_FLOW_LEGACY_QUEUED'],
+      [409, 'AUTH_OPERATION_SUPERSEDED'],
+      [409, 'AUTH_LOGIN_SUPERSEDED'],
+      [409, 'AUTH_OPERATION_RECEIPT_EXPIRED'],
+      [503, 'AUTH_STATE_UNAVAILABLE'],
+    ] as const) {
+      expect(() =>
+        parseDirectAuthResponse('currentOperation', status, { message, data: null }),
+      ).toThrow(DirectAuthApiError);
+    }
+    expect(() =>
+      parseDirectAuthResponse('currentOperation', 409, {
+        message: 'AUTH_REFRESH_STALE',
+        data: null,
+      }),
+    ).toThrow(DirectAuthProtocolError);
+  });
+
   it('accepts only the error code on the specified status and route', () => {
     expect(() =>
       parseDirectAuthResponse('login', 401, { message: 'INVALID_CREDENTIALS', data: null }),

@@ -20,10 +20,23 @@ import {
   CoordinatorContext,
   LocationRecommendationViewContext,
   LocationRecommendationCoordinator,
+  isLocalLocationRecommendationTestHost,
   type CoordinatorView,
+  type LocationRecommendationRuntimeStatus,
 } from '../locationRecommendationCoordinator';
-import { isLocationRecommendationServiceRoute } from '../locationRecommendationRoutes';
+import {
+  isLocationRecommendationServiceRoute,
+  isSameUrlMapPageAccess,
+} from '../locationRecommendationRoutes';
 import type { LocationRecommendationCandidate } from '../locationRecommendationTypes';
+
+declare global {
+  interface Window {
+    meomuneumLocationRecommendation?: {
+      readRuntimeStatus: () => Promise<LocationRecommendationRuntimeStatus | null>;
+    };
+  }
+}
 
 export function LocationRecommendationProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setAuthenticated] = useState(false);
@@ -33,6 +46,7 @@ export function LocationRecommendationProvider({ children }: { children: ReactNo
   const coordinatorRef = useRef<LocationRecommendationCoordinator | null>(null);
   const identityRef = useRef('');
   const serviceRouteRef = useRef(false);
+  const locationHrefRef = useRef(window.location.href);
   const onChange = useCallback((next: CoordinatorView) => setView(next), []);
 
   const subscribeAuthEpoch = useCallback((onStoreChange: () => void) => {
@@ -79,8 +93,12 @@ export function LocationRecommendationProvider({ children }: { children: ReactNo
   useEffect(() => {
     const updatePath = () => {
       const nextPathname = readRouteLocation().pathname;
+      const currentHref = window.location.href;
+      const isSameUrlMapAccess = isSameUrlMapPageAccess(locationHrefRef.current, currentHref);
+      locationHrefRef.current = currentHref;
       setPathname(nextPathname);
       if (nextPathname !== '/') setMapReady(false);
+      if (isSameUrlMapAccess) coordinatorRef.current?.handleMapPageEntry();
     };
     window.addEventListener('popstate', updatePath);
     window.addEventListener(ROUTE_CHANGE_EVENT, updatePath);
@@ -111,13 +129,32 @@ export function LocationRecommendationProvider({ children }: { children: ReactNo
   const dismissNotice = useCallback(() => coordinatorRef.current?.dismissNotice(), []);
   const cancelCurrent = useCallback(() => coordinatorRef.current?.cancelCurrent(), []);
   const dismissDialog = useCallback(() => coordinatorRef.current?.dismissDialog(), []);
+  const refreshLocalRecommendation = useCallback(
+    () => coordinatorRef.current?.refreshLocalRecommendation(),
+    [],
+  );
   const verifyStatus = useCallback(
     (candidate: LocationRecommendationCandidate, verifyContext?: boolean) =>
       coordinatorRef.current?.verifyStatus(candidate, verifyContext) ?? Promise.resolve(false),
     [],
   );
+  const readRuntimeStatus = useCallback(
+    () => coordinatorRef.current?.readRuntimeStatus() ?? Promise.resolve(null),
+    [],
+  );
   const authContext = useMemo(() => ({ setAuthenticated }), []);
   const viewContext = useMemo(() => ({ reportMapState }), [reportMapState]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const diagnostic = { readRuntimeStatus };
+    window.meomuneumLocationRecommendation = diagnostic;
+    return () => {
+      if (window.meomuneumLocationRecommendation === diagnostic) {
+        delete window.meomuneumLocationRecommendation;
+      }
+    };
+  }, [readRuntimeStatus]);
 
   return (
     <CoordinatorContext.Provider value={authContext}>
@@ -128,10 +165,16 @@ export function LocationRecommendationProvider({ children }: { children: ReactNo
         )}
         {view.candidate && (
           <LocationRecommendationDialog
+            key={view.candidate.requestId}
             candidate={view.candidate}
             verifyStatus={verifyStatus}
             onCancel={cancelCurrent}
             onDismiss={dismissDialog}
+            onRefresh={
+              isLocalLocationRecommendationTestHost(window.location.hostname)
+                ? refreshLocalRecommendation
+                : undefined
+            }
           />
         )}
       </LocationRecommendationViewContext.Provider>

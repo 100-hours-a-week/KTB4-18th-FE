@@ -1,4 +1,8 @@
-import { DIRECT_AUTH_RECHECK_EVENT } from './features/auth-login/api/directAuthSessionState';
+import {
+  DIRECT_AUTH_RECHECK_EVENT,
+  getDirectAccessToken,
+  isDirectAuthRecoveryUnavailable,
+} from './features/auth-login/api/directAuthSessionState';
 import { isDirectAuthEnabled } from './features/auth-login/api/authProtocolMode';
 import { useAppAuthSession } from './app/auth/useAppAuthSession';
 import { lazy, useCallback, useEffect, useRef, useState } from 'react';
@@ -39,6 +43,8 @@ import {
   ROUTE_CHANGE_EVENT,
 } from './shared/navigation';
 
+import { useSearchMetadata } from './hooks/useSearchMetadata';
+
 import './App.css';
 
 const LOGIN_PATH = '/login';
@@ -70,19 +76,10 @@ const ChatEntryPage = lazy(() =>
 const MyPage = lazy(() =>
   import('./features/mypage/components/MyPage').then(({ MyPage }) => ({ default: MyPage })),
 );
-const MusicRecordListPage = lazy(() =>
-  import('./features/music-record/components/MusicRecordPages').then(({ MusicRecordListPage }) => ({
-    default: MusicRecordListPage,
-  })),
-);
+const MusicRecordRoute = lazy(() => import('./features/music-record/components/MusicRecordRoute'));
 const MusicRecordCreatePage = lazy(() =>
   import('./features/music-record/components/MusicRecordPages').then(
     ({ MusicRecordCreatePage }) => ({ default: MusicRecordCreatePage }),
-  ),
-);
-const MusicRecordDetailPage = lazy(() =>
-  import('./features/music-record/components/MusicRecordDetailPage').then(
-    ({ MusicRecordDetailPage }) => ({ default: MusicRecordDetailPage }),
   ),
 );
 const ChatbotPage = lazy(() => import('./features/chatbot/components/ChatbotPage'));
@@ -90,6 +87,7 @@ const ChatbotPage = lazy(() => import('./features/chatbot/components/ChatbotPage
 function AppContent() {
   const [routeLocation, setRouteLocation] = useState(() => readRouteLocation());
   const pathname = routeLocation.pathname;
+  useSearchMetadata(pathname);
   const [initialAuthRestoreState] = useState(() => getAuthRestoreState());
   const [authStatus, setAuthStatus] = useState<AuthStatus>('restoring');
   useLocationRecommendationAuthState(authStatus === 'authenticated');
@@ -115,12 +113,22 @@ function AppContent() {
     setAuthIntentVersion(authIntent.current);
   };
   const isProtectedRoute =
+    pathname === '/' ||
     pathname === CHATBOT_PATH ||
     pathname === CHAT_PATH ||
     pathname === MY_PATH ||
     pathname === MUSIC_RECORDS_PATH ||
     pathname === MUSIC_RECORD_CREATE_PATH ||
     /^\/music-records\/([1-9]\d*)$/.test(pathname);
+  const hasUsableAccessToken = isDirectAuthEnabled()
+    ? Boolean(getDirectAccessToken())
+    : Boolean(getAccessToken());
+  const canUseLocationRecommendation =
+    authStatus === 'authenticated' ||
+    (authStatus === 'retryable-error' &&
+      hasUsableAccessToken &&
+      (!isDirectAuthEnabled() || !isDirectAuthRecoveryUnavailable()));
+  useLocationRecommendationAuthState(canUseLocationRecommendation);
 
   useEffect(() => {
     const updateLocation = () => setRouteLocation(readRouteLocation());
@@ -218,7 +226,10 @@ function AppContent() {
   }, [pathname, routeLocation.search, authStatus]);
 
   useEffect(() => {
-    if (!isProtectedRoute || authStatus !== 'guest') return;
+    const shouldRequireLogin =
+      authStatus === 'guest' ||
+      (pathname === '/' && authStatus === 'retryable-error' && !hasUsableAccessToken);
+    if (!isProtectedRoute || !shouldRequireLogin) return;
     if (
       authIntentVersion !== authIntent.current ||
       window.location.pathname !== routeLocation.pathname ||
@@ -228,7 +239,14 @@ function AppContent() {
       return;
     }
     replaceRoute(loginHref(routeLocation));
-  }, [authIntentVersion, authStatus, isProtectedRoute, routeLocation]);
+  }, [
+    authIntentVersion,
+    authStatus,
+    hasUsableAccessToken,
+    isProtectedRoute,
+    pathname,
+    routeLocation,
+  ]);
 
   useEffect(() => {
     if (isDirectAuthEnabled() || authStatus !== 'authenticated') return;
@@ -472,7 +490,12 @@ function AppContent() {
       </main>
     );
   }
-  if (isProtectedRoute && authStatus === 'retryable-error' && !getAccessToken()) {
+  if (
+    isProtectedRoute &&
+    authStatus === 'retryable-error' &&
+    !(pathname === '/' && !hasUsableAccessToken) &&
+    (!getAccessToken() || (isDirectAuthEnabled() && isDirectAuthRecoveryUnavailable()))
+  ) {
     return (
       <main className="auth-status-page" role="alert">
         <p>
@@ -481,21 +504,16 @@ function AppContent() {
             : getAuthCapabilityMessage(authCapability.reason)}
         </p>
         {manualLogoutError && <p>{manualLogoutError}</p>}
-        <button
-          type="button"
-          onClick={() => {
-            setManualLogoutError('');
-            void restore();
-          }}
-        >
-          다시 시도
-        </button>
         <a href={loginHref(routeLocation)}>로그인</a>
         <a href="/">음악 지도로 돌아가기</a>
       </main>
     );
   }
-  if (isProtectedRoute && authStatus === 'guest') {
+  if (
+    isProtectedRoute &&
+    (authStatus === 'guest' ||
+      (pathname === '/' && authStatus === 'retryable-error' && !hasUsableAccessToken))
+  ) {
     return (
       <main role="status" aria-live="polite">
         로그인 페이지로 이동하고 있어요.
@@ -531,7 +549,7 @@ function AppContent() {
   if (pathname === MUSIC_RECORDS_PATH) {
     return (
       <RouteLoadBoundary key={pathname} variant="music-list">
-        <MusicRecordListPage />
+        <MusicRecordRoute />
       </RouteLoadBoundary>
     );
   }
@@ -539,7 +557,7 @@ function AppContent() {
   if (detailMatch) {
     return (
       <RouteLoadBoundary key={pathname} variant="music-detail">
-        <MusicRecordDetailPage recordId={Number(detailMatch[1])} />
+        <MusicRecordRoute recordId={Number(detailMatch[1])} />
       </RouteLoadBoundary>
     );
   }

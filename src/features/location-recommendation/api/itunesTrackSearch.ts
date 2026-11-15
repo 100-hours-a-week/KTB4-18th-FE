@@ -56,7 +56,7 @@ function upscaleArtwork(value: string | null) {
   try {
     const url = new URL(value);
     if (!isAllowedAppleHost(url.hostname, 'artwork')) return value;
-    url.pathname = url.pathname.replace(/\/\d+x\d+(bb|-?\d+)(\.[^/]+)$/i, '/600x600$1$2');
+    url.pathname = url.pathname.replace(/\/\d+x\d+(bb|-?\d+)(\.[^/]+)$/i, '/680x680$1$2');
     return url.toString();
   } catch {
     return value;

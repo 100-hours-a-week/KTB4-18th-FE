@@ -51,8 +51,11 @@ async function loginFlow(csrf: string, version: number) {
   } catch (error) {
     if (
       !(error instanceof DirectAuthApiError) ||
-      error.status !== 404 ||
-      !['AUTH_FLOW_REQUIRED', 'AUTH_FLOW_NOT_FOUND'].includes(error.code)
+      !(
+        (error.status === 404 &&
+          ['AUTH_FLOW_REQUIRED', 'AUTH_FLOW_NOT_FOUND'].includes(error.code)) ||
+        (error.status === 409 && error.code === 'AUTH_FLOW_REBOOTSTRAP_REQUIRED')
+      )
     )
       throw error;
   }

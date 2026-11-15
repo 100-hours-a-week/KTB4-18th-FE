@@ -462,8 +462,6 @@ body:has(.signup-page)::-webkit-scrollbar {
 .signup-term-sheet-body {
   display: grid;
   gap: 20px;
-  max-height: min(56dvh, 520px);
-  overflow-y: auto;
 }
 
 .signup-term-sheet-body p {

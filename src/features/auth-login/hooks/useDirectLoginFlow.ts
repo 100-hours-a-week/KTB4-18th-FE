@@ -15,7 +15,12 @@ import {
   releaseRejectedDirectLogin,
 } from '../api/directAuthSessionFlow';
 import { inspectDirectRecovery } from '../api/directAuthRecovery';
-import { readDirectAuthOperation } from '../api/directAuthOperationStore';
+import { readCurrentDirectOperation } from '../api/directAuthFlowApi';
+import {
+  clearExpiredDirectAuthRefreshOperation,
+  readDirectAuthOperation,
+  snapshotDirectAuthOperations,
+} from '../api/directAuthOperationStore';
 import type { DirectAuthOperation } from '../api/directAuthTypes';
 import type { LoginSuccessResponse } from '../api/loginTypes';
 import { validate, type FieldErrors } from '../components/loginPage/loginFormValidation';
@@ -55,7 +60,7 @@ export function useDirectLoginFlow(options: Options) {
   const [message, setMessage] = useState(() => {
     try {
       return unresolvedDirectOperation()
-        ? '로그인 결과를 확인하지 못했어요. 상태를 확인해 주세요.'
+        ? '로그인 요청을 마무리하고 있어요. 잠시 후 다시 로그인해 주세요.'
         : '';
     } catch {
       return '인증 요청을 안전하게 저장할 수 없어요.';
@@ -100,7 +105,13 @@ export function useDirectLoginFlow(options: Options) {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (busy.current || isLocked || recovery.isRecovering) return;
-    const errors = validate(email, password);
+    const submittedEmail =
+      event.currentTarget.querySelector<HTMLInputElement>('#email')?.value ?? email;
+    const submittedPassword =
+      event.currentTarget.querySelector<HTMLInputElement>('#password')?.value ?? password;
+    setEmail(submittedEmail);
+    setPassword(submittedPassword);
+    const errors = validate(submittedEmail, submittedPassword);
     setFieldErrors(errors);
     if (Object.keys(errors).length) return;
     busy.current = true;
@@ -110,7 +121,7 @@ export function useDirectLoginFlow(options: Options) {
     options.onLoginStart?.();
     const version = beginDirectAuthIntent();
     activeIntent.current = version;
-    const credentials = { email: email.trim(), password };
+    const credentials = { email: submittedEmail.trim(), password: submittedPassword };
     try {
       const result = await startDirectLogin(credentials, version);
       credentials.password = '';
@@ -143,7 +154,7 @@ export function useDirectLoginFlow(options: Options) {
         setMessage(
           rejected
             ? '로그인하지 못했어요. 입력 내용과 연결 상태를 확인하고 다시 시도해 주세요.'
-            : '로그인 결과를 확인하지 못했어요. 상태를 확인해 주세요.',
+            : '로그인 요청을 마무리하지 못했어요. 다시 로그인해 주세요.',
         );
         options.onLoginFailure?.();
       }
@@ -176,13 +187,13 @@ export function useDirectLoginFlow(options: Options) {
         setMessage(
           result.canonicalMatches
             ? '로그인 결과가 확인됐어요. 안전한 세션 복구를 아직 사용할 수 없어요.'
-            : '로그인 요청이 종료됐어요. 인증 상태를 다시 확인해 주세요.',
+            : '로그인 요청이 종료됐어요. 다시 로그인해 주세요.',
         );
         options.onLoginFailure?.();
         return;
       }
     }
-    if (mounted.current) setMessage('로그인 결과를 확인하지 못했어요. 상태를 확인해 주세요.');
+    if (mounted.current) setMessage('로그인 요청을 마무리하지 못했어요. 다시 로그인해 주세요.');
     options.onLoginFailure?.();
   };
 
@@ -192,7 +203,44 @@ export function useDirectLoginFlow(options: Options) {
     setIsPending(true);
     const version = directAuthVersion();
     try {
-      const source = readDirectAuthOperation('LOGIN');
+      const refresh = readDirectAuthOperation('REFRESH');
+      if (refresh && refresh.expiresAt <= Date.now()) {
+        const snapshot = snapshotDirectAuthOperations();
+        if (Object.entries(snapshot).some(([kind, raw]) => kind !== 'REFRESH' && raw !== null)) {
+          if (mounted.current && version === directAuthVersion()) {
+            setIsLocked(true);
+            setMessage('다른 인증 요청이 처리 중이에요. 잠시 후 다시 로그인해 주세요.');
+          }
+          return;
+        }
+        try {
+          const current = await readCurrentDirectOperation();
+          if (
+            current.data.operation === null &&
+            clearExpiredDirectAuthRefreshOperation(snapshot, refresh)
+          ) {
+            if (mounted.current && version === directAuthVersion()) {
+              setIsLocked(false);
+              if (current.data.flow.authenticated) {
+                setMessage('이전에 완료된 로그인 상태를 복구하고 있어요.');
+                options.onRetryAuthRestore?.();
+              } else {
+                setMessage('만료된 로그인 요청을 정리했어요. 다시 로그인해 주세요.');
+              }
+            }
+          } else if (mounted.current && version === directAuthVersion()) {
+            setIsLocked(true);
+            setMessage('인증 요청을 안전하게 마무리하지 못했어요. 다시 로그인해 주세요.');
+          }
+        } catch {
+          if (mounted.current && version === directAuthVersion()) {
+            setIsLocked(true);
+            setMessage('인증 요청을 안전하게 마무리하지 못했어요. 다시 로그인해 주세요.');
+          }
+        }
+        return;
+      }
+      const source = readDirectAuthOperation('LOGIN') ?? readDirectAuthOperation('LOGIN_RECOVERY');
       const logout = readDirectAuthOperation('LOGOUT');
       const status = logout
         ? await (async () => {
@@ -204,7 +252,7 @@ export function useDirectLoginFlow(options: Options) {
             return {
               released: committed || expiredAndSafeToRelease,
               message: expiredAndSafeToRelease
-                ? '만료된 로그아웃 작업을 확인했어요. 인증 상태를 다시 확인해 주세요.'
+                ? '로그아웃이 완료됐어요. 다시 로그인해 주세요.'
                 : '로그아웃 상태를 확인했어요. 완료되지 않았다면 같은 작업을 다시 시도해 주세요.',
             };
           })()
@@ -222,7 +270,7 @@ export function useDirectLoginFlow(options: Options) {
         if (hasActions) setIsLocked(true);
         setMessage(
           hasActions
-            ? '인증 요청을 확인했어요. 아래 버튼으로 복구를 진행해 주세요.'
+            ? '인증 요청이 아직 처리 중이에요. 잠시 후 다시 로그인해 주세요.'
             : status.message,
         );
         if (status.released) {
@@ -235,8 +283,8 @@ export function useDirectLoginFlow(options: Options) {
       if (mounted.current && version === directAuthVersion()) if (hasActions) setIsLocked(true);
       setMessage(
         hasActions
-          ? '인증 요청을 확인했어요. 아래 버튼으로 복구를 진행해 주세요.'
-          : '로그인 결과를 확인하지 못했어요. 잠시 후 상태를 확인해 주세요.',
+          ? '인증 요청이 아직 처리 중이에요. 잠시 후 다시 로그인해 주세요.'
+          : '로그인 요청을 마무리하지 못했어요. 다시 로그인해 주세요.',
       );
     } finally {
       busy.current = false;
@@ -252,7 +300,7 @@ export function useDirectLoginFlow(options: Options) {
       return;
     }
     if (operation.expiresAt <= Date.now()) {
-      setMessage('로그아웃 작업이 만료됐어요. 상태를 확인해 주세요.');
+      setMessage('로그아웃 작업이 만료됐어요. 다시 로그인해 주세요.');
       return;
     }
     busy.current = true;

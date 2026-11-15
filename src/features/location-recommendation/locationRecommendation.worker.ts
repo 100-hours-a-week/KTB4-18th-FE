@@ -877,6 +877,7 @@ function attachPort(port: MessagePort): void {
                 requestId: message.result.requestId,
                 region: { ...message.result.region },
                 tracks: tracks.map((track) => ({ ...track })),
+                recommendationMessage: message.result.recommendationMessage,
                 scopeGeneration: message.result.scopeGeneration,
                 cancelEpoch: message.result.cancelEpoch,
                 remainingTtlMs: ttl,

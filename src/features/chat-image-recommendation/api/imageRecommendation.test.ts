@@ -8,6 +8,8 @@ vi.mock('../../../features/auth-login/api/authSession', () => ({
     status = 401;
   },
   authenticatedFetch: vi.fn(),
+  getAccessToken: () => null,
+  getSharedAuthEpoch: () => 'fixture',
 }));
 
 describe('image recommendation API', () => {

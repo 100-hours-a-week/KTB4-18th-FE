@@ -44,7 +44,7 @@ describe('iTunes recommendation track lookup', () => {
     expect(requestUrl.searchParams.get('entity')).toBe('song');
     expect(requestUrl.searchParams.get('country')).toBeNull();
     expect(resolved.previewUrl).toBe('https://audio-ssl.itunes.apple.com/preview.m4a');
-    expect(resolved.artworkUrl).toBe('https://is1-ssl.mzstatic.com/artwork/600x600bb.jpg');
+    expect(resolved.artworkUrl).toBe('https://is1-ssl.mzstatic.com/artwork/680x680bb.jpg');
     expect(resolved.storeUrl).toBe('https://music.apple.com/kr/song/hype-boy/1');
   });
 

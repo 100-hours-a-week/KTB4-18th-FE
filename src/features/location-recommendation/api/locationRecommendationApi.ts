@@ -1,4 +1,5 @@
 import { AuthRequestError, authenticatedFetch } from '../../auth-login/api/authSession';
+import { getHighResolutionArtworkUrl } from '../../../shared/albumArtwork';
 import {
   LOCATION_RECOMMENDATION_FE_TIMEOUT_MS,
   type LocationRecommendationCancellation,
@@ -90,7 +91,7 @@ function parseTrack(value: unknown): LocationRecommendationTrack | null {
     title: value.title,
     artist: value.artist,
     previewUrl: parseMediaUrl(value.previewUrl, PREVIEW_HOSTS),
-    artworkUrl: parseMediaUrl(value.artworkUrl, ARTWORK_HOSTS),
+    artworkUrl: getHighResolutionArtworkUrl(parseMediaUrl(value.artworkUrl, ARTWORK_HOSTS)),
     storeUrl: parseMediaUrl(value.storeUrl, STORE_HOSTS),
   };
 }
@@ -185,12 +186,17 @@ function parseRecommendation(value: unknown): LocationRecommendationResult | nul
   if (!Number.isSafeInteger(remainingTtlMs) || (remainingTtlMs as number) < 0) {
     return null;
   }
+  const recommendationMessage =
+    value.status === 'READY' && typeof value.recommendationMessage === 'string'
+      ? value.recommendationMessage.trim()
+      : '';
   return {
     requestId: value.requestId,
     status: value.status,
     reason: value.reason,
     region,
     tracks: parsedTracks as LocationRecommendationTrack[],
+    ...(recommendationMessage && { recommendationMessage }),
     scopeGeneration: value.scopeGeneration,
     cancelEpoch: value.cancelEpoch as number,
     remainingTtlMs: remainingTtlMs as number,

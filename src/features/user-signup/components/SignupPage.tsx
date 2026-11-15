@@ -813,7 +813,7 @@ export function SignupPage({ onSignupSuccess }: SignupPageProps) {
               <BottomSheet.Description>{selectedTerm?.version}</BottomSheet.Description>
               <BottomSheet.CloseButton aria-label="약관 상세 닫기">닫기</BottomSheet.CloseButton>
             </BottomSheet.Header>
-            <BottomSheet.Body className="signup-term-sheet-body">
+            <BottomSheet.Body className="signup-term-sheet-body" data-no-drag>
               <p>{selectedTerm?.content}</p>
             </BottomSheet.Body>
           </BottomSheet.Content>

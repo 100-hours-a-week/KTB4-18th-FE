@@ -1,7 +1,10 @@
 .location-recommendation-portal-root {
   position: fixed;
+  top: 0;
+  left: var(--app-left, 0px);
+  width: var(--app-width, 100vw);
+  height: 100dvh;
   z-index: 1100;
-  inset: 0;
   pointer-events: none;
 }
 
@@ -10,8 +13,11 @@
   inset: 0;
   box-sizing: border-box;
   display: grid;
-  overflow: hidden;
-  place-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: none;
+  place-items: safe center center;
   padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
   background: rgb(17 22 20 / 54%);
   backdrop-filter: blur(2px);
@@ -20,24 +26,21 @@
 
 .location-recommendation-dialog {
   position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
   width: min(100%, 720px);
-  max-height: 100%;
-  min-height: 0;
-  overflow: hidden;
   padding: clamp(16px, 2vh, 30px) clamp(18px, 4vw, 40px);
   border: 1px solid rgb(255 255 255 / 76%);
-  border-radius: clamp(30px, 7vw, 64px);
-  background: linear-gradient(138deg, #17221f 0%, #414541 54%, #131d19 100%);
+  border-radius: 24px;
+  background: linear-gradient(138deg, #202d29 0%, #494e49 54%, #1c2823 100%);
   color: #fff;
   box-shadow: 0 24px 80px rgb(0 0 0 / 28%);
   text-align: center;
 }
 
 .location-recommendation-dialog__header {
-  position: relative;
   display: flex;
   flex: 0 0 auto;
   justify-content: center;
@@ -60,6 +63,7 @@
 
 .location-recommendation-dialog__header h2 {
   margin: 0;
+  overflow-wrap: anywhere;
   font-size: 22px;
   font-weight: 700;
   line-height: 1.35;
@@ -68,8 +72,8 @@
 
 .location-recommendation-dialog__close {
   position: absolute;
-  top: 2px;
-  right: 0;
+  top: 18px;
+  right: 18px;
   display: grid;
   width: 44px;
   height: 44px;
@@ -98,21 +102,11 @@
   max-width: 560px;
   margin: clamp(8px, 1.4vh, 14px) 0 0;
   color: #f1f3f1;
-  font-size: clamp(14px, 1.8vh, 18px);
+  font-size: 16px;
   line-height: 1.45;
   text-align: center;
   word-break: keep-all;
-}
-
-.location-recommendation-dialog__footnote {
-  align-self: center;
-  flex: 0 0 auto;
-  max-width: 560px;
-  margin: 8px 0 0;
-  color: #c5cdc8;
-  font-size: 11px;
-  line-height: 1.4;
-  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .location-recommendation-dialog button:focus-visible,
@@ -124,7 +118,6 @@
 @media (max-width: 520px) {
   .location-recommendation-dialog {
     padding: 16px 18px 18px;
-    border-radius: 28px;
   }
   .location-recommendation-dialog__header {
     margin-bottom: 10px;

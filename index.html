@@ -2,9 +2,50 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>머문음</title>
+    <meta
+      name="description"
+      content="머문음은 음악을 들었던 장소와 감상을 지도에 기록하는 위치 기반 음악 아카이빙 서비스입니다. AI 음악 추천과 지역 채팅으로 음악을 나누고, 지도 위 앨범 커버 도트로 나만의 시각적 음악 아카이브를 완성하세요."
+    />
+    <meta name="robots" content="index,follow" />
+    <link rel="canonical" href="https://meomuneum.com/login" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="머문음" />
+    <meta property="og:locale" content="ko_KR" />
+    <meta property="og:title" content="머문음 | 지도에 남기는 음악" />
+    <meta
+      property="og:description"
+      content="장소와 감상을 음악으로 기록하고, AI 추천과 지역 채팅으로 나눠보세요."
+    />
+    <meta property="og:url" content="https://meomuneum.com/login" />
+    <meta property="og:image" content="https://meomuneum.com/images/serviceOpenGraph.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="3400" />
+    <meta property="og:image:height" content="1785" />
+    <meta
+      property="og:image:alt"
+      content="머문음 — 그날의 음악이, 그곳의 기억으로. 장소와 음악을 기록하고 지도 위에서 만나요."
+    />
+    <script>
+      if (location.pathname !== '/' && location.pathname !== '/login') {
+        document.querySelector('meta[name="robots"]').content = 'noindex,follow';
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "name": "머문음",
+            "url": "https://meomuneum.com/",
+            "inLanguage": "ko"
+          }
+        ]
+      }
+    </script>
     <!-- Microsoft Clarity: 운영 도메인에서만 수집 (로컬·프리뷰 데이터 섞임 방지) -->
     <script>
       if (location.hostname === 'meomuneum.com') {

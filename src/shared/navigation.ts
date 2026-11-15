@@ -6,12 +6,14 @@ function routeLocation(url: URL): RouteLocation {
   return { pathname: url.pathname, search: url.search, hash: url.hash };
 }
 
-export function navigate(path: string): void {
+export function navigate(path: string, state?: Record<string, unknown>): void {
   const destination = new URL(path, window.location.origin);
   if (destination.origin !== window.location.origin) return;
   const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   const next = `${destination.pathname}${destination.search}${destination.hash}`;
-  if (current !== next) window.history.pushState({ meomuneumPreviousRoute: current }, '', next);
+  if (current !== next) {
+    window.history.pushState({ ...state, meomuneumPreviousRoute: current }, '', next);
+  }
   window.dispatchEvent(new Event(ROUTE_CHANGE_EVENT));
 }
 

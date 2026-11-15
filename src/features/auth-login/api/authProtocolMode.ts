@@ -5,14 +5,18 @@ export function isDirectAuthEnabled(env = import.meta.env): boolean {
     (env.DEV === true && env.VITE_AUTH_DIRECT_V2_ENABLED !== 'false') ||
     (env.PROD === true &&
       env.VITE_AUTH_DIRECT_V2_ENABLED === 'true' &&
-      env.VITE_AUTH_DIRECT_V2_REFRESH_VERIFIED === 'true' &&
-      env.VITE_AUTH_DIRECT_V2_SOURCE_RECOVERY_VERIFIED === 'true' &&
-      env.VITE_AUTH_DIRECT_V2_REBOOTSTRAP_VERIFIED === 'true')
+      env.VITE_AUTH_DIRECT_V2_REFRESH_VERIFIED === 'true')
   );
 }
 
 export function isDirectRefreshVerified(env = import.meta.env): boolean {
-  return isDirectAuthEnabled(env) && env.VITE_AUTH_DIRECT_V2_REFRESH_VERIFIED === 'true';
+  return (
+    isDirectAuthEnabled(env) &&
+    (env.DEV === true
+      ? env.VITE_AUTH_DIRECT_V2_REFRESH_VERIFIED === undefined ||
+        env.VITE_AUTH_DIRECT_V2_REFRESH_VERIFIED === 'true'
+      : env.VITE_AUTH_DIRECT_V2_REFRESH_VERIFIED === 'true')
+  );
 }
 
 export function isDirectSourceRecoveryVerified(env = import.meta.env): boolean {

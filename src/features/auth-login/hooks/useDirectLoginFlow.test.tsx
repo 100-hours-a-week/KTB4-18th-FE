@@ -14,6 +14,8 @@ import {
   clearDirectAuthOperation,
   persistDirectAuthOperation,
 } from '../api/directAuthOperationStore';
+import { inspectDirectRecovery } from '../api/directAuthRecovery';
+import { readCurrentDirectOperation } from '../api/directAuthFlowApi';
 import {
   inspectCommittedDirectLogout,
   performDirectLogout,
@@ -26,13 +28,17 @@ vi.mock('../api/directAuthSessionFlow', () => ({
   completeDirectLogin: vi.fn(),
   inspectDirectLogin: vi.fn(),
   unresolvedDirectOperation: () =>
-    sessionStorage.getItem('meomuneum:direct-auth-operation:LOGOUT') ?? null,
+    ['BOOTSTRAP', 'LOGIN', 'LOGIN_RECOVERY', 'REFRESH', 'LOGOUT', 'REBOOTSTRAP', 'REFRESH_RECOVERY']
+      .map((kind) => sessionStorage.getItem(`meomuneum:direct-auth-operation:${kind}`))
+      .find(Boolean) ?? null,
 }));
 vi.mock('../api/directAuthLogoutFlow', () => ({
   inspectCommittedDirectLogout: vi.fn(),
   performDirectLogout: vi.fn(),
   releaseExpiredDirectLogout: vi.fn(),
 }));
+vi.mock('../api/directAuthRecovery', () => ({ inspectDirectRecovery: vi.fn() }));
+vi.mock('../api/directAuthFlowApi', () => ({ readCurrentDirectOperation: vi.fn() }));
 vi.mock('./useDirectLoginRecovery', () => ({
   useDirectLoginRecovery: () => ({
     inspectActions: vi.fn().mockResolvedValue(false),
@@ -49,7 +55,10 @@ const source = {
   operationId: 'o',
   expiresAt: Date.now() + 900000,
 };
-const event = { preventDefault: vi.fn() } as unknown as FormEvent<HTMLFormElement>;
+const event = {
+  preventDefault: vi.fn(),
+  currentTarget: { querySelector: () => null },
+} as unknown as FormEvent<HTMLFormElement>;
 beforeEach(() => {
   vi.resetAllMocks();
   sessionStorage.clear();
@@ -83,7 +92,55 @@ it('serializes double submit, erases password, and reports only verified success
   expect(hook.result.current.password).toBe('');
   expect(hook.options.onLoginSuccess).toHaveBeenCalledOnce();
 });
-it('bounds 202 status polling at ten same-operation GET checks without any repeated POST', async () => {
+it('submits current DOM values when browser autofill did not update React state', async () => {
+  let submittedCredentials: { email: string; password: string } | undefined;
+  vi.mocked(startDirectLogin).mockImplementation(async (credentials) => {
+    submittedCredentials = { ...credentials };
+    throw new Error();
+  });
+  vi.mocked(resolveDirectLoginFailure).mockResolvedValue(true);
+  const hook = await ready();
+  const autofillEvent = {
+    preventDefault: vi.fn(),
+    currentTarget: {
+      querySelector: (selector: string) =>
+        selector === '#email'
+          ? { value: '  autofill@example.com  ' }
+          : selector === '#password'
+            ? { value: ' AutofillPassword1! ' }
+            : null,
+    },
+  } as unknown as FormEvent<HTMLFormElement>;
+
+  await act(async () => {
+    await hook.result.current.handleSubmit(autofillEvent);
+  });
+
+  expect(submittedCredentials).toEqual({
+    email: 'autofill@example.com',
+    password: ' AutofillPassword1! ',
+  });
+  expect(hook.result.current.email).toBe('  autofill@example.com  ');
+  expect(hook.result.current.password).toBe(' AutofillPassword1! ');
+});
+it('rejects empty DOM fields even when stale React state contains credentials', async () => {
+  const hook = await ready();
+  const emptyFormEvent = {
+    preventDefault: vi.fn(),
+    currentTarget: { querySelector: () => ({ value: '' }) },
+  } as unknown as FormEvent<HTMLFormElement>;
+
+  await act(async () => {
+    await hook.result.current.handleSubmit(emptyFormEvent);
+  });
+
+  expect(startDirectLogin).not.toHaveBeenCalled();
+  expect(hook.result.current.fieldErrors).toEqual({
+    email: '이메일을 입력해 주세요.',
+    password: '비밀번호를 입력해 주세요.',
+  });
+});
+it('bounds pending-operation checks at ten same-operation GETs without any repeated POST', async () => {
   vi.useFakeTimers();
   vi.mocked(startDirectLogin).mockResolvedValue({ operation: source, token: null });
   vi.mocked(inspectDirectLogin).mockResolvedValue({ terminal: null, canonicalMatches: false });
@@ -101,7 +158,7 @@ it('bounds 202 status polling at ten same-operation GET checks without any repea
   expect(inspectDirectLogin).toHaveBeenLastCalledWith(source);
   expect(completeDirectLogin).not.toHaveBeenCalled();
   expect(hook.result.current.isLocked).toBe(true);
-  expect(hook.result.current.message).toContain('상태를 확인');
+  expect(hook.result.current.message).toContain('다시 로그인해 주세요');
 });
 it('keeps uncertainty locked on a failed status read and never reports success', async () => {
   vi.mocked(startDirectLogin).mockRejectedValue(new Error());
@@ -185,6 +242,84 @@ it('keeps a persisted logout locked after GET-only status inspection and retries
   expect(performDirectLogout).toHaveBeenCalledOnce();
   expect(hook.result.current.hasPendingLogout).toBe(false);
   expect(hook.result.current.isLocked).toBe(false);
+});
+
+it.each([
+  'LOGIN',
+  'REFRESH',
+  'BOOTSTRAP',
+  'LOGIN_RECOVERY',
+  'REFRESH_RECOVERY',
+  'REBOOTSTRAP',
+] as const)('keeps a non-expired %s marker without querying or clearing it', async (kind) => {
+  const login = {
+    flowId: kind === 'BOOTSTRAP' ? null : '123e4567-e89b-42d3-a456-426614174000',
+    startingEpoch: kind === 'BOOTSTRAP' ? null : '1',
+    operationId: '123e4567-e89b-42d3-a456-426614174001',
+    expiresAt: Date.now() + 60_000,
+  };
+  persistDirectAuthOperation(kind, login);
+  vi.mocked(inspectDirectRecovery).mockRejectedValue(new Error('AUTH_OPERATION_RECEIPT_EXPIRED'));
+  const hook = renderHook(() => useDirectLoginFlow({ onRetryAuthRestore: vi.fn() }));
+
+  await act(async () => {
+    await hook.result.current.checkStatus();
+  });
+
+  expect(sessionStorage.getItem(`meomuneum:direct-auth-operation:${kind}`)).not.toBeNull();
+  expect(readCurrentDirectOperation).not.toHaveBeenCalled();
+  expect(hook.result.current.isLocked).toBe(true);
+});
+
+it('clears only a sole expired REFRESH marker after canonical null confirmation', async () => {
+  const refresh = {
+    flowId: '123e4567-e89b-42d3-a456-426614174000',
+    startingEpoch: '1',
+    operationId: '123e4567-e89b-42d3-a456-426614174001',
+    expiresAt: Date.now() - 1,
+  };
+  sessionStorage.setItem('meomuneum:direct-auth-operation:REFRESH', JSON.stringify(refresh));
+  vi.mocked(readCurrentDirectOperation).mockResolvedValue({
+    message: 'current auth operation',
+    data: {
+      flow: {
+        flowId: refresh.flowId,
+        flowEpoch: '2',
+        revision: '3',
+        lifecycle: 'ANONYMOUS',
+        authenticated: false,
+        proofState: 'ACTIVE',
+      },
+      operation: null,
+    },
+  });
+  const hook = renderHook(() => useDirectLoginFlow({ onRetryAuthRestore: vi.fn() }));
+  await act(async () => hook.result.current.checkStatus());
+  expect(readCurrentDirectOperation).toHaveBeenCalledOnce();
+  expect(sessionStorage.getItem('meomuneum:direct-auth-operation:REFRESH')).toBeNull();
+  expect(hook.result.current.isLocked).toBe(false);
+});
+
+it('keeps an expired REFRESH marker when another operation marker exists', async () => {
+  const refresh = {
+    flowId: '123e4567-e89b-42d3-a456-426614174000',
+    startingEpoch: '1',
+    operationId: '123e4567-e89b-42d3-a456-426614174001',
+    expiresAt: Date.now() - 1,
+  };
+  const login = {
+    ...refresh,
+    operationId: '123e4567-e89b-42d3-a456-426614174002',
+    expiresAt: Date.now() + 60_000,
+  };
+  sessionStorage.setItem('meomuneum:direct-auth-operation:REFRESH', JSON.stringify(refresh));
+  persistDirectAuthOperation('LOGIN', login);
+  const hook = renderHook(() => useDirectLoginFlow({ onRetryAuthRestore: vi.fn() }));
+  await act(async () => hook.result.current.checkStatus());
+  expect(readCurrentDirectOperation).not.toHaveBeenCalled();
+  expect(sessionStorage.getItem('meomuneum:direct-auth-operation:REFRESH')).not.toBeNull();
+  expect(sessionStorage.getItem('meomuneum:direct-auth-operation:LOGIN')).not.toBeNull();
+  expect(hook.result.current.isLocked).toBe(true);
 });
 
 it('releases an expired logout marker only after canonical GET resolution', async () => {

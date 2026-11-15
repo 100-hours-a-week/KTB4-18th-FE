@@ -3,6 +3,7 @@ import { authenticatedFetch } from '../../auth-login/api/authSession';
 import {
   cancelLocationRecommendation,
   createLocationRecommendation,
+  getLocationRecommendationStatus,
 } from './locationRecommendationApi';
 
 vi.mock('../../auth-login/api/authSession', () => ({
@@ -92,6 +93,40 @@ describe('createLocationRecommendation', () => {
     });
   });
 
+  it('carries the AI message on creation and status lookup', async () => {
+    const message = '잔잔한 공원 산책에 어울리는 곡을 골랐어요.';
+    vi.mocked(authenticatedFetch).mockImplementation(async () =>
+      Response.json({
+        message: 'location recommendation checked',
+        data: { ...recommendation(), recommendationMessage: `  ${message}  ` },
+      }),
+    );
+
+    await expect(createLocationRecommendation(input)).resolves.toHaveProperty(
+      'recommendationMessage',
+      message,
+    );
+    await expect(getLocationRecommendationStatus(canonicalRequestId)).resolves.toHaveProperty(
+      'recommendationMessage',
+      message,
+    );
+  });
+
+  it.each([undefined, null, '  ', 42])(
+    'allows READY with no usable message (%s)',
+    async (value) => {
+      vi.mocked(authenticatedFetch).mockResolvedValue(
+        Response.json({
+          message: 'ready',
+          data: { ...recommendation(), recommendationMessage: value },
+        }),
+      );
+      const result = await createLocationRecommendation(input);
+      expect(result.tracks).toHaveLength(1);
+      expect(result.recommendationMessage).toBeUndefined();
+    },
+  );
+
   it('rejects a READY response without tracks', async () => {
     vi.mocked(authenticatedFetch).mockResolvedValue(
       Response.json({ message: 'ready', data: { ...recommendation(), tracks: [] } }),
@@ -145,7 +180,7 @@ describe('createLocationRecommendation', () => {
             {
               ...track,
               previewUrl: 'https://audio-ssl.itunes.apple.com/preview.mp3',
-              artworkUrl: 'https://is1-ssl.mzstatic.com/image.jpg',
+              artworkUrl: 'https://is1-ssl.mzstatic.com/image/100x100bb.jpg',
               storeUrl: 'https://music.apple.com/kr/album/song',
             },
             {
@@ -164,7 +199,7 @@ describe('createLocationRecommendation', () => {
       tracks: [
         {
           previewUrl: 'https://audio-ssl.itunes.apple.com/preview.mp3',
-          artworkUrl: 'https://is1-ssl.mzstatic.com/image.jpg',
+          artworkUrl: 'https://is1-ssl.mzstatic.com/image/680x680bb.jpg',
           storeUrl: 'https://music.apple.com/kr/album/song',
         },
         { previewUrl: null, artworkUrl: null, storeUrl: null },

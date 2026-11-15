@@ -399,10 +399,6 @@
   outline-offset: 2px;
 }
 
-.mypage-recommendations {
-  gap: 0;
-}
-
 .mypage-recommendations > h2,
 .mypage-recommendations > .mypage-notice,
 .mypage-recommendations > .mypage-loading,
@@ -412,31 +408,6 @@
 
 .mypage-recommendations > h2:first-child {
   margin-top: 0;
-}
-
-.mypage-recommendation-item {
-  display: flex;
-  min-height: 4.5rem;
-  align-items: center;
-  border-bottom: 1px solid var(--color-border-tertiary);
-}
-
-.mypage-recommendation-item > div:first-child {
-  display: grid;
-  gap: 0.2rem;
-}
-
-.mypage-recommendation-item span,
-.mypage-recommendation-item small {
-  color: var(--color-text-secondary);
-}
-
-.mypage-recommendation-item span {
-  font-size: var(--text-body3-normal);
-}
-
-.mypage-recommendation-item small {
-  font-size: var(--text-caption);
 }
 
 .mypage-text-button {
@@ -1063,7 +1034,8 @@
 }
 
 .mypage-recommendations {
-  gap: 0.5rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
 }
 
 .mypage-recommendations > h2 {
@@ -1081,11 +1053,17 @@
 
 .mypage-recommendation-item {
   position: relative;
-  min-height: 4.625rem;
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
-  padding: 0.75rem;
-  border: 1px solid var(--color-border-tertiary);
-  border-radius: 0.5rem;
+  padding-block: 0.5rem;
+}
+
+.mypage-recommendation-item > div[aria-hidden='true'] {
+  position: absolute;
+  inset-block-end: 0;
+  width: 1px;
+  height: 1px;
 }
 
 .mypage-recommendation-cover {
@@ -1100,24 +1078,22 @@
   display: flex;
   flex: 1 0 0%;
   flex-direction: column;
-  align-items: flex-start;
   min-width: 0;
   gap: 0.1875rem;
   white-space: nowrap;
 }
 
-.mypage-recommendation-item strong {
-  overflow: hidden;
+.mypage-recommendation-title {
   color: var(--color-text-primary);
   font-size: 1rem;
   font-weight: 600;
   line-height: 1.5rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.mypage-recommendation-item span {
-  color: var(--color-text-tertiary);
+.mypage-recommendation-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-secondary);
   font-size: 0.8125rem;
   line-height: 1.125rem;
 }
@@ -1156,15 +1132,21 @@
   background: rgb(0 0 0 / 28%);
 }
 
+.seed-content-dialog__positioner:has(.mypage-withdrawal-dialog) {
+  align-items: safe center;
+  overflow-y: auto;
+  overscroll-behavior-y: none;
+}
+
 .mypage-withdrawal-dialog {
   box-sizing: border-box;
   display: flex;
   width: min(calc(100vw - 2.5rem), 23.4375rem);
   max-width: 23.4375rem;
-  height: 21.875rem;
+  max-height: none;
   flex-direction: column;
   padding: 0;
-  overflow: hidden;
+  overflow: clip;
   border-radius: 1.25rem;
   background: var(--color-bg-primary);
 }
@@ -1172,7 +1154,6 @@
 .mypage-withdrawal-warning-content {
   box-sizing: border-box;
   display: flex;
-  height: 16.875rem;
   flex: none;
   flex-direction: column;
   align-items: center;
@@ -1267,6 +1248,7 @@
 
 .mypage-withdrawal-title {
   margin: 0;
+  overflow-wrap: anywhere;
   color: var(--color-text-primary);
   font-size: 1.125rem;
   font-weight: 600;
@@ -1282,7 +1264,6 @@
 }
 
 .mypage-withdrawal-password-dialog {
-  height: auto;
   min-height: 0;
   gap: 1.25rem;
   padding: 1.5rem 1.25rem 0;
@@ -1535,6 +1516,63 @@ button {
   transition: opacity 220ms ease;
 }
 
+.zone-map__canvas--zoomed {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.zone-map__canvas--zoomed:active {
+  cursor: grabbing;
+}
+
+.zone-map__zoom {
+  position: absolute;
+  top: 50%;
+  right: 0.75rem;
+  display: grid;
+  overflow: hidden;
+  transform: translateY(-50%);
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 1rem;
+  background: var(--diary-paper);
+  box-shadow: 0 0.25rem 1rem rgb(23 23 23 / 10%);
+}
+
+.zone-map__zoom button {
+  display: grid;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0.25rem;
+  place-items: center;
+  border: 0;
+  color: var(--color-text-primary);
+  background: transparent;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.zone-map__zoom button + button {
+  border-top: 1px solid var(--color-border-tertiary);
+}
+
+.zone-map__zoom .zone-map__zoom-reset {
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.zone-map__zoom button:disabled {
+  color: var(--color-text-tertiary);
+  opacity: 0.5;
+  cursor: default;
+}
+
+.zone-map__zoom button:focus-visible,
+.zone-map__canvas:focus-visible {
+  outline: 2px solid var(--color-border-interactive-primary);
+  outline-offset: -3px;
+}
+
 .zone-map--intro .zone-map__canvas {
   opacity: 0;
 }
@@ -1784,7 +1822,7 @@ button {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 20px 20px 24px;
-  overscroll-behavior-y: contain;
+  overscroll-behavior-y: none;
 }
 .date-label {
   width: fit-content;
@@ -2275,9 +2313,6 @@ button {
 .music-success {
   color: var(--color-text-interactive-primary);
 }
-.music-search-page {
-  padding-bottom: calc(7rem + env(safe-area-inset-bottom));
-}
 .music-search-footer {
   position: fixed;
   z-index: 3;
@@ -2317,7 +2352,7 @@ button {
   align-items: center;
   justify-content: space-between;
   min-height: 4rem;
-  border-bottom: 1px solid var(--color-border-tertiary);
+  background: var(--diary-paper);
 }
 .music-page-header h1 {
   margin: 0;
@@ -2363,7 +2398,6 @@ button {
   display: grid;
   gap: 0.75rem;
 }
-.music-result,
 .record-card,
 .music-selected-content {
   display: flex;
@@ -2375,7 +2409,6 @@ button {
   border-radius: 0.9rem;
   background: var(--color-bg-primary);
 }
-.music-result.selected,
 .record-card.selected {
   border-color: var(--color-border-interactive-primary);
   background: var(--color-bg-interactive-primary-light);
@@ -2400,31 +2433,6 @@ button {
   border-radius: 0.75rem;
   background: var(--color-bg-primary);
   color: var(--color-text-error);
-}
-.music-delete-dialog {
-  width: min(24rem, calc(100% - 2rem));
-  padding: 1.5rem;
-  border: 1px solid var(--color-border-tertiary);
-  border-radius: 1rem;
-  background: var(--color-bg-primary);
-  color: var(--color-text-primary);
-}
-.music-delete-dialog::backdrop {
-  background: rgb(0 0 0 / 45%);
-}
-.music-delete-dialog h2 {
-  margin-top: 0;
-}
-.music-delete-dialog p {
-  overflow-wrap: anywhere;
-}
-.music-delete-actions {
-  display: flex;
-  gap: 0.75rem;
-  margin-top: 1.25rem;
-}
-.music-delete-actions button {
-  flex: 1;
 }
 .music-delete-button:disabled {
   opacity: 0.5;
@@ -2472,7 +2480,7 @@ button {
   object-fit: cover;
   border-radius: 0.5rem;
 }
-.music-result span,
+.music-result-select > span,
 .music-selected-content div {
   display: grid;
   gap: 0.25rem;
@@ -2532,17 +2540,23 @@ button {
   max-width: 42.5rem;
   padding: 0 1.25rem 2rem;
 }
+.music-search-page {
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom));
+}
 .music-create-page,
 .music-detail-page {
   padding-bottom: calc(2rem + env(safe-area-inset-bottom));
 }
 .music-search-page .music-page-header,
-.music-create-page .music-page-header,
-.music-detail-page .music-page-header {
+.music-create-page .music-page-header {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr) 2rem;
   min-height: 3.5rem;
   margin: 0 -1.25rem;
   padding: 0 1rem;
-  border-bottom: 1px solid var(--color-border-tertiary);
+}
+.music-detail-page .music-page-header {
+  margin: 0 -1.25rem;
 }
 .music-search-page .music-page-header .music-back,
 .music-create-page .music-page-header .music-back,
@@ -2550,27 +2564,35 @@ button {
   display: grid;
   width: 2rem;
   height: 2.5rem;
-  margin-left: -0.25rem;
   padding: 0;
   place-items: center;
   font-size: 1.75rem;
   line-height: 1;
 }
+.music-search-page .music-page-header .music-back,
+.music-create-page .music-page-header .music-back {
+  margin-left: -0.25rem;
+}
 .music-search-page .music-page-header h1,
-.music-create-page .music-page-header h1,
-.music-detail-page .music-page-header h1 {
+.music-create-page .music-page-header h1 {
+  justify-self: center;
   font-size: 1.25rem;
   font-weight: 600;
   line-height: 1.75rem;
 }
-.music-search-page .music-search {
+.music-search-page .music-search-bar {
   position: sticky;
   z-index: 2;
   top: 0;
+  margin: -12px -1.25rem 1rem;
+  padding: 24px 1.25rem 4px;
+  background: var(--color-bg-primary);
+}
+.music-search-page .music-search {
   height: 3rem;
   align-items: center;
   gap: 0.5rem;
-  margin: 0.75rem 0 1rem;
+  margin: 0;
   padding: 0 0.75rem;
   border: 1px solid var(--color-border-tertiary);
   border-radius: 0.5rem;
@@ -2627,22 +2649,19 @@ button {
   line-height: 1.25rem;
 }
 .music-search-page .search-results {
-  gap: 0.25rem;
+  gap: 0;
 }
-.music-result-row {
-  gap: 0.5rem;
-  align-items: stretch;
+.music-search-page .music-result-row {
+  margin-inline: -1.25rem;
 }
 .music-result-row .music-result {
   box-sizing: border-box;
+  display: flex;
   flex: 1;
   min-width: 0;
   align-items: center;
-  gap: 0;
-  min-height: 4.625rem;
-  padding: 0.75rem;
-  border-radius: 0.5rem;
-  cursor: default;
+  padding: 0.5rem 1.25rem;
+  border-radius: 0;
 }
 .music-result-select {
   display: flex;
@@ -2659,8 +2678,7 @@ button {
   cursor: pointer;
 }
 .music-result.selected {
-  border-color: var(--color-border-tertiary);
-  background: var(--color-bg-secondary);
+  background: var(--color-brand-100);
 }
 .music-result-select:focus-visible,
 .music-preview-button:focus-visible {
@@ -2684,6 +2702,31 @@ button {
   line-height: 1.5rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .music-result-select .scrolling-track-title__track--moving {
+    animation-name: none;
+    animation-delay: 300ms;
+  }
+
+  .music-result-select[aria-pressed='true'] .scrolling-track-title__track--moving {
+    animation-name: music-search-title-marquee;
+  }
+
+  @media (hover: hover) {
+    .music-result-select:hover .scrolling-track-title__track--moving {
+      animation-name: music-search-title-marquee;
+    }
+  }
+}
+@keyframes music-search-title-marquee {
+  from {
+    transform: translateX(0);
+  }
+  88%,
+  to {
+    transform: translateX(calc(-1 * var(--title-marquee-distance)));
+  }
 }
 .music-result-row .music-result small {
   overflow: hidden;
@@ -2753,13 +2796,11 @@ button {
   justify-items: start;
   gap: 0.1875rem;
 }
-.music-track-info strong,
 .music-detail-page .music-selected-content strong {
   font-size: 1.75rem;
   font-weight: 700;
   line-height: 2.375rem;
 }
-.music-track-info span,
 .music-detail-page .music-selected-content span {
   color: var(--color-text-secondary);
   font-size: 0.8125rem;
@@ -2828,6 +2869,38 @@ button {
   color: var(--color-text-tertiary);
   background: var(--color-bg-secondary);
 }
+.music-location-field {
+  display: grid;
+  gap: 0.75rem;
+}
+.music-location-control {
+  position: relative;
+}
+.music-create-page .music-form .music-location-control input {
+  padding-inline-end: 3.5rem;
+}
+.music-location-retry {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0.25rem;
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin-block: auto;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  cursor: pointer;
+}
+.music-location-retry:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.music-location-retry:focus-visible {
+  outline: 2px solid var(--color-border-interactive-primary);
+}
 .music-memo-count {
   justify-self: end;
   margin-top: -1.875rem;
@@ -2855,28 +2928,19 @@ button {
   color: var(--color-text-tertiary);
   background: var(--color-bg-secondary);
 }
-.music-exit-dialog {
-  position: fixed;
-  inset: 0;
-  max-height: calc(100dvh - 2rem);
-  overflow: auto;
-  margin: auto;
-  box-sizing: border-box;
-  width: min(21.875rem, calc(100vw - 2.5rem));
-  padding: 0;
-  border: 0;
-  border-radius: 1.25rem;
-  color: var(--color-text-primary);
-  background: var(--color-bg-primary);
-}
 .music-exit-dialog::backdrop {
   background: rgb(0 0 0 / 28%);
 }
 .music-exit-content {
+  box-sizing: border-box;
   display: grid;
+  width: min(100%, 21.875rem);
   justify-items: center;
   gap: 0;
   padding: 2.5rem 1.25rem 1.25rem;
+  border-radius: 1.25rem;
+  color: var(--color-text-primary);
+  background: var(--color-bg-primary);
   text-align: center;
 }
 .music-exit-icon {
@@ -2893,6 +2957,7 @@ button {
 }
 .music-exit-content h2 {
   margin: 0;
+  overflow-wrap: anywhere;
   font-size: 1rem;
   font-weight: 600;
   line-height: 1.5rem;
@@ -2959,16 +3024,29 @@ button {
   padding: 0;
   border-inline: 0;
 }
-.music-record-list-page .music-page-header {
-  position: relative;
+.music-record-list-page .music-page-header,
+.music-detail-page .music-page-header {
+  position: sticky;
+  z-index: 10;
+  top: 0;
   display: grid;
   grid-template-columns: 2rem minmax(0, 1fr) 2rem;
   align-items: center;
   min-height: 3.5rem;
   padding: 0 1rem;
-  border-bottom: 1px solid var(--color-border-tertiary);
 }
-.music-record-list-page .music-page-header h1 {
+.music-record-list-page .music-page-header {
+  grid-template-rows: minmax(3.5rem, auto) auto;
+}
+.music-record-list-page .music-page-header .music-record-region-filter {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.music-record-list-page .music-page-header .music-record-region-filter:not(:empty) {
+  padding: 0.375rem 0.25rem 0;
+}
+.music-record-list-page .music-page-header h1,
+.music-detail-page .music-page-header h1 {
   justify-self: center;
   font-size: 1.25rem;
   font-weight: 600;
@@ -3142,16 +3220,10 @@ button {
     inset 0 0 0 0.3125rem var(--color-bg-interactive-inverse),
     inset 0 0 0 0.375rem var(--color-text-interactive-inverse);
 }
-.music-delete-dialog {
+.music-delete-content {
   box-sizing: border-box;
-  width: min(23.4375rem, calc(100vw - 2.5rem));
-  max-width: none;
-  height: 20.625rem;
-  max-height: calc(100dvh - 2rem);
-  margin: auto;
+  width: min(100%, 23.4375rem);
   padding: 2.25rem 1.25rem 1.25rem;
-  overflow: auto;
-  border: 0;
   border-radius: 1.25rem;
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
@@ -3172,19 +3244,21 @@ button {
   width: 100%;
   height: 100%;
 }
-.music-delete-dialog h2 {
+.music-delete-content h2 {
   margin: 0;
+  overflow-wrap: anywhere;
   font-size: 1.125rem;
   font-weight: 600;
   line-height: 1.625rem;
 }
-.music-delete-dialog > p {
+.music-delete-content > p {
   margin: 0.5rem 0 0;
+  overflow-wrap: anywhere;
   color: var(--color-text-secondary);
   font-size: 0.875rem;
   line-height: 1.25rem;
 }
-.music-delete-dialog .music-delete-error {
+.music-delete-content .music-delete-error {
   color: var(--color-text-error);
 }
 .music-delete-actions {
@@ -3218,13 +3292,6 @@ button {
 .music-delete-actions button:focus-visible {
   outline: 2px solid var(--color-border-interactive-primary);
   outline-offset: 2px;
-}
-
-@media (max-height: 440px) {
-  .music-delete-dialog {
-    height: auto;
-    min-height: 20.625rem;
-  }
 }
 
 .prompt-feedback p {

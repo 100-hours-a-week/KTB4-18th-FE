@@ -1,0 +1,29 @@
+.chat-music-footer {
+  flex-shrink: 0;
+  max-height: max(140px, calc(var(--music-height, 100dvh) / 4));
+  overflow: auto;
+  font-size: 12px;
+}
+.chat-music-footer p {
+  margin-block: 4px;
+  overflow-wrap: anywhere;
+}
+.chat-music-footer:focus-visible {
+  outline: 2px solid var(--color-text-primary);
+  outline-offset: -2px;
+}
+.chat-music-feedback {
+  display: flex;
+  flex-direction: column;
+}
+.chat-music-feedback > p {
+  margin-block: 0;
+}
+.chat-music-feedback > button {
+  align-self: flex-start;
+  max-width: 100%;
+  white-space: normal;
+}
+.chat-music-compact .chat-music-footer {
+  max-height: none;
+}

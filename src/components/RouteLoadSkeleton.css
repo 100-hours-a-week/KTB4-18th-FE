@@ -564,7 +564,7 @@
   min-height: 3.5rem;
   grid-template-columns: 2rem minmax(0, 1fr) 2rem;
   padding: 0 1rem;
-  border-bottom: 1px solid #e5e5e5;
+  background: var(--diary-paper);
 }
 
 .route-skeleton__music-header-icon {

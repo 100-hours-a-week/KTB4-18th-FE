@@ -74,6 +74,7 @@
   justify-content: flex-start;
   padding: 20px 20px 0;
   overflow: auto;
+  overscroll-behavior-y: none;
 }
 .chat-image-empty-state {
   display: flex;
@@ -212,14 +213,15 @@
   z-index: 21;
   inset: 0;
   display: flex;
-  align-items: flex-end;
+  align-items: safe flex-end;
+  overflow-y: auto;
+  overscroll-behavior-y: none;
   background: rgb(0 0 0 / 45%);
 }
 .chat-image-retake-sheet {
   position: relative;
   box-sizing: border-box;
   width: 100%;
-  min-height: 370px;
   padding: 38px 20px max(20px, env(safe-area-inset-bottom));
   border-radius: 20px 20px 0 0;
   background: var(--color-bg-primary);
@@ -233,6 +235,7 @@
 }
 .chat-image-retake-sheet h3 {
   margin: 0 0 8px;
+  overflow-wrap: anywhere;
   font-size: var(--text-title3);
   font-weight: 600;
 }

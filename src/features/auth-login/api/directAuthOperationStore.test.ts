@@ -4,6 +4,8 @@ import {
   persistDirectAuthOperation,
   readDirectAuthOperation,
   clearDirectAuthOperation,
+  clearExpiredDirectAuthRefreshOperation,
+  snapshotDirectAuthOperations,
 } from './directAuthOperationStore';
 import { isDecimal64 } from './directAuthTypes';
 
@@ -104,4 +106,37 @@ it('clears only the exact four fields and verifies empty readback', () => {
   ).toBe(false);
   expect(clearDirectAuthOperation('LOGIN', operation)).toBe(true);
   expect(readDirectAuthOperation('LOGIN')).toBeNull();
+});
+
+it('clears an expired REFRESH only when its complete operation snapshot is unchanged and alone', () => {
+  const operation = { flowId: FLOW, startingEpoch: '1', operationId: ID, expiresAt: 10_000 };
+  sessionStorage.setItem('meomuneum:direct-auth-operation:REFRESH', JSON.stringify(operation));
+  const snapshot = snapshotDirectAuthOperations();
+  expect(clearExpiredDirectAuthRefreshOperation(snapshot, operation, sessionStorage, 10_000)).toBe(
+    true,
+  );
+  expect(sessionStorage.getItem('meomuneum:direct-auth-operation:REFRESH')).toBeNull();
+});
+
+it('preserves an expired REFRESH when a companion marker exists or any marker changes', () => {
+  const operation = { flowId: FLOW, startingEpoch: '1', operationId: ID, expiresAt: 10_000 };
+  sessionStorage.setItem('meomuneum:direct-auth-operation:REFRESH', JSON.stringify(operation));
+  sessionStorage.setItem(
+    'meomuneum:direct-auth-operation:LOGIN',
+    JSON.stringify({ ...operation, operationId: '123e4567-e89b-42d3-a456-426614174002' }),
+  );
+  const withCompanion = snapshotDirectAuthOperations();
+  expect(
+    clearExpiredDirectAuthRefreshOperation(withCompanion, operation, sessionStorage, 10_000),
+  ).toBe(false);
+  sessionStorage.removeItem('meomuneum:direct-auth-operation:LOGIN');
+  const beforeRequest = snapshotDirectAuthOperations();
+  sessionStorage.setItem(
+    'meomuneum:direct-auth-operation:REFRESH',
+    JSON.stringify({ ...operation, expiresAt: operation.expiresAt + 1 }),
+  );
+  expect(
+    clearExpiredDirectAuthRefreshOperation(beforeRequest, operation, sessionStorage, 10_000),
+  ).toBe(false);
+  expect(readDirectAuthOperation('REFRESH')?.expiresAt).toBe(10_001);
 });
